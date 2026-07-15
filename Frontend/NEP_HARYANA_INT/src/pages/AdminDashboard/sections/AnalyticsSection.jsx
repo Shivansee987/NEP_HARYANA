@@ -71,8 +71,8 @@ export default function AnalyticsSection({ analytics, stats, loading, error }) {
           colorIndex={1}
         />
         <DonutChart
-          title="Award Categories"
-          subtitle="NEP Excellence award tiers"
+          title="College Tier Distribution"
+          subtitle="Distribution of institutions by tier"
           data={awardData}
         />
         <TrendChart

@@ -5,8 +5,7 @@ import pageStyles from "./CollegeDashboard.module.css";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { fetchNominations, fetchNominationDetails, fetchMySubmissions } from "../../api/nomination";
 import NominationWorkspace from "./NominationWorkspace";
-import AwardJourney from "./AwardJourney";
-import { LayoutDashboard, FileText, CheckSquare, School } from "lucide-react";
+import { LayoutDashboard, FileText, CheckSquare, School, Trophy } from "lucide-react";
 import hshecLogo from "../../assets/hshec_logo.jpeg";
 import {
   ResponsiveContainer,
@@ -274,6 +273,17 @@ function CollegeDashboard() {
     { title: "My Submissions", icon: CheckSquare },
   ];
 
+  const tier = nomination?.award_category;
+
+  const tierName =
+    tier === "Platinum"
+      ? "Platinum Tier"
+      : tier === "Gold"
+      ? "Gold Tier"
+      : tier === "Silver"
+      ? "Silver Tier"
+      : "No Tier Achieved";
+
   return (
     <div className={styles.dashboardLayout}>
       <aside className="peer fixed inset-y-0 left-0 w-20 hover:w-64 bg-white text-slate-800 flex flex-col z-20 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border-r border-slate-100 transition-all duration-300 ease-in-out group overflow-hidden">
@@ -416,52 +426,7 @@ function CollegeDashboard() {
               </div>
             ) : (
               <>
-                <AwardJourney score={nomination?.score || 0} award={nomination?.award_category || "No Award"} />
-                {nomination?.status === "Clarification Requested" && (
-                  <div
-                    style={{
-                      backgroundColor: "#fee2e2",
-                      border: "1px solid #fca5a5",
-                      borderRadius: "16px",
-                      padding: "20px",
-                      marginBottom: "24px",
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: "8px",
-                      boxShadow: "0 4px 15px rgba(239, 68, 68, 0.05)",
-                      borderLeft: "6px solid #ef4444"
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "#b91c1c" }}>
-                      <span style={{ fontSize: "1.25rem" }}>⚠️</span>
-                      <h4 style={{ fontWeight: "800", margin: 0, fontSize: "0.95rem", textTransform: "uppercase", letterSpacing: "0.02em" }}>
-                        Action Required: Clarification Requested
-                      </h4>
-                    </div>
-                    <p style={{ fontSize: "0.875rem", color: "#991b1b", margin: 0, lineHeight: "1.5", fontWeight: "500" }}>
-                      The Screening Committee has requested clarification regarding your submitted nomination. Specific fields have been unlocked for editing.
-                    </p>
-                    <div style={{ marginTop: "4px" }}>
-                      <button
-                        type="button"
-                        style={{
-                          backgroundColor: "#ef4444",
-                          color: "#ffffff",
-                          border: "none",
-                          padding: "8px 20px",
-                          borderRadius: "10px",
-                          fontSize: "0.8125rem",
-                          fontWeight: "700",
-                          cursor: "pointer",
-                          boxShadow: "0 2px 8px rgba(239, 68, 68, 0.2)"
-                        }}
-                        onClick={() => navigate(`/institution/${instName}/${instAishe}/dashboard/forms/nep-excellence-nomination-2025`)}
-                      >
-                        Respond to Clarification
-                      </button>
-                    </div>
-                  </div>
-                )}
+              
                 <div className={pageStyles.overviewGrid}>
                   <section className={pageStyles.welcomeCard}>
                     <h3>HSHEC Principal Portal</h3>
@@ -543,40 +508,48 @@ function CollegeDashboard() {
 
                   <section className={pageStyles.scoreCard}>
                     <div className={pageStyles.scoreHeader}>
-                      <h3>Evaluated Score</h3>
+                      <h3>College Tier</h3>
                     </div>
                     <div className={pageStyles.gaugeArea}>
                       <div
-                        className={pageStyles.radialGauge}
-                        style={{ "--percentage": `${nomination?.score || 0}%` }}
+                        className={`${pageStyles.tierDisplay} ${
+                          tier === "Platinum"
+                            ? pageStyles.platinumTier
+                            : tier === "Gold"
+                            ? pageStyles.goldTier
+                            : tier === "Silver"
+                            ? pageStyles.silverTier
+                            : pageStyles.noTier
+                        }`}
                       >
-                        <div className={pageStyles.gaugeInner}>
-                          <span className={pageStyles.gaugeValue}>{nomination?.score || 0}</span>
-                          <span className={pageStyles.gaugeMax}>/ 100</span>
-                        </div>
-                      </div>
-                      <div className={pageStyles.percentagePill}>
-                        {nomination?.score || 0}% Achievement
+                        <Trophy className={pageStyles.tierIcon} />
+
+                        {tier === "Platinum" || tier === "Gold" || tier === "Silver" ? (
+                          <p>Congratulations! Your institution achieved the {tier} Tier.</p>
+                        ) : (
+                          <p>Your institution has not qualified for any tier.</p>
+                        )}
                       </div>
                     </div>
                     <span className={`${pageStyles.tierBadge} ${
-                      nomination?.award_category === "Platinum"
+                      tier === "Platinum"
                         ? pageStyles.badgePlatinum
-                        : nomination?.award_category === "Gold"
+                        : tier === "Gold"
                         ? pageStyles.badgeGold
-                        : nomination?.award_category === "Silver"
+                        : tier === "Silver"
                         ? pageStyles.badgeSilver
                         : pageStyles.badgeNone
                     }`}>
-                      {nomination?.award_category || "No Award"}
+                      {tierName}
                     </span>
-                    <span className={pageStyles.tierSub}>Current Award Classification</span>
+                    <span className={pageStyles.tierSub}>Current College Tier
+</span>
                   </section>
                 </div>
 
                 <div className={pageStyles.chartsGrid}>
                   <div className={pageStyles.chartCard}>
-                    <h3>Points Distribution</h3>
+                    <h3>NEP Pillars Balance</h3>
                     <p>Scored marks vs maximum possible marks for each of the 4 key categories.</p>
                     <div style={{ flex: 1, minHeight: 0 }}>
                       <ResponsiveContainer width="100%" height="100%">
@@ -615,35 +588,6 @@ function CollegeDashboard() {
                   </div>
                 </div>
 
-                <div className={pageStyles.breakdownSection}>
-                  <h3 className={pageStyles.sectionTitle}>Detailed Checklist</h3>
-                  <p className={pageStyles.sectionSubtitle}>Points breakdown per indicator as calculated by the council scoring module.</p>
-                  
-                  <div className={pageStyles.indicatorList}>
-                    {INDICATORS_METADATA.map((ind) => {
-                      const points = (nomination?.is_submitted && nomination?.reviewer_scores?.[`indicator_${ind.num}`] !== undefined)
-                        ? nomination.reviewer_scores[`indicator_${ind.num}`]
-                        : getIndicatorScore(ind.num, nomination?.answers || {});
-                      const isFilled = nomination?.answers?.[`indicator_${ind.num}`]?.value || (ind.num === 20 && nomination?.answers?.[`indicator_${ind.num}`]?.percentage !== undefined && nomination?.answers?.[`indicator_${ind.num}`]?.percentage !== "");
-                      
-                      return (
-                        <div key={ind.num} className={pageStyles.indicatorItem}>
-                          <div className={pageStyles.indicatorDetails}>
-                            <h4 className={pageStyles.indicatorTitle}>
-                              Indicator {ind.num} — {ind.title}
-                            </h4>
-                            <span className={pageStyles.indicatorMeta}>
-                              Status: {isFilled ? "Completed" : "Not Filled"}
-                            </span>
-                          </div>
-                          <span className={`${pageStyles.scoreBadge} ${points === ind.max ? pageStyles.high : points > 0 ? pageStyles.medium : pageStyles.zero}`}>
-                            {points} / {ind.max} Marks
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
               </>
             )}
           </div>

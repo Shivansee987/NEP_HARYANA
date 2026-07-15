@@ -31,8 +31,8 @@ export default function DonutChart({ title, subtitle, data = [] }) {
       <div className={styles.body}>
         {items.length === 0 ? (
           <EmptyState
-            title="No distribution data"
-            description="Award categories will show here after scoring data is available."
+            title="No tier data"
+            description="College tier distribution will appear after scoring is completed."
             icon="chart"
           />
         ) : (
