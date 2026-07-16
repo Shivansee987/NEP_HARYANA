@@ -3,25 +3,10 @@ import { useNavigate, useParams } from "react-router-dom";
 import styles from "../Dashboard/Dashboard.module.css";
 import pageStyles from "./CollegeDashboard.module.css";
 import { useAuth } from "../../context/AuthContext.jsx";
-import { fetchNominations, fetchNominationDetails, fetchMySubmissions } from "../../api/nomination";
+import { fetchNominationDetails, fetchMySubmissions } from "../../api/nomination";
 import NominationWorkspace from "./NominationWorkspace";
-import { LayoutDashboard, FileText, CheckSquare, School, Trophy } from "lucide-react";
+import { LayoutDashboard, CheckSquare, School } from "lucide-react";
 import hshecLogo from "../../assets/hshec_logo.jpeg";
-import {
-  ResponsiveContainer,
-  RadarChart,
-  PolarGrid,
-  PolarAngleAxis,
-  PolarRadiusAxis,
-  Radar,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-} from "recharts";
 
 function formatRole(role) {
   if (role === "principal") {
@@ -34,122 +19,6 @@ function formatRole(role) {
     return "Screening Committee";
   }
   return "Principal";
-}
-
-const INDICATORS_METADATA = [
-  { num: 1, title: "Two Simultaneous Academic Programmes", max: 4 },
-  { num: 2, title: "Internship/Apprenticeship Embedded Degree Programmes", max: 4 },
-  { num: 3, title: "Courses Offered in Indian Languages", max: 4 },
-  { num: 4, title: "Special Programmes in IKS", max: 4 },
-  { num: 5, title: "Institutional Development Plan (IDP) Developed", max: 6 },
-  { num: 6, title: "Appointment of Ombudsperson", max: 2 },
-  { num: 7, title: "NAAC Accreditation Status", max: 8 },
-  { num: 8, title: "Adoption of National Credit Framework (NCrF)", max: 2 },
-  { num: 9, title: "Academic Bank of Credits (ABC) Registered", max: 8 },
-  { num: 10, title: "Annual Update on AISHE Portal", max: 4 },
-  { num: 11, title: "Professor of Practice Appointed", max: 4 },
-  { num: 12, title: "Incubation/Startup Cell Functional", max: 6 },
-  { num: 13, title: "National Innovation & Start-up Policy Implemented", max: 4 },
-  { num: 14, title: "Academic/Research Collaboration with Foreign HEIs", max: 6 },
-  { num: 15, title: "Alumni Connect Cell Functional", max: 6 },
-  { num: 16, title: "Gender Parity Initiatives", max: 6 },
-  { num: 17, title: "Psychological Support Programmes", max: 6 },
-  { num: 18, title: "UGC Guidelines on Student Welfare Implemented", max: 6 },
-  { num: 19, title: "Provision for Online Courses / MOOCs Policy", max: 4 },
-  { num: 20, title: "Teachers Trained & Certified under MMTTC", max: 6 },
-];
-
-function getIndicatorScore(num, answers = {}) {
-  const ans = answers[`indicator_${num}`] || {};
-  if (!ans.value && !ans.percentage) return 0;
-  
-  switch(num) {
-    case 1:
-    case 2:
-      return ans.value === 'Yes' ? 4 : 0;
-    case 3:
-    case 4:
-      return ans.value === 'Yes' ? Math.min((ans.items || []).length, 4) : 0;
-    case 5:
-      return ans.value === 'Yes' ? 6 : 0;
-    case 6:
-      return ans.value === 'Yes' ? 2 : 0;
-    case 7:
-      const gradeScores = { 'A++': 8, 'A+': 6, 'A': 4, 'B+': 3, 'B': 2, 'C': 2, 'Not Accredited': 0 };
-      return gradeScores[ans.value] || 0;
-    case 8:
-      return ans.value === 'Yes' ? 2 : 0;
-    case 9:
-      if (ans.value !== 'Yes') return 0;
-      const pct = parseFloat(ans.percentage || 0);
-      if (pct > 75) return 8;
-      if (pct > 50) return 6;
-      if (pct > 25) return 4;
-      if (pct > 0) return 2;
-      return 0;
-    case 10:
-      return ans.value === 'Yes' ? 4 : 0;
-    case 11:
-      return ans.value === 'Yes' ? Math.min((ans.items || []).length * 2, 4) : 0;
-    case 12:
-      if (ans.value !== 'Yes') return 0;
-      const count = parseInt(ans.count || 0, 10);
-      if (count > 10) return 6;
-      if (count >= 6) return 4;
-      if (count >= 1) return 2;
-      return 0;
-    case 13:
-      return ans.value === 'Yes' ? 4 : 0;
-    case 14:
-    case 15:
-    case 16:
-    case 17:
-    case 18:
-      return ans.value === 'Yes' ? Math.min((ans.items || []).length, 6) : 0;
-    case 19:
-      return ans.value === 'Yes' ? 4 : 0;
-    case 20:
-      const pct20 = parseFloat(ans.percentage || 0);
-      if (pct20 > 75) return 6;
-      if (pct20 > 50) return 4;
-      if (pct20 > 0) return 2;
-      return 0;
-    default:
-      return 0;
-  }
-}
-
-function calculateCategoryScores(nomination = {}) {
-  const answers = nomination?.answers || {};
-  const reviewerScores = nomination?.reviewer_scores || {};
-  const isSubmitted = nomination?.is_submitted;
-
-  const getScore = (num) => {
-    const key = `indicator_${num}`;
-    if (isSubmitted && reviewerScores[key] !== undefined && reviewerScores[key] !== null) {
-      return Number(reviewerScores[key]);
-    }
-    return getIndicatorScore(num, answers);
-  };
-
-  let cat1 = 0;
-  for (let i = 1; i <= 4; i++) cat1 += getScore(i);
-
-  let cat2 = 0;
-  for (let i = 5; i <= 10; i++) cat2 += getScore(i);
-
-  let cat3 = 0;
-  for (let i = 11; i <= 15; i++) cat3 += getScore(i);
-
-  let cat4 = 0;
-  for (let i = 16; i <= 20; i++) cat4 += getScore(i);
-
-  return [
-    { name: "Academic Programs", score: cat1, max: 16 },
-    { name: "Governance & NAAC", score: cat2, max: 30 },
-    { name: "Innovation & Cells", score: cat3, max: 26 },
-    { name: "Welfare & MMTTC", score: cat4, max: 28 },
-  ];
 }
 
 function CollegeDashboard() {
@@ -169,10 +38,6 @@ function CollegeDashboard() {
   const [nominationLoading, setNominationLoading] = useState(false);
   const [nominationError, setNominationError] = useState("");
   
-  // Forms loading state
-  const [formsList, setFormsList] = useState([]);
-  const [formsLoading, setFormsLoading] = useState(false);
-  const [formsError, setFormsError] = useState("");
   const [selectedFormId, setSelectedFormId] = useState(null);
 
   // Submissions loading state
@@ -195,25 +60,10 @@ function CollegeDashboard() {
   useEffect(() => {
     if (formId) {
       setSelectedFormId(formId);
-      setActiveMenu("Forms");
     } else {
       setSelectedFormId(null);
     }
   }, [formId]);
-
-  const loadFormsList = useCallback(async () => {
-    setFormsLoading(true);
-    setFormsError("");
-    try {
-      const data = await fetchNominations();
-      setFormsList(data);
-    } catch (err) {
-      console.error("Failed to load available forms:", err);
-      setFormsError(err.message || "Failed to load available forms.");
-    } finally {
-      setFormsLoading(false);
-    }
-  }, []);
 
   const loadSubmissionsList = useCallback(async () => {
     setSubmissionsLoading(true);
@@ -228,12 +78,6 @@ function CollegeDashboard() {
       setSubmissionsLoading(false);
     }
   }, []);
-
-  useEffect(() => {
-    if (activeMenu === "Forms") {
-      loadFormsList();
-    }
-  }, [activeMenu, loadFormsList]);
 
   useEffect(() => {
     if (activeMenu === "My Submissions") {
@@ -269,20 +113,8 @@ function CollegeDashboard() {
 
   const menuItems = [
     { title: "Dashboard", icon: LayoutDashboard },
-    { title: "Forms", icon: FileText },
     { title: "My Submissions", icon: CheckSquare },
   ];
-
-  const tier = nomination?.award_category;
-
-  const tierName =
-    tier === "Platinum"
-      ? "Platinum Tier"
-      : tier === "Gold"
-      ? "Gold Tier"
-      : tier === "Silver"
-      ? "Silver Tier"
-      : "No Tier Achieved";
 
   return (
     <div className={styles.dashboardLayout}>
@@ -505,135 +337,9 @@ function CollegeDashboard() {
                       </div>
                     </div>
                   </section>
-
-                  <section className={pageStyles.scoreCard}>
-                    <div className={pageStyles.scoreHeader}>
-                      <h3>College Tier</h3>
-                    </div>
-                    <div className={pageStyles.gaugeArea}>
-                      <div
-                        className={`${pageStyles.tierDisplay} ${
-                          tier === "Platinum"
-                            ? pageStyles.platinumTier
-                            : tier === "Gold"
-                            ? pageStyles.goldTier
-                            : tier === "Silver"
-                            ? pageStyles.silverTier
-                            : pageStyles.noTier
-                        }`}
-                      >
-                        <Trophy className={pageStyles.tierIcon} />
-
-                        {tier === "Platinum" || tier === "Gold" || tier === "Silver" ? (
-                          <p>Congratulations! Your institution achieved the {tier} Tier.</p>
-                        ) : (
-                          <p>Your institution has not qualified for any tier.</p>
-                        )}
-                      </div>
-                    </div>
-                    <span className={`${pageStyles.tierBadge} ${
-                      tier === "Platinum"
-                        ? pageStyles.badgePlatinum
-                        : tier === "Gold"
-                        ? pageStyles.badgeGold
-                        : tier === "Silver"
-                        ? pageStyles.badgeSilver
-                        : pageStyles.badgeNone
-                    }`}>
-                      {tierName}
-                    </span>
-                    <span className={pageStyles.tierSub}>Current College Tier
-</span>
-                  </section>
-                </div>
-
-                <div className={pageStyles.chartsGrid}>
-                  <div className={pageStyles.chartCard}>
-                    <h3>NEP Pillars Balance</h3>
-                    <p>Scored marks vs maximum possible marks for each of the 4 key categories.</p>
-                    <div style={{ flex: 1, minHeight: 0 }}>
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart
-                          data={calculateCategoryScores(nomination)}
-                          margin={{ top: 10, right: 10, left: -20, bottom: 5 }}
-                        >
-                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                          <XAxis dataKey="name" tick={{ fill: "#475569", fontSize: 10 }} />
-                          <YAxis domain={[0, 30]} tick={{ fill: "#475569", fontSize: 10 }} />
-                          <Tooltip />
-                          <Legend wrapperStyle={{ fontSize: 10 }} />
-                          <Bar dataKey="score" name="Points Scored" fill="#e8791d" radius={[4, 4, 0, 0]} />
-                          <Bar dataKey="max" name="Max Points" fill="#e2e8f0" radius={[4, 4, 0, 0]} />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
-
-                  <div className={pageStyles.chartCard}>
-                    <h3>NEP Pillars Balance</h3>
-                    <p>Balance distribution map showing overall strengths and area focus.</p>
-                    <div style={{ flex: 1, minHeight: 0 }}>
-                      <ResponsiveContainer width="100%" height="100%">
-                        <RadarChart cx="50%" cy="50%" outerRadius="75%" data={calculateCategoryScores(nomination)}>
-                          <PolarGrid stroke="#cbd5e1" />
-                          <PolarAngleAxis dataKey="name" tick={{ fill: "#475569", fontSize: 9 }} />
-                          <PolarRadiusAxis angle={30} domain={[0, 30]} tick={{ fill: "#94a3b8", fontSize: 8 }} />
-                          <Radar name="Points Scored" dataKey="score" stroke="#e8791d" fill="#e8791d" fillOpacity={0.5} />
-                          <Radar name="Max Points" dataKey="max" stroke="#64748b" fill="#64748b" fillOpacity={0.08} />
-                          <Tooltip />
-                          <Legend wrapperStyle={{ fontSize: 10 }} />
-                        </RadarChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
                 </div>
 
               </>
-            )}
-          </div>
-        ) : activeMenu === "Forms" ? (
-          <div style={{ padding: "24px" }}>
-            <h3 style={{ fontSize: "1.25rem", fontWeight: "700", marginBottom: "18px", color: "#1e293b" }}>Available Nomination Forms</h3>
-            {formsError && (
-              <div style={{ backgroundColor: "#fee2e2", borderLeft: "4px solid #ef4444", color: "#b91c1c", padding: "12px", borderRadius: "8px", fontSize: "0.875rem", marginBottom: "16px" }}>
-                {formsError}
-              </div>
-            )}
-            {formsLoading ? (
-              <p style={{ color: "#64748b", fontSize: "0.875rem" }}>Loading available forms...</p>
-            ) : formsList.length === 0 ? (
-              <p style={{ color: "#64748b", fontSize: "0.875rem" }}>No active forms available at the moment.</p>
-            ) : (
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: "24px" }}>
-                {formsList.map((form) => (
-                  <div key={form.id} style={{ backgroundColor: "#ffffff", border: "1px solid #f1f5f9", borderRadius: "16px", padding: "24px", boxShadow: "0 4px 20px rgba(0,0,0,0.02)", display: "flex", flexDirection: "column", justifyContent: "space-between", minHeight: "180px" }}>
-                    <div>
-                      <span style={{ fontSize: "0.6875rem", backgroundColor: "#f1f5f9", padding: "4px 10px", borderRadius: "9999px", textTransform: "uppercase", fontWeight: "700", color: "#64748b" }}>{form.issued_by} • {form.academic_session}</span>
-                      <h4 style={{ fontSize: "0.9375rem", fontWeight: "700", marginTop: "12px", marginBottom: "16px", color: "#0f172a", lineHeight: "1.4" }}>{form.title}</h4>
-                    </div>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <span style={{
-                        fontSize: "0.75rem",
-                        fontWeight: "700",
-                        padding: "6px 14px",
-                        borderRadius: "9999px",
-                        textTransform: "uppercase",
-                        letterSpacing: "0.05em",
-                        backgroundColor: form.status === "submitted" ? "#d1fae5" : form.status === "draft" ? "#fef3c7" : "#f1f5f9",
-                        color: form.status === "submitted" ? "#065f46" : form.status === "draft" ? "#78350f" : "#475569"
-                      }}>{form.status.replace("_", " ")}</span>
-                      <button
-                        type="button"
-                        className={styles.secondaryBtn}
-                        style={{ padding: "8px 16px", fontSize: "0.8125rem", fontWeight: "600", borderColor: "#2563eb", color: "#2563eb", cursor: "pointer" }}
-                        onClick={() => navigate(`/institution/${instName}/${instAishe}/dashboard/forms/${form.id}`)}
-                      >
-                        Open Form
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
             )}
           </div>
         ) : activeMenu === "My Submissions" ? (
@@ -671,20 +377,6 @@ function CollegeDashboard() {
                     </div>
                     
                     <div style={{ display: "flex", alignItems: "center", gap: "24px", flexWrap: "wrap" }}>
-                      <div style={{ textAlign: "center" }}>
-                        <span style={{ display: "block", fontSize: "0.75rem", color: "#64748b", fontWeight: "600", textTransform: "uppercase", marginBottom: "4px" }}>Score</span>
-                        <strong style={{ fontSize: "1.4rem", color: "#e8791d" }}>{sub.score} <span style={{ fontSize: "0.9rem", color: "#94a3b8", fontWeight: "normal" }}>/ 100</span></strong>
-                      </div>
-                      
-                      <div style={{ textAlign: "center" }}>
-                        <span style={{ display: "block", fontSize: "0.75rem", color: "#64748b", fontWeight: "600", textTransform: "uppercase", marginBottom: "4px" }}>Award</span>
-                        <span className={`${pageStyles.tierBadge} ${
-                          sub.award_category === "Platinum" ? pageStyles.badgePlatinum : sub.award_category === "Gold" ? pageStyles.badgeGold : sub.award_category === "Silver" ? pageStyles.badgeSilver : pageStyles.badgeNone
-                        }`} style={{ padding: "6px 14px", fontSize: "0.75rem", marginTop: 0 }}>
-                          {sub.award_category}
-                        </span>
-                      </div>
-
                       <div style={{ textAlign: "center" }}>
                         <span style={{ display: "block", fontSize: "0.75rem", color: "#64748b", fontWeight: "600", textTransform: "uppercase", marginBottom: "4px" }}>Status</span>
                         <span style={{
