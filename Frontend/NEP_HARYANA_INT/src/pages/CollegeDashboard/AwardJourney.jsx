@@ -6,7 +6,6 @@ export default function AwardJourney({ score = 0, award = "No Award" }) {
   const [thresholds, setThresholds] = useState([]);
   const [loading, setLoading] = useState(true);
   const [celebrationAward, setCelebrationAward] = useState(null);
-  s
   // Track milestones that have been celebrated during the session
   const [celebratedMilestones, setCelebratedMilestones] = useState(() => {
     const initialCelebrated = ["Entry"];
