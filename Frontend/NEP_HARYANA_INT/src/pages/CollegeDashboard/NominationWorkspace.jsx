@@ -210,6 +210,9 @@ const INDICATORS = [
 export default function NominationWorkspace({ formId, onBack }) {
   const { user } = useAuth();
 
+  // Role check — colleges/principals must never see scoring info
+  const isCollege = user?.role === "principal" || user?.role === "college";
+
   // States
   const [nomination, setNomination] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -265,6 +268,11 @@ export default function NominationWorkspace({ formId, onBack }) {
   useEffect(() => {
     async function loadData() {
       try {
+        if (!formId) {
+          setErrorMessage("No form selected. Please go back and open a form again.");
+          setLoading(false);
+          return;
+        }
         const data = await fetchNominationDetails(formId);
         setNomination(data);
         setBasicInfo({
@@ -289,6 +297,7 @@ export default function NominationWorkspace({ formId, onBack }) {
           }
         }
       } catch (err) {
+        console.error("Error loading nomination details:", err);
         setErrorMessage(err.message || "Failed to load form details.");
       } finally {
         setLoading(false);
@@ -618,11 +627,26 @@ export default function NominationWorkspace({ formId, onBack }) {
     return filled;
   };
 
+  // ---- Loading state ----
   if (loading) {
     return (
       <div className={styles.loadingSpinnerContainer}>
         <div className={styles.spinner}></div>
         <p>Loading nomination form data...</p>
+      </div>
+    );
+  }
+
+  // ---- Fallback: loading finished but nomination failed to load ----
+  if (!nomination) {
+    return (
+      <div className={styles.loadingSpinnerContainer}>
+        <p style={{ color: "#ef4444", fontWeight: 600, marginBottom: "16px" }}>
+          {errorMessage || "Could not load this form. Please go back and try again."}
+        </p>
+        <button className={styles.secondaryBtn} onClick={onBack}>
+          ← Back to Forms
+        </button>
       </div>
     );
   }
@@ -736,25 +760,29 @@ export default function NominationWorkspace({ formId, onBack }) {
         </div>
       </header>
 
-      {/* Award Journey Milestones */}
-      <div style={{ gridColumn: "1 / -1", marginBottom: "16px" }}>
-        <AwardJourney score={displayScore} award={displayAward} />
-      </div>
+      {/* Award Journey Milestones — hidden from College/Principal users */}
+      {!isCollege && (
+        <div style={{ gridColumn: "1 / -1", marginBottom: "16px" }}>
+          <AwardJourney score={displayScore} award={displayAward} />
+        </div>
+      )}
 
       {/* Sidebar Panel (Live score) */}
       <aside className={styles.summaryPanel}>
-        <div className={styles.scoreWidget}>
-          <h3>Nomination Score</h3>
-          <div className={styles.scoreValue}>
-            {displayScore}
-            <span>/100</span>
+        {!isCollege && (
+          <div className={styles.scoreWidget}>
+            <h3>Nomination Score</h3>
+            <div className={styles.scoreValue}>
+              {displayScore}
+              <span>/100</span>
+            </div>
+            <span
+              className={`${styles.awardBadge} ${styles[displayAward.replace(/\s+/g, "")]}`}
+            >
+              {displayAward}
+            </span>
           </div>
-          <span
-            className={`${styles.awardBadge} ${styles[displayAward.replace(/\s+/g, "")]}`}
-          >
-            {displayAward}
-          </span>
-        </div>
+        )}
 
         <div className={styles.completionProgress}>
           <div className={styles.completionText}>
@@ -1060,7 +1088,7 @@ export default function NominationWorkspace({ formId, onBack }) {
                       <span className={styles.indicatorMaxScore}>
                         Max: {ind.max} Marks
                       </span>
-                      {nomination?.is_submitted && nomination?.reviewer_scores?.[`indicator_${ind.num}`] !== undefined && (
+                      {!isCollege && nomination?.is_submitted && nomination?.reviewer_scores?.[`indicator_${ind.num}`] !== undefined && (
                         <span style={{ fontSize: "0.725rem", fontWeight: "bold", color: "#10b981", backgroundColor: "#ecfdf5", border: "1px solid #a7f3d0", padding: "2px 8px", borderRadius: "4px" }}>
                           Verified: {nomination.reviewer_scores[`indicator_${ind.num}`]} / {ind.max}
                         </span>
