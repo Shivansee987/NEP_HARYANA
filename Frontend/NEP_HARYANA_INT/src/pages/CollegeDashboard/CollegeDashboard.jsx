@@ -3,9 +3,9 @@ import { useNavigate, useParams } from "react-router-dom";
 import styles from "../Dashboard/Dashboard.module.css";
 import pageStyles from "./CollegeDashboard.module.css";
 import { useAuth } from "../../context/AuthContext.jsx";
-import { fetchNominations, fetchNominationDetails, fetchMySubmissions } from "../../api/nomination";
+import { fetchNominationDetails, fetchMySubmissions } from "../../api/nomination";
 import NominationWorkspace from "./NominationWorkspace";
-import { LayoutDashboard, FileText, CheckSquare, School, Trophy } from "lucide-react";
+import { LayoutDashboard, CheckSquare, School, Trophy } from "lucide-react";
 import hshecLogo from "../../assets/hshec_logo.jpeg";
 import {
   ResponsiveContainer,
@@ -14,11 +14,6 @@ import {
   PolarAngleAxis,
   PolarRadiusAxis,
   Radar,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
   Tooltip,
   Legend,
 } from "recharts";
@@ -169,10 +164,6 @@ function CollegeDashboard() {
   const [nominationLoading, setNominationLoading] = useState(false);
   const [nominationError, setNominationError] = useState("");
   
-  // Forms loading state
-  const [formsList, setFormsList] = useState([]);
-  const [formsLoading, setFormsLoading] = useState(false);
-  const [formsError, setFormsError] = useState("");
   const [selectedFormId, setSelectedFormId] = useState(null);
 
   // Submissions loading state
@@ -195,25 +186,10 @@ function CollegeDashboard() {
   useEffect(() => {
     if (formId) {
       setSelectedFormId(formId);
-      setActiveMenu("Forms");
     } else {
       setSelectedFormId(null);
     }
   }, [formId]);
-
-  const loadFormsList = useCallback(async () => {
-    setFormsLoading(true);
-    setFormsError("");
-    try {
-      const data = await fetchNominations();
-      setFormsList(data);
-    } catch (err) {
-      console.error("Failed to load available forms:", err);
-      setFormsError(err.message || "Failed to load available forms.");
-    } finally {
-      setFormsLoading(false);
-    }
-  }, []);
 
   const loadSubmissionsList = useCallback(async () => {
     setSubmissionsLoading(true);
@@ -228,12 +204,6 @@ function CollegeDashboard() {
       setSubmissionsLoading(false);
     }
   }, []);
-
-  useEffect(() => {
-    if (activeMenu === "Forms") {
-      loadFormsList();
-    }
-  }, [activeMenu, loadFormsList]);
 
   useEffect(() => {
     if (activeMenu === "My Submissions") {
@@ -269,7 +239,6 @@ function CollegeDashboard() {
 
   const menuItems = [
     { title: "Dashboard", icon: LayoutDashboard },
-    { title: "Forms", icon: FileText },
     { title: "My Submissions", icon: CheckSquare },
   ];
 
@@ -656,30 +625,8 @@ function CollegeDashboard() {
                   </section>
                 </div>
 
-                <div className={pageStyles.chartsGrid}>
-                  <div className={pageStyles.chartCard}>
-                    <h3>NEP Pillars Balance</h3>
-                    <p>Scored marks vs maximum possible marks for each of the 4 key categories.</p>
-                    <div style={{ flex: 1, minHeight: 0 }}>
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart
-                          data={categoryScores}
-                          layout="vertical"
-                          margin={{ top: 10, right: 20, left: 10, bottom: 5 }}
-                        >
-                          <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
-                          <XAxis type="number" domain={[0, 30]} tick={{ fill: "#475569", fontSize: 10 }} />
-                          <YAxis type="category" dataKey="name" width={110} tick={{ fill: "#475569", fontSize: 10 }} />
-                          <Tooltip />
-                          <Legend wrapperStyle={{ fontSize: 10 }} />
-                          <Bar dataKey="score" name="Points Scored" fill="#e8791d" radius={[0, 4, 4, 0]} />
-                          <Bar dataKey="max" name="Max Points" fill="#e2e8f0" radius={[0, 4, 4, 0]} />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
-
-                  <div className={pageStyles.chartCard}>
+                <div className={pageStyles.chartsGrid} style={{ gridTemplateColumns: "1fr" }}>
+                  <div className={pageStyles.chartCard} style={{ width: "100%" }}>
                     <h3>NEP Pillars Balance</h3>
                     <p>Balance distribution map showing overall strengths and area focus.</p>
                     <div style={{ flex: 1, minHeight: 0 }}>
@@ -758,51 +705,6 @@ function CollegeDashboard() {
               </>
             )}
           </div>
-        ) : activeMenu === "Forms" ? (
-          <div style={{ padding: "24px" }}>
-            <h3 style={{ fontSize: "1.25rem", fontWeight: "700", marginBottom: "18px", color: "#1e293b" }}>Available Nomination Forms</h3>
-            {formsError && (
-              <div style={{ backgroundColor: "#fee2e2", borderLeft: "4px solid #ef4444", color: "#b91c1c", padding: "12px", borderRadius: "8px", fontSize: "0.875rem", marginBottom: "16px" }}>
-                {formsError}
-              </div>
-            )}
-            {formsLoading ? (
-              <p style={{ color: "#64748b", fontSize: "0.875rem" }}>Loading available forms...</p>
-            ) : formsList.length === 0 ? (
-              <p style={{ color: "#64748b", fontSize: "0.875rem" }}>No active forms available at the moment.</p>
-            ) : (
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: "24px" }}>
-                {formsList.map((form) => (
-                  <div key={form.id} style={{ backgroundColor: "#ffffff", border: "1px solid #f1f5f9", borderRadius: "16px", padding: "24px", boxShadow: "0 4px 20px rgba(0,0,0,0.02)", display: "flex", flexDirection: "column", justifyContent: "space-between", minHeight: "180px" }}>
-                    <div>
-                      <span style={{ fontSize: "0.6875rem", backgroundColor: "#f1f5f9", padding: "4px 10px", borderRadius: "9999px", textTransform: "uppercase", fontWeight: "700", color: "#64748b" }}>{form.issued_by} • {form.academic_session}</span>
-                      <h4 style={{ fontSize: "0.9375rem", fontWeight: "700", marginTop: "12px", marginBottom: "16px", color: "#0f172a", lineHeight: "1.4" }}>{form.title}</h4>
-                    </div>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <span style={{
-                        fontSize: "0.75rem",
-                        fontWeight: "700",
-                        padding: "6px 14px",
-                        borderRadius: "9999px",
-                        textTransform: "uppercase",
-                        letterSpacing: "0.05em",
-                        backgroundColor: form.status === "submitted" ? "#d1fae5" : form.status === "draft" ? "#fef3c7" : "#f1f5f9",
-                        color: form.status === "submitted" ? "#065f46" : form.status === "draft" ? "#78350f" : "#475569"
-                      }}>{form.status.replace("_", " ")}</span>
-                      <button
-                        type="button"
-                        className={styles.secondaryBtn}
-                        style={{ padding: "8px 16px", fontSize: "0.8125rem", fontWeight: "600", borderColor: "#2563eb", color: "#2563eb", cursor: "pointer" }}
-                        onClick={() => navigate(`/institution/${instName}/${instAishe}/dashboard/forms/${form.id}`)}
-                      >
-                        Open Form
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
         ) : activeMenu === "My Submissions" ? (
           <div style={{ padding: "24px" }}>
             <h3 style={{ fontSize: "1.25rem", fontWeight: "700", marginBottom: "18px", color: "#1e293b" }}>My Submissions</h3>
@@ -838,11 +740,6 @@ function CollegeDashboard() {
                     </div>
                     
                     <div style={{ display: "flex", alignItems: "center", gap: "24px", flexWrap: "wrap" }}>
-                      <div style={{ textAlign: "center" }}>
-                        <span style={{ display: "block", fontSize: "0.75rem", color: "#64748b", fontWeight: "600", textTransform: "uppercase", marginBottom: "4px" }}>Score</span>
-                        <strong style={{ fontSize: "1.4rem", color: "#e8791d" }}>{sub.score} <span style={{ fontSize: "0.9rem", color: "#94a3b8", fontWeight: "normal" }}>/ 100</span></strong>
-                      </div>
-                      
                       <div style={{ textAlign: "center" }}>
                         <span style={{ display: "block", fontSize: "0.75rem", color: "#64748b", fontWeight: "600", textTransform: "uppercase", marginBottom: "4px" }}>Award</span>
                         <span className={`${pageStyles.tierBadge} ${
