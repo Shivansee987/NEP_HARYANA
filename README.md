@@ -1,7 +1,3 @@
-Yes. I’d update the README to make it clear that **the backend is substantially complete, but the frontend is currently the biggest remaining area of work**.
-
-Here is the entire replacement `README.md` in one copy-paste block:
-
 ````markdown
 # NEP Excellence Awards 2026 — Haryana Platform
 
