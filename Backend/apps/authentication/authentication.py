@@ -34,3 +34,6 @@ class JWTAuthentication(BaseAuthentication):
             raise exceptions.AuthenticationFailed('User account is disabled')
             
         return (user, None)
+
+    def authenticate_header(self, request):
+        return 'Bearer'

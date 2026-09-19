@@ -44,3 +44,13 @@ Thumbs.db
 *.njsproj
 *.sln
 *.sw?
+
+# Test outputs & temporary audit files
+test_output*.txt
+test_reports_output*.txt
+*REPORT*.md
+*AUDIT*.md
+*SPECIFICATION*.md
+*BLUEPRINT*.md
+audit_reports/
+audits/

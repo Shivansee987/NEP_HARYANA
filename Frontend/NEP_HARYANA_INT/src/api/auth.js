@@ -213,9 +213,17 @@ export function getDashboardPathForUser(user) {
     return "/admin";
   }
 
-  if (role === "committee") {
+  // Both committee members and the committee chair use the committee console.
+  // The backend enforces chair-level authority (certification, assignment) separately.
+  if (role === "committee" || role === "committee_chair") {
     return "/committee";
   }
 
-  return "/admin";
+  // University roles: nodal officers and university admins use the university console.
+  if (role === "nodal_officer" || role === "university_admin") {
+    return "/university";
+  }
+
+  // Safe fallback — home page, not /admin, to avoid infinite redirect loops.
+  return "/";
 }

@@ -40,7 +40,9 @@ const Sidebar = () => {
           </div>
           <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-300 whitespace-nowrap min-w-0">
             <h1 className="text-xs font-bold tracking-tight text-slate-800 leading-none">HSHEC NEP</h1>
-            <span className="text-[9px] text-orange-600 font-bold uppercase tracking-wider block mt-0.5">Screening Committee</span>
+            <span className="text-[9px] text-orange-600 font-bold uppercase tracking-wider block mt-0.5">
+              {user?.role === 'committee_chair' ? 'Screening Committee (Chair)' : 'Screening Committee'}
+            </span>
           </div>
         </div>
       </div>
@@ -87,7 +89,9 @@ const Sidebar = () => {
           </div>
           <div className="min-w-0 flex-1 opacity-0 group-hover:opacity-100 transition-opacity duration-300 whitespace-nowrap">
             <p className="text-xs font-semibold text-slate-800 truncate">{user?.full_name || "Committee Officer"}</p>
-            <p className="text-[10px] text-orange-600 font-semibold truncate">Evaluator</p>
+            <p className="text-[10px] text-orange-600 font-semibold truncate">
+              {user?.role === 'committee_chair' ? 'Committee Chair' : 'Evaluator'}
+            </p>
           </div>
         </div>
         <button

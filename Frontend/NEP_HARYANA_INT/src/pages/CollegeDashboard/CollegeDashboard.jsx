@@ -4,8 +4,21 @@ import styles from "../Dashboard/Dashboard.module.css";
 import pageStyles from "./CollegeDashboard.module.css";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { fetchNominationDetails, fetchMySubmissions } from "../../api/nomination";
+import { fetchInstitutionReportingSummary, downloadAssessmentReportCSV } from "../../api/reports";
+import AssessmentReportModal from "../../components/Reports/AssessmentReportModal";
 import NominationWorkspace from "./NominationWorkspace";
-import { LayoutDashboard, CheckSquare, School, Trophy } from "lucide-react";
+import {
+  LayoutDashboard,
+  CheckSquare,
+  School,
+  Trophy,
+  Award,
+  Eye,
+  FileSpreadsheet,
+  ShieldCheck,
+  AlertCircle,
+  RefreshCw,
+} from "lucide-react";
 import hshecLogo from "../../assets/hshec_logo.jpeg";
 import {
   ResponsiveContainer,
@@ -237,9 +250,36 @@ function CollegeDashboard() {
     navigate("/auth/login");
   };
 
+  // Phase 9 Reports & Analytics state
+  const [reportsSummary, setReportsSummary] = useState(null);
+  const [reportsLoading, setReportsLoading] = useState(false);
+  const [reportsError, setReportsError] = useState("");
+  const [selectedAssessmentId, setSelectedAssessmentId] = useState(null);
+
+  const loadReportsSummary = useCallback(async () => {
+    setReportsLoading(true);
+    setReportsError("");
+    try {
+      const data = await fetchInstitutionReportingSummary();
+      setReportsSummary(data);
+    } catch (err) {
+      console.error("Failed to load institution reports summary:", err);
+      setReportsError(err.message || "Failed to load assessment reports.");
+    } finally {
+      setReportsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeMenu === "Assessment Reports") {
+      loadReportsSummary();
+    }
+  }, [activeMenu, loadReportsSummary]);
+
   const menuItems = [
     { title: "Dashboard", icon: LayoutDashboard },
     { title: "My Submissions", icon: CheckSquare },
+    { title: "Assessment Reports", icon: Award },
   ];
 
   const tier = nomination?.award_category;
@@ -786,8 +826,227 @@ function CollegeDashboard() {
               </div>
             )}
           </div>
+        ) : activeMenu === "Assessment Reports" ? (
+          <div style={{ padding: "24px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "24px", flexWrap: "wrap", gap: "16px" }}>
+              <div>
+                <h3 style={{ fontSize: "1.25rem", fontWeight: "700", color: "#0f172a", margin: "0 0 4px" }}>
+                  NEP Excellence Awards 2026 — Assessment Reports
+                </h3>
+                <p style={{ fontSize: "0.875rem", color: "#64748b", margin: 0 }}>
+                  Authoritative, read-only audit ledger and statutory evaluation reports under the COLLEGE_2026 framework.
+                </p>
+              </div>
+              <button
+                onClick={loadReportsSummary}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  padding: "8px 16px",
+                  backgroundColor: "#f8fafc",
+                  border: "1px solid #cbd5e1",
+                  borderRadius: "8px",
+                  fontSize: "0.8125rem",
+                  fontWeight: "600",
+                  color: "#334155",
+                  cursor: "pointer",
+                }}
+              >
+                <RefreshCw size={14} className={reportsLoading ? "animate-spin" : ""} />
+                Refresh
+              </button>
+            </div>
+
+            {/* Institution Summary Metadata Banner */}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+                gap: "16px",
+                marginBottom: "24px",
+              }}
+            >
+              <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: "12px", padding: "16px" }}>
+                <span style={{ fontSize: "10px", fontWeight: "700", color: "#94a3b8", textTransform: "uppercase", display: "block", marginBottom: "4px" }}>Institution</span>
+                <div style={{ fontSize: "14px", fontWeight: "700", color: "#0f172a" }}>{reportsSummary?.institution_name || collegeName}</div>
+                <div style={{ fontSize: "11px", color: "#64748b", fontFamily: "monospace", marginTop: "2px" }}>AISHE: {reportsSummary?.aishe_code || aisheCode}</div>
+              </div>
+
+              <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: "12px", padding: "16px" }}>
+                <span style={{ fontSize: "10px", fontWeight: "700", color: "#94a3b8", textTransform: "uppercase", display: "block", marginBottom: "4px" }}>Evaluation Framework</span>
+                <div style={{ fontSize: "14px", fontWeight: "700", color: "#1d4ed8" }}>COLLEGE_2026</div>
+                <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>22 Statutory Parameters (C1–C22)</div>
+              </div>
+
+              <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: "12px", padding: "16px" }}>
+                <span style={{ fontSize: "10px", fontWeight: "700", color: "#94a3b8", textTransform: "uppercase", display: "block", marginBottom: "4px" }}>Sessions Registered</span>
+                <div style={{ fontSize: "14px", fontWeight: "700", color: "#0f172a" }}>
+                  {reportsSummary?.assessments?.length ?? 0} Assessment Session{reportsSummary?.assessments?.length === 1 ? "" : "s"}
+                </div>
+                <div style={{ fontSize: "11px", color: "#16a34a", fontWeight: "600", marginTop: "2px" }}>Statutory Read-Only Projection</div>
+              </div>
+            </div>
+
+            {/* Error state */}
+            {reportsError && (
+              <div style={{ backgroundColor: "#fee2e2", borderLeft: "4px solid #ef4444", color: "#b91c1c", padding: "12px 16px", borderRadius: "8px", fontSize: "0.875rem", marginBottom: "20px", display: "flex", alignItems: "center", gap: "8px" }}>
+                <AlertCircle size={16} />
+                <span>{reportsError}</span>
+              </div>
+            )}
+
+            {/* Loading or Assessment List */}
+            {reportsLoading ? (
+              <div style={{ textAlign: "center", padding: "48px 0" }}>
+                <div style={{ width: "32px", height: "32px", border: "3px solid #cbd5e1", borderTopColor: "#1d4ed8", borderRadius: "50%", margin: "0 auto 12px", animation: "spin 1s linear infinite" }} />
+                <p style={{ fontSize: "0.8125rem", color: "#94a3b8", fontWeight: "600" }}>Loading authoritative assessment sessions...</p>
+              </div>
+            ) : reportsSummary?.assessments?.length === 0 ? (
+              <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: "16px", padding: "48px 24px", textAlign: "center" }}>
+                <Award size={40} color="#cbd5e1" style={{ margin: "0 auto 12px" }} />
+                <h4 style={{ fontSize: "15px", fontWeight: "700", color: "#0f172a", margin: "0 0 6px" }}>
+                  No Assessment Sessions Found
+                </h4>
+                <p style={{ fontSize: "13px", color: "#64748b", margin: 0, maxWidth: "420px", marginLeft: "auto", marginRight: "auto" }}>
+                  Official assessment sessions for this college will appear here once registered under the COLLEGE_2026 framework.
+                </p>
+              </div>
+            ) : (
+              <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: "16px", overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px", textAlign: "left" }}>
+                    <thead>
+                      <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
+                        <th style={{ padding: "12px 16px", fontWeight: "700", color: "#64748b", fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.05em" }}>Session ID</th>
+                        <th style={{ padding: "12px 16px", fontWeight: "700", color: "#64748b", fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.05em" }}>Academic Year</th>
+                        <th style={{ padding: "12px 16px", fontWeight: "700", color: "#64748b", fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.05em" }}>Lifecycle Status</th>
+                        <th style={{ padding: "12px 16px", fontWeight: "700", color: "#64748b", fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.05em" }}>Certification Status</th>
+                        <th style={{ padding: "12px 16px", fontWeight: "700", color: "#64748b", fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.05em", textAlign: "right" }}>Certified Score</th>
+                        <th style={{ padding: "12px 16px", fontWeight: "700", color: "#64748b", fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.05em", textAlign: "center" }}>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {reportsSummary?.assessments?.map((a, idx) => {
+                        const isCertified = a.status === "CERTIFIED";
+                        const isBlocked = a.certification_status === "BLOCKED_BY_SPECIFICATION";
+                        return (
+                          <tr
+                            key={a.assessment_id}
+                            style={{
+                              borderBottom: idx < reportsSummary.assessments.length - 1 ? "1px solid #f1f5f9" : "none",
+                              transition: "background 0.1s",
+                            }}
+                          >
+                            <td style={{ padding: "14px 16px", fontFamily: "monospace", fontWeight: "700", color: "#1d4ed8" }}>
+                              {a.assessment_id}
+                            </td>
+                            <td style={{ padding: "14px 16px", fontWeight: "600", color: "#334155" }}>
+                              {a.academic_year || "2025-26"}
+                            </td>
+                            <td style={{ padding: "14px 16px" }}>
+                              <span
+                                style={{
+                                  display: "inline-block",
+                                  padding: "3px 10px",
+                                  borderRadius: "9999px",
+                                  fontSize: "10px",
+                                  fontWeight: "700",
+                                  textTransform: "uppercase",
+                                  letterSpacing: "0.04em",
+                                  background: isCertified ? "#f0fdf4" : a.status === "SUBMITTED" ? "#eff6ff" : a.status === "UNDER_REVIEW" ? "#fefce8" : "#f8fafc",
+                                  color: isCertified ? "#15803d" : a.status === "SUBMITTED" ? "#1d4ed8" : a.status === "UNDER_REVIEW" ? "#a16207" : "#475569",
+                                  border: `1px solid ${isCertified ? "#bbf7d0" : a.status === "SUBMITTED" ? "#bfdbfe" : a.status === "UNDER_REVIEW" ? "#fde68a" : "#cbd5e1"}`,
+                                }}
+                              >
+                                {a.status}
+                              </span>
+                            </td>
+                            <td style={{ padding: "14px 16px" }}>
+                              {isBlocked ? (
+                                <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "3px 8px", borderRadius: "9999px", fontSize: "10px", fontWeight: "700", background: "#faf5ff", color: "#7e22ce", border: "1px solid #e9d5ff" }}>
+                                  <AlertCircle size={10} />
+                                  Blocked by Spec
+                                </span>
+                              ) : isCertified ? (
+                                <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "3px 8px", borderRadius: "9999px", fontSize: "10px", fontWeight: "700", background: "#f0fdf4", color: "#15803d", border: "1px solid #bbf7d0" }}>
+                                  <ShieldCheck size={10} />
+                                  Certified
+                                </span>
+                              ) : (
+                                <span style={{ fontSize: "11px", color: "#64748b" }}>
+                                  {a.certification_status || "In Evaluation"}
+                                </span>
+                              )}
+                            </td>
+                            <td style={{ padding: "14px 16px", textAlign: "right", fontFamily: "monospace", fontWeight: "700", fontSize: "13px" }}>
+                              {a.certified_score != null ? (
+                                <span style={{ color: "#15803d" }}>{a.certified_score}</span>
+                              ) : (
+                                <span style={{ color: "#94a3b8", fontWeight: "normal" }}>Pending</span>
+                              )}
+                            </td>
+                            <td style={{ padding: "14px 16px", textAlign: "center" }}>
+                              <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                                <button
+                                  onClick={() => setSelectedAssessmentId(a.assessment_id)}
+                                  style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: "4px",
+                                    padding: "6px 12px",
+                                    backgroundColor: "#1d4ed8",
+                                    color: "#ffffff",
+                                    border: "none",
+                                    borderRadius: "6px",
+                                    fontSize: "11px",
+                                    fontWeight: "700",
+                                    cursor: "pointer",
+                                  }}
+                                  title="Inspect full audit report"
+                                >
+                                  <Eye size={12} />
+                                  Audit Report
+                                </button>
+                                <button
+                                  onClick={() => downloadAssessmentReportCSV(a.assessment_id)}
+                                  style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    padding: "6px 10px",
+                                    backgroundColor: "#f0fdf4",
+                                    color: "#15803d",
+                                    border: "1px solid #bbf7d0",
+                                    borderRadius: "6px",
+                                    fontSize: "11px",
+                                    fontWeight: "700",
+                                    cursor: "pointer",
+                                  }}
+                                  title="Export CSV"
+                                >
+                                  <FileSpreadsheet size={12} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
         ) : null}
       </div>
+
+      {/* Authoritative Assessment Report Modal */}
+      {selectedAssessmentId && (
+        <AssessmentReportModal
+          assessmentId={selectedAssessmentId}
+          onClose={() => setSelectedAssessmentId(null)}
+        />
+      )}
     </div>
   );
 }

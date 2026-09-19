@@ -1,0 +1,80 @@
+"""
+NEP Excellence Awards 2026 - Scoring Engine Enums & Constants
+"""
+from enum import Enum
+
+
+class FrameworkType(str, Enum):
+    UNIVERSITY_2026 = "UNIVERSITY_2026"
+    COLLEGE_2026 = "COLLEGE_2026"
+
+
+class InstitutionType(str, Enum):
+    UNIVERSITY = "UNIVERSITY"
+    COLLEGE = "COLLEGE"
+
+
+class EvaluationType(str, Enum):
+    SUM = "SUM"
+    MAX = "MAX"
+    COUNT_TIER = "COUNT_TIER"
+    COMPOSITE = "COMPOSITE"
+    FIXED_ITEM_SUM = "FIXED_ITEM_SUM"
+
+
+class ThresholdOperator(str, Enum):
+    OP_GT = "OP_GT"                          # x > T
+    OP_GTE = "OP_GTE"                        # x >= T
+    OP_LT = "OP_LT"                          # x < T
+    OP_LTE = "OP_LTE"                        # x <= T
+    OP_GT_AND_LTE = "OP_GT_AND_LTE"          # T1 < x <= T2
+    OP_GTE_AND_LTE = "OP_GTE_AND_LTE"        # T1 <= x <= T2
+    OP_GT_AND_LT = "OP_GT_AND_LT"            # T1 < x < T2
+    OP_EQ = "OP_EQ"                          # x == T
+    OP_BOOLEAN = "OP_BOOLEAN"                # bool(x) is True
+    BOUNDARY_UNRESOLVED = "BOUNDARY_UNRESOLVED"  # Exact omission in rubric
+
+
+class EvidenceState(str, Enum):
+    EVIDENCE_PRESENT = "EVIDENCE_PRESENT"
+    EVIDENCE_PENDING = "EVIDENCE_PENDING"
+    EVIDENCE_VERIFIED = "EVIDENCE_VERIFIED"
+    EVIDENCE_REJECTED = "EVIDENCE_REJECTED"
+
+
+class GatingStatus(str, Enum):
+    PASSED_EVIDENCE_VERIFIED = "PASSED_EVIDENCE_VERIFIED"
+    PROVISIONAL_PENDING_VERIFICATION = "PROVISIONAL_PENDING_VERIFICATION"
+    FAILED_EVIDENCE_ABSENT = "FAILED_EVIDENCE_ABSENT"
+    FAILED_EVIDENCE_REJECTED = "FAILED_EVIDENCE_REJECTED"
+    NO_EVIDENCE_REQUIRED = "NO_EVIDENCE_REQUIRED"
+
+
+class DoubleCountingRule(str, Enum):
+    FORBIDDEN_REUSE = "FORBIDDEN_REUSE"
+    PERMITTED_REUSE = "PERMITTED_REUSE"
+    REQUIRES_FRAMEWORK_EXCEPTION = "REQUIRES_FRAMEWORK_EXCEPTION"
+
+
+class ResolutionStatus(str, Enum):
+    CALCULABLE = "CALCULABLE"
+    UNRESOLVED_RULE = "UNRESOLVED_RULE"
+    BOUNDARY_UNRESOLVED = "BOUNDARY_UNRESOLVED"
+    INVALID_INPUT = "INVALID_INPUT"
+    SOURCE_INCONSISTENCY = "SOURCE_INCONSISTENCY"
+
+
+class CertificationStatus(str, Enum):
+    CERTIFIED = "CERTIFIED"
+    FINALIZABLE = "FINALIZABLE"
+    BLOCKED_BY_SPECIFICATION = "BLOCKED_BY_SPECIFICATION"
+    BLOCKED_BY_EVIDENCE = "BLOCKED_BY_EVIDENCE"
+    BLOCKED_BY_BOUNDARY = "BLOCKED_BY_BOUNDARY"
+    BLOCKED_BY_VALIDATION = "BLOCKED_BY_VALIDATION"
+
+
+class PeriodRule(str, Enum):
+    PERIOD_SENSITIVE = "PERIOD_SENSITIVE"
+    MULTI_PERIOD = "MULTI_PERIOD"
+    REFERENCE_YEAR_DEPENDENT = "REFERENCE_YEAR_DEPENDENT"
+    PERIOD_INSENSITIVE = "PERIOD_INSENSITIVE"

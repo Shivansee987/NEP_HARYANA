@@ -34,12 +34,17 @@ import CommitteeOverview from "./pages/Committee/CommitteeOverview";
 import CommitteeSubmissions from "./pages/Committee/CommitteeSubmissions";
 import CommitteeReviewDetail from "./pages/Committee/CommitteeReviewDetail";
 
+// University Dashboard imports (nodal_officer, university_admin)
+import UniversityLayout from "./components/University/UniversityLayout";
+import UniversityDashboard from "./pages/University/UniversityDashboard";
+
 function App() {
   const location = useLocation();
   const isDashboard =
     location.pathname.startsWith("/institution/") ||
     location.pathname.startsWith("/admin") ||
-    location.pathname.startsWith("/committee");
+    location.pathname.startsWith("/committee") ||
+    location.pathname.startsWith("/university");
 
   return (
     <AuthProvider>
@@ -127,9 +132,10 @@ function App() {
         </Route>
 
         {/* Protected Routes - Screening Committee Console */}
+        {/* committee_chair has a superset of committee permissions; backend enforces authority */}
         <Route
           element={
-            <ProtectedRoute allowedRoles={["committee"]}>
+            <ProtectedRoute allowedRoles={["committee", "committee_chair"]}>
               <CommitteeLayout />
             </ProtectedRoute>
           }
@@ -138,6 +144,17 @@ function App() {
           <Route path="/committee/submissions" element={<CommitteeSubmissions />} />
           <Route path="/committee/submissions/:id" element={<CommitteeReviewDetail />} />
           <Route path="/committee/history" element={<CommitteeSubmissions onlyHistory={true} />} />
+        </Route>
+
+        {/* Protected Routes - University Console (nodal_officer, university_admin) */}
+        <Route
+          element={
+            <ProtectedRoute allowedRoles={["nodal_officer", "university_admin"]}>
+              <UniversityLayout />
+            </ProtectedRoute>
+          }
+        >
+          <Route path="/university" element={<UniversityDashboard />} />
         </Route>
 
         {/* Redirects */}

@@ -1,0 +1,14 @@
+{
+  "name": "nep-haryana",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "concurrently --names \"BACKEND,FRONTEND\" --prefix-colors \"cyan,green\" --kill-others-on-fail \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "venv\\Scripts\\python.exe Backend\\manage.py runserver",
+    "dev:frontend": "npm --prefix Frontend/NEP_HARYANA_INT run dev",
+    "seed": "venv\\Scripts\\python.exe Backend\\manage.py create_dev_users"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

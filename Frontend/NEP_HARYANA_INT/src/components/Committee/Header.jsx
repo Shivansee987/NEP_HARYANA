@@ -11,7 +11,7 @@ const Header = ({ title }) => {
   });
 
   const name = user?.fullName || user?.full_name || "Committee Officer";
-  const role = "Screening Committee";
+  const role = user?.role === 'committee_chair' ? 'Committee Chair' : 'Screening Committee';
 
   const getInitials = (nameStr) => {
     if (!nameStr) return "CO";

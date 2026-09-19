@@ -22,9 +22,16 @@ from django.conf.urls.static import static
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('api/', include('apps.college.urls')),
+    path('api/v1/college/', include('apps.college.api.urls')),
     path('api/', include('apps.authentication.urls')),
     path('api/', include('apps.admin_panel.urls')),
     path('api/nominations/', include('apps.nominations.urls')),
+    path('api/evidence/', include('apps.evidence.urls')),
+    path('api/', include('apps.university.urls')),
+    path('api/v1/university/', include('apps.university.api.urls')),
+    path('api/v1/admin/', include('apps.admin_panel.api_urls')),
+    path('api/v1/reports/', include('apps.reports.urls')),
 ]
 
 if settings.DEBUG:

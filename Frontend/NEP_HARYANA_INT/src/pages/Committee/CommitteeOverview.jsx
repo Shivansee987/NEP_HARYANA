@@ -7,21 +7,54 @@ import {
   HelpCircle, 
   Activity, 
   ArrowRight,
-  School
+  School,
+  Clock
 } from 'lucide-react';
 import { fetchCommitteeStats } from '../../api/committee';
+import { fetchAdminReviewQueue } from '../../api/admin';
+import { useAuth } from '../../context/AuthContext.jsx';
 import { motion } from 'framer-motion';
 
 const CommitteeOverview = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  const isChair = user?.role === 'committee_chair';
 
   useEffect(() => {
     const loadStats = async () => {
       try {
-        const data = await fetchCommitteeStats();
-        setStats(data);
+        if (isChair) {
+          // Committee Chair is authorized for the Phase 8 Admin Control Plane review queue
+          const queueData = await fetchAdminReviewQueue();
+          const queue = queueData?.results || [];
+          const total = queueData?.count ?? queue.length;
+          const pending = queue.filter(r => r.status === 'SUBMITTED').length;
+          const underReview = queue.filter(r => r.status === 'UNDER_REVIEW').length;
+          const completed = queue.filter(r => r.status === 'CERTIFIED' || r.is_certified).length;
+
+          setStats({
+            total_assigned: total,
+            pending_reviews: pending,
+            clarification_requests: underReview,
+            completed_reviews: completed,
+            recent_activity: queue.slice(0, 5).map(r => ({
+              id: r.assessment_id,
+              college_name: r.institution_name,
+              status: r.status,
+              date: r.submitted_at 
+                ? new Date(r.submitted_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+                : (r.created_at ? new Date(r.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Recent'),
+              user: r.assigned_reviewer_name || 'Screening Committee'
+            }))
+          });
+        } else {
+          // Regular committee member uses authorized legacy committee stats
+          const data = await fetchCommitteeStats();
+          setStats(data);
+        }
       } catch (err) {
         console.error("Error loading committee stats:", err);
       } finally {
@@ -29,7 +62,7 @@ const CommitteeOverview = () => {
       }
     };
     loadStats();
-  }, []);
+  }, [isChair]);
 
   if (loading) {
     return (
@@ -46,32 +79,32 @@ const CommitteeOverview = () => {
 
   const statCards = [
     {
-      title: "Total Assigned Submissions",
+      title: isChair ? "Total Assessments in Queue" : "Total Assigned Submissions",
       value: stats?.total_assigned || 0,
       icon: ClipboardList,
       color: "text-blue-600 bg-blue-50 border-blue-100",
-      description: "Applications ready for evaluation"
+      description: isChair ? "Assessments across frameworks" : "Applications ready for evaluation"
     },
     {
-      title: "Pending Reviews",
+      title: isChair ? "Pending Review" : "Pending Reviews",
       value: stats?.pending_reviews || 0,
       icon: AlertCircle,
       color: "text-amber-600 bg-amber-50 border-amber-100",
-      description: "Requires evaluation and remarks"
+      description: isChair ? "Awaiting reviewer evaluation" : "Requires evaluation and remarks"
     },
     {
-      title: "Clarifications Requested",
+      title: isChair ? "Under Active Review" : "Clarifications Requested",
       value: stats?.clarification_requests || 0,
-      icon: HelpCircle,
+      icon: isChair ? Clock : HelpCircle,
       color: "text-purple-600 bg-purple-50 border-purple-100",
-      description: "Awaiting college responses"
+      description: isChair ? "Active committee reviews" : "Awaiting college responses"
     },
     {
-      title: "Completed Reviews",
+      title: isChair ? "Certified Assessments" : "Completed Reviews",
       value: stats?.completed_reviews || 0,
       icon: CheckCircle2,
       color: "text-emerald-600 bg-emerald-50 border-emerald-100",
-      description: "Evaluation complete"
+      description: isChair ? "Certified by committee chair" : "Evaluation complete"
     }
   ];
 
@@ -163,30 +196,46 @@ const CommitteeOverview = () => {
           className="bg-gradient-to-br from-slate-900 to-indigo-950 text-white rounded-2xl p-6 shadow-[0_4px_25px_rgba(15,23,42,0.15)] flex flex-col justify-between"
         >
           <div>
-            <h4 className="font-bold text-lg leading-tight mb-2">Screening Guidelines</h4>
+            <h4 className="font-bold text-lg leading-tight mb-2">
+              {isChair ? "Committee Chair Console" : "Screening Guidelines"}
+            </h4>
             <p className="text-slate-300 text-xs leading-relaxed mb-6">
-              Welcome to the HSHEC Evaluation Console. As a Screening Committee member, you are tasked with verifying submitted claims, reviewing evidence documents, recommending final actions, and coordinating clarifications.
+              {isChair 
+                ? "Welcome to the HSHEC Evaluation Console. As Committee Chair, you supervise review assignments, monitor cross-framework evaluations, and certify final assessments."
+                : "Welcome to the HSHEC Evaluation Console. As a Screening Committee member, you are tasked with verifying submitted claims, reviewing evidence documents, recommending final actions, and coordinating clarifications."}
             </p>
             <div className="space-y-4">
               <div className="flex items-start gap-3">
                 <span className="w-5 h-5 rounded-full bg-orange-500/20 text-orange-400 flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">1</span>
                 <div>
-                  <h5 className="text-xs font-bold">Assess & score indicators</h5>
-                  <p className="text-[10px] text-slate-400">Review answers, scores and verify uploaded evidence documents.</p>
+                  <h5 className="text-xs font-bold">{isChair ? "Review Assessment Queue" : "Assess & score indicators"}</h5>
+                  <p className="text-[10px] text-slate-400">
+                    {isChair 
+                      ? "Track assessments submitted across University and College frameworks."
+                      : "Review answers, scores and verify uploaded evidence documents."}
+                  </p>
                 </div>
               </div>
               <div className="flex items-start gap-3">
                 <span className="w-5 h-5 rounded-full bg-orange-500/20 text-orange-400 flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">2</span>
                 <div>
-                  <h5 className="text-xs font-bold">Request Clarifications</h5>
-                  <p className="text-[10px] text-slate-400">Lock general edits and open specific indicator fields for revision.</p>
+                  <h5 className="text-xs font-bold">{isChair ? "Assign Reviewers" : "Request Clarifications"}</h5>
+                  <p className="text-[10px] text-slate-400">
+                    {isChair 
+                      ? "Designate qualified screening committee evaluators to assessment sessions."
+                      : "Lock general edits and open specific indicator fields for revision."}
+                  </p>
                 </div>
               </div>
               <div className="flex items-start gap-3">
                 <span className="w-5 h-5 rounded-full bg-orange-500/20 text-orange-400 flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">3</span>
                 <div>
-                  <h5 className="text-xs font-bold">Provide Recommendation</h5>
-                  <p className="text-[10px] text-slate-400">Recommend Approve, Reject or Send Back with final remarks.</p>
+                  <h5 className="text-xs font-bold">{isChair ? "Certify Final Evaluations" : "Provide Recommendation"}</h5>
+                  <p className="text-[10px] text-slate-400">
+                    {isChair 
+                      ? "Formally approve and certify evaluations once committee reviews conclude."
+                      : "Recommend Approve, Reject or Send Back with final remarks."}
+                  </p>
                 </div>
               </div>
             </div>

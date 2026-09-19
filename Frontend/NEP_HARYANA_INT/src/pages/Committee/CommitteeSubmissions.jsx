@@ -13,10 +13,15 @@ import {
   ClipboardList
 } from 'lucide-react';
 import { fetchCommitteeSubmissions } from '../../api/committee';
+import { fetchAdminReviewQueue } from '../../api/admin';
+import { useAuth } from '../../context/AuthContext.jsx';
 import { motion } from 'framer-motion';
 
 const CommitteeSubmissions = ({ onlyHistory = false }) => {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isChair = user?.role === 'committee_chair';
+
   const [submissions, setSubmissions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [totalCount, setTotalCount] = useState(0);
@@ -31,23 +36,49 @@ const CommitteeSubmissions = ({ onlyHistory = false }) => {
   const loadSubmissions = async () => {
     setLoading(true);
     try {
-      const params = {
-        search,
-        sort_by: sortBy,
-        page,
-        page_size: 10
-      };
-      if (status) params.status = status;
-      // If we want history specifically, filter out draft/review state if needed
-      if (onlyHistory && !status) {
-        // Show already evaluated items (e.g. Approved, Rejected)
-        params.status = "Approved";
+      if (isChair) {
+        // Committee Chair loads from the Phase 8 Control Plane Review Queue
+        const params = {};
+        if (status) params.status = status;
+        const data = await fetchAdminReviewQueue(params);
+        const rawList = data?.results || [];
+        const filtered = search
+          ? rawList.filter(item => 
+              (item.institution_name || '').toLowerCase().includes(search.toLowerCase()) ||
+              (item.institution_aishe || '').toLowerCase().includes(search.toLowerCase()) ||
+              (item.assessment_id || '').toLowerCase().includes(search.toLowerCase())
+            )
+          : rawList;
+        
+        const mapped = filtered.map(item => ({
+          id: item.assessment_id,
+          college_name: item.institution_name,
+          head_name: item.framework,
+          aishe_code: item.institution_aishe || '—',
+          submitted_at: item.submitted_at,
+          score: item.is_certified ? "Certified" : (item.status === "SUBMITTED" ? "Submitted" : "Pending"),
+          status: item.status,
+        }));
+        setSubmissions(mapped);
+        setTotalCount(data?.count ?? mapped.length);
+        setTotalPages(Math.ceil((data?.count ?? mapped.length) / 10) || 1);
+      } else {
+        const params = {
+          search,
+          sort_by: sortBy,
+          page,
+          page_size: 10
+        };
+        if (status) params.status = status;
+        if (onlyHistory && !status) {
+          params.status = "Approved";
+        }
+        
+        const data = await fetchCommitteeSubmissions(params);
+        setSubmissions(data.results);
+        setTotalCount(data.total_count);
+        setTotalPages(data.total_pages);
       }
-      
-      const data = await fetchCommitteeSubmissions(params);
-      setSubmissions(data.results);
-      setTotalCount(data.total_count);
-      setTotalPages(data.total_pages);
     } catch (err) {
       console.error("Error fetching committee submissions:", err);
     } finally {

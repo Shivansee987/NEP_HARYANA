@@ -11,15 +11,15 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 
 import os
-import dotenv
 import dj_database_url
 from pathlib import Path
+from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 # Load environment variables
-dotenv.load_dotenv(os.path.join(BASE_DIR, '.env'))
+load_dotenv(os.path.join(BASE_DIR, '.env'))
 
 
 # Quick-start development settings - unsuitable for production
@@ -58,13 +58,18 @@ INSTALLED_APPS = [
 	'apps.authentication',
 	'apps.admin_panel',
 	'apps.nominations',
+	'apps.scoring',
+	'apps.evidence',
+	'apps.university',
+	'apps.college',
+	'apps.reports',
 ]
 
 MIDDLEWARE = [
-	'corsheaders.middleware.CorsMiddleware',
 	'django.middleware.security.SecurityMiddleware',
-	"whitenoise.middleware.WhiteNoiseMiddleware",
+	'whitenoise.middleware.WhiteNoiseMiddleware',
 	'django.contrib.sessions.middleware.SessionMiddleware',
+	'corsheaders.middleware.CorsMiddleware',
 	'django.middleware.common.CommonMiddleware',
 	'django.middleware.csrf.CsrfViewMiddleware',
 	'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -157,11 +162,11 @@ else:
 # Password hashing
 # https://docs.djangoproject.com/en/6.0/ref/settings/#password-hashers
 PASSWORD_HASHERS = [
-    'django.contrib.auth.hashers.BCryptSHA256PasswordHasher',
     'django.contrib.auth.hashers.PBKDF2PasswordHasher',
     'django.contrib.auth.hashers.PBKDF2SHA1PasswordHasher',
     'django.contrib.auth.hashers.Argon2PasswordHasher',
     'django.contrib.auth.hashers.ScryptPasswordHasher',
+    'django.contrib.auth.hashers.BCryptSHA256PasswordHasher',
 ]
 
 AUTH_PASSWORD_VALIDATORS = [
@@ -215,4 +220,9 @@ if '@' not in DEFAULT_FROM_EMAIL:
 # Media Files (Uploads)
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
+
+# Evidence Storage & Validation Pipeline (NEP 2026 Phase 5B)
+MAX_EVIDENCE_FILE_SIZE = int(os.environ.get('MAX_EVIDENCE_FILE_SIZE', 25 * 1024 * 1024))  # 25 MB default
+EVIDENCE_STORAGE_VAULT = MEDIA_ROOT / 'evidence_vault'
+EVIDENCE_STORAGE_BACKEND = 'apps.evidence.storage.FileSystemEvidenceStorage'
 
