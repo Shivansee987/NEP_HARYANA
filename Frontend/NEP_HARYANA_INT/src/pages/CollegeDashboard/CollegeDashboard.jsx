@@ -155,21 +155,25 @@ export default function CollegeDashboard() {
     loadCollegeData();
   }, [loadCollegeData]);
 
-  // Load Legacy Submissions when legacy section selected
+  // Load Nomination Forms & Submissions
   const loadLegacyData = useCallback(async () => {
     setLegacyLoading(true);
     try {
       const data = await fetchMySubmissions();
       setLegacySubmissions(Array.isArray(data) ? data : []);
     } catch (err) {
-      console.error("Failed to load legacy submissions:", err);
+      console.error("Failed to load nomination submissions:", err);
     } finally {
       setLegacyLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    if (activeSection === "legacy") {
+    loadLegacyData();
+  }, [loadLegacyData]);
+
+  useEffect(() => {
+    if (activeSection === "legacy" || activeSection === "forms") {
       loadLegacyData();
     }
   }, [activeSection, loadLegacyData]);
@@ -249,6 +253,7 @@ export default function CollegeDashboard() {
     { id: "overview", label: "Dashboard Overview", icon: LayoutDashboard, badge: null },
     { id: "parameters", label: "Parameters (C1–C22)", icon: ClipboardList, badge: `${completedParameters}/${totalParameters}` },
     { id: "evidence", label: "Evidence Readiness", icon: CheckCircle2, badge: isReadyForScoring ? "Ready" : "Action" },
+    { id: "forms", label: "Nomination Forms", icon: FileText, badge: legacySubmissions.length > 0 ? `${legacySubmissions.length}` : null },
     { id: "reports", label: "Audit Reports", icon: FileSpreadsheet, badge: null },
     { id: "legacy", label: "Historical Archive", icon: Archive, badge: null },
   ];
@@ -421,6 +426,7 @@ export default function CollegeDashboard() {
                 {activeSection === "overview" && "Assessment Overview & Health"}
                 {activeSection === "parameters" && "Statutory Parameters (C1–C22)"}
                 {activeSection === "evidence" && "Documentary Evidence Readiness"}
+                {activeSection === "forms" && "Institutional Nomination Forms"}
                 {activeSection === "reports" && "Official Audit & Assessment Reports"}
                 {activeSection === "legacy" && "Historical Submissions Archive"}
               </h1>
@@ -861,6 +867,108 @@ export default function CollegeDashboard() {
                         >
                           Export CSV
                         </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* SECTION: NOMINATION FORMS DIRECT ACCESS */}
+              {activeSection === "forms" && (
+                <div className="space-y-6">
+                  <div className="bg-white rounded-xl border border-slate-200/90 p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 uppercase tracking-wider">
+                          Nomination Workspace
+                        </span>
+                      </div>
+                      <h3 className="text-base font-bold text-slate-900">
+                        Haryana State NEP Implementation Award — Institutional Nomination Form
+                      </h3>
+                      <p className="text-xs text-slate-500 mt-1">
+                        Access and complete the 20 institutional performance indicator questionnaires and documentary submissions.
+                      </p>
+                    </div>
+
+                    <button
+                      onClick={() =>
+                        navigate(
+                          `/institution/${institutionName || "college"}/${institutionAisheCode || "aishe"}/dashboard/forms/nep-excellence-nomination-2025`
+                        )
+                      }
+                      className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-sm shadow-blue-500/20 transition-all shrink-0 cursor-pointer"
+                    >
+                      <FileText size={15} />
+                      <span>Open Nomination Form</span>
+                    </button>
+                  </div>
+
+                  {/* Registered Form Instances */}
+                  <div className="space-y-3">
+                    <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                      Available Submissions & Drafts
+                    </h4>
+                    {legacyLoading ? (
+                      <DashboardSkeleton />
+                    ) : legacySubmissions.length === 0 ? (
+                      <div className="bg-white rounded-xl border border-slate-200/90 p-6 text-center">
+                        <FileText size={32} className="mx-auto text-slate-300 mb-2" />
+                        <h4 className="text-sm font-bold text-slate-800">No Draft Forms Found</h4>
+                        <p className="text-xs text-slate-500 mt-1 mb-4">
+                          Click below to launch the nomination questionnaire workspace for your college.
+                        </p>
+                        <button
+                          onClick={() =>
+                            navigate(
+                              `/institution/${institutionName || "college"}/${institutionAisheCode || "aishe"}/dashboard/forms/nep-excellence-nomination-2025`
+                            )
+                          }
+                          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold inline-flex items-center gap-2 transition-colors cursor-pointer"
+                        >
+                          <PlusCircle size={14} />
+                          <span>Start New Nomination</span>
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="grid gap-4">
+                        {legacySubmissions.map((sub) => (
+                          <div
+                            key={sub.id}
+                            className="bg-white border border-slate-200/90 rounded-xl p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+                          >
+                            <div>
+                              <div className="flex items-center gap-2 mb-1.5">
+                                <span className="text-[10px] font-mono font-bold bg-slate-100 text-slate-700 px-2 py-0.5 rounded uppercase">
+                                  Form ID: {sub.form_id}
+                                </span>
+                                <StatusBadge status={sub.is_submitted ? "SUBMITTED" : "DRAFT"} size="sm" />
+                              </div>
+                              <h4 className="text-sm font-bold text-slate-900">
+                                {sub.form_id === "nep-excellence-nomination-2025"
+                                  ? "Haryana State NEP Implementation Award — Nomination Form"
+                                  : "Institutional Nomination Record"}
+                              </h4>
+                              <p className="text-xs text-slate-500 mt-1">
+                                Last Modified: {new Date(sub.updated_at).toLocaleDateString()} · Principal/Head: {sub.head_name || collegeName}
+                              </p>
+                            </div>
+
+                            <div className="flex items-center gap-2 shrink-0">
+                              <button
+                                onClick={() =>
+                                  navigate(
+                                    `/institution/${institutionName || "college"}/${institutionAisheCode || "aishe"}/dashboard/forms/${sub.form_id}`
+                                  )
+                                }
+                                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer inline-flex items-center gap-1.5"
+                              >
+                                <span>{sub.is_submitted ? "View Submitted Form" : "Open & Continue Form"}</span>
+                                <ChevronRight size={14} />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     )}
                   </div>
