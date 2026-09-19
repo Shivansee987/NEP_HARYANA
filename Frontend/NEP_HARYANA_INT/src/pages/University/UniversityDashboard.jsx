@@ -1,10 +1,9 @@
 /**
  * UniversityDashboard — NEP Excellence Awards 2026 Institutional Assessment Portal
  *
- * Professional, modern, calm institutional UX pass.
- * Strictly consumes the Phase 6B University institutional API (/api/v1/university/).
- * Does NOT calculate or modify scores client-side.
- * Adheres strictly to tenant isolation and server-authoritative scoring.
+ * Professional, Modern Institutional Grade Dashboard Pass
+ * Strictly adheres to server-authoritative scoring, RBAC, tenant isolation, and statutory definitions.
+ * Zero client-side score computation.
  */
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "../../context/AuthContext.jsx";
@@ -28,10 +27,12 @@ import {
   PlusCircle,
   FileSpreadsheet,
   Eye,
-  Calendar,
   AlertTriangle,
-  FileCheck2,
-  ExternalLink,
+  ArrowRight,
+  Filter,
+  Check,
+  Calendar,
+  Layers,
 } from "lucide-react";
 import { downloadAssessmentReportCSV } from "../../api/reports";
 import AssessmentReportModal from "../../components/Reports/AssessmentReportModal";
@@ -40,7 +41,6 @@ import {
   AssessmentStepper,
   EvidenceReadinessSummary,
   BlockingNotice,
-  StatCard,
   DashboardSkeleton,
   EmptyState,
   ErrorState,
@@ -177,31 +177,31 @@ export default function UniversityDashboard() {
   });
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-      {/* Institution / Assessment Identity Banner */}
-      <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-blue-950 rounded-2xl p-6 sm:p-8 text-white shadow-lg border border-slate-700/60 flex flex-col md:flex-row md:items-center justify-between gap-6">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+      {/* 1. Page Header (Clean, Institutional, High-contrast, Uncluttered) */}
+      <div className="bg-white rounded-xl border border-slate-200/90 p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-5">
         <div>
           <div className="flex items-center gap-2 mb-2 flex-wrap">
-            <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-400/30 uppercase tracking-wide">
+            <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200 uppercase tracking-wider">
               {roleLabel}
             </span>
-            <span className="text-xs text-slate-300 font-medium">
+            <span className="text-xs text-slate-500 font-mono">
               AISHE: {university?.aishe_code || "Registered"}
             </span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white mb-1">
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
             {university ? university.name : "University Assessment Workspace"}
           </h1>
-          <p className="text-xs sm:text-sm text-slate-300 max-w-2xl leading-relaxed">
-            NEP Excellence Awards 2026 — Self-appraisal parameters (U1–U20), documentary evidence readiness, and statutory certification pipeline.
+          <p className="text-xs sm:text-sm text-slate-500 mt-1 max-w-2xl leading-relaxed">
+            Statutory NEP self-appraisal parameters (U1–U20), documentary evidence verification gating, and formal certification ledger.
           </p>
         </div>
 
-        <div className="flex items-center gap-3 shrink-0">
+        <div className="flex items-center gap-2.5 shrink-0">
           <button
             onClick={loadDashboardData}
             disabled={loading}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/15 border border-white/20 text-xs font-semibold text-white transition-all shadow-xs disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs font-semibold transition-colors shadow-xs disabled:opacity-50"
             title="Refresh authoritative server data"
           >
             <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
@@ -209,13 +209,24 @@ export default function UniversityDashboard() {
           </button>
 
           {activeAssessment && (
-            <button
-              onClick={() => setShowReportModal(true)}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all shadow-sm"
-            >
-              <Eye size={13} />
-              <span>Audit Report</span>
-            </button>
+            <>
+              <button
+                onClick={() => setShowReportModal(true)}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 text-xs font-bold transition-colors shadow-xs"
+              >
+                <Eye size={13} className="text-slate-600" />
+                <span>Audit Preview</span>
+              </button>
+
+              <button
+                onClick={() => downloadAssessmentReportCSV(activeAssessment.assessment_id)}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-bold transition-colors shadow-xs"
+                title="Export official CSV ledger"
+              >
+                <FileSpreadsheet size={13} />
+                <span>Export CSV</span>
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -240,7 +251,7 @@ export default function UniversityDashboard() {
         />
       ) : (
         <>
-          {/* Assessment Lifecycle Progress Stepper */}
+          {/* 2. Assessment Journey Stepper */}
           {activeAssessment ? (
             <AssessmentStepper
               status={activeAssessment.status}
@@ -249,12 +260,12 @@ export default function UniversityDashboard() {
               totalParameters={totalParameters}
             />
           ) : (
-            <div className="bg-white rounded-xl border border-slate-200 p-6 text-center shadow-xs">
-              <h3 className="text-sm font-bold text-slate-900 mb-1">
-                No Active Assessment Session for 2025-26
+            <div className="bg-white rounded-xl border border-slate-200 p-8 text-center shadow-xs">
+              <h3 className="text-base font-bold text-slate-900 mb-1">
+                No Active Assessment Session for Academic Year 2025-26
               </h3>
-              <p className="text-xs text-slate-500 max-w-md mx-auto mb-4">
-                Initialize your university’s self-appraisal workspace to register parameter inputs U1–U20 and link documentary evidence.
+              <p className="text-xs text-slate-500 max-w-md mx-auto mb-5 leading-relaxed">
+                Initialize your university’s self-appraisal workspace to record parameter inputs U1–U20 and link documentary evidence.
               </p>
               <button
                 onClick={handleCreateAssessment}
@@ -267,139 +278,178 @@ export default function UniversityDashboard() {
             </div>
           )}
 
-          {/* Key Assessment Summary KPIs */}
+          {/* 3. Key Assessment Summary (Unified 4-Metric Grid with consistent typography and badges) */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <StatCard
-              title="Assessment Status"
-              value={activeAssessment ? activeAssessment.status : "NOT_STARTED"}
-              sublabel={activeAssessment ? `Session: ${activeAssessment.assessment_id}` : "No active session"}
-              badge={<StatusBadge status={activeAssessment?.status || "DRAFT"} size="sm" />}
-              icon={activeAssessment?.status === "CERTIFIED" ? ShieldCheck : Clock}
-              variant={activeAssessment?.status === "CERTIFIED" ? "emerald" : "blue"}
-            />
+            {/* Metric 1: Lifecycle Status */}
+            <div className="bg-white rounded-xl border border-slate-200/90 p-5 shadow-xs flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                    Assessment Status
+                  </span>
+                  <StatusBadge status={activeAssessment?.status || "DRAFT"} size="sm" />
+                </div>
+                <p className="text-xl font-extrabold text-slate-900 tracking-tight">
+                  {activeAssessment?.status || "NOT_STARTED"}
+                </p>
+              </div>
+              <div className="mt-3 pt-3 border-t border-slate-100 flex items-center gap-1.5 text-xs text-slate-500 font-mono truncate">
+                <Clock size={12} className="text-slate-400 shrink-0" />
+                <span className="truncate">{activeAssessment ? activeAssessment.assessment_id : "No Session Active"}</span>
+              </div>
+            </div>
 
-            <StatCard
-              title="Parameters Completed"
-              value={`${completedParameters} / ${totalParameters}`}
-              sublabel={`${Math.round((completedParameters / totalParameters) * 100)}% inputs recorded`}
-              icon={ClipboardList}
-              variant="blue"
-            />
+            {/* Metric 2: Parameters Completed */}
+            <div className="bg-white rounded-xl border border-slate-200/90 p-5 shadow-xs flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                    Parameters Filled
+                  </span>
+                  <span className="text-[11px] font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full">
+                    {Math.round((completedParameters / totalParameters) * 100)}%
+                  </span>
+                </div>
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-2xl font-extrabold text-slate-900 tracking-tight">
+                    {completedParameters}
+                  </span>
+                  <span className="text-xs font-semibold text-slate-400">
+                    / {totalParameters} parameters
+                  </span>
+                </div>
+              </div>
+              <div className="mt-3 pt-3 border-t border-slate-100">
+                <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-blue-600 rounded-full transition-all duration-300"
+                    style={{ width: `${(completedParameters / totalParameters) * 100}%` }}
+                  />
+                </div>
+              </div>
+            </div>
 
-            <StatCard
-              title="Evidence Coverage"
-              value={`${coveredSubcriteria} / ${totalSubcriteria}`}
-              sublabel={isReadyForScoring ? "Evidence Gating Passed" : "Action Required"}
-              badge={
-                <span
-                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                    isReadyForScoring
-                      ? "bg-emerald-100 text-emerald-800"
-                      : "bg-amber-100 text-amber-800"
-                  }`}
-                >
-                  {isReadyForScoring ? "Eligible" : "Blocked"}
-                </span>
-              }
-              icon={CheckCircle2}
-              variant={isReadyForScoring ? "emerald" : "amber"}
-            />
+            {/* Metric 3: Evidence Coverage */}
+            <div className="bg-white rounded-xl border border-slate-200/90 p-5 shadow-xs flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                    Evidence Coverage
+                  </span>
+                  <span
+                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full border uppercase tracking-wider ${
+                      isReadyForScoring
+                        ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                        : "bg-amber-50 text-amber-800 border-amber-200"
+                    }`}
+                  >
+                    {isReadyForScoring ? "Eligible" : "Gating Action"}
+                  </span>
+                </div>
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-2xl font-extrabold text-slate-900 tracking-tight">
+                    {coveredSubcriteria}
+                  </span>
+                  <span className="text-xs font-semibold text-slate-400">
+                    / {totalSubcriteria} subcriteria
+                  </span>
+                </div>
+              </div>
+              <div className="mt-3 pt-3 border-t border-slate-100 flex items-center gap-1.5 text-xs text-slate-500">
+                <CheckCircle2 size={12} className={isReadyForScoring ? "text-emerald-600" : "text-amber-500"} />
+                <span>{isReadyForScoring ? "Gating thresholds satisfied" : `${totalSubcriteria - coveredSubcriteria} pending proof`}</span>
+              </div>
+            </div>
 
-            <StatCard
-              title="Statutory Framework"
-              value={activeAssessment?.framework || "UNIVERSITY_2026"}
-              sublabel={`AY ${activeAssessment?.academic_year || "2025-26"}`}
-              icon={Building2}
-              variant="purple"
-            />
+            {/* Metric 4: Statutory Framework */}
+            <div className="bg-white rounded-xl border border-slate-200/90 p-5 shadow-xs flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                    Statutory Framework
+                  </span>
+                  <span className="text-[10px] font-bold text-purple-700 bg-purple-50 border border-purple-200 px-2 py-0.5 rounded-full">
+                    Gated
+                  </span>
+                </div>
+                <p className="text-lg font-extrabold text-slate-900 tracking-tight">
+                  {activeAssessment?.framework || "UNIVERSITY_2026"}
+                </p>
+              </div>
+              <div className="mt-3 pt-3 border-t border-slate-100 flex items-center gap-1.5 text-xs text-slate-500">
+                <Building2 size={12} className="text-slate-400" />
+                <span>Academic Period 2025–2026</span>
+              </div>
+            </div>
           </div>
 
-          {/* Needs Attention / Blocking Notices */}
-          {activeAssessment && activeAssessment.status === "DRAFT" && readiness && !readiness.is_ready && (
-            <BlockingNotice
-              type="warning"
-              title="Evidence Gating Requirements Unmet"
-              reasons={[
-                `${readiness.evidence_readiness_summary?.uncovered_subcriteria ?? 51} subcriteria require documentary evidence before the evaluation engine will unlock earned marks.`,
-                "Institutional evidence must be in PDF/image format and fall within the statutory window (2025-07-01 to 2026-06-30).",
-              ]}
-              actionLabel="View Evidence Breakdown"
-              onAction={() => setShowReportModal(true)}
-            />
-          )}
-
-          {/* Primary Next Action Banner */}
+          {/* 4. Attention & Action Banner (Unified card connecting blocking reasons with next steps) */}
           {activeAssessment && (
-            <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
-                  Primary Next Step
-                </span>
-                {activeAssessment.status === "DRAFT" ? (
-                  <div>
-                    <h4 className="text-sm font-bold text-slate-900">
-                      Complete Parameter Inputs and Submit Assessment
-                    </h4>
-                    <p className="text-xs text-slate-500">
-                      Once submitted to the Screening Committee, your appraisal is locked for independent reviewer evaluation.
-                    </p>
+            <div className="bg-white rounded-xl border border-slate-200/90 p-5 shadow-xs space-y-4">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-[11px] font-bold text-blue-700 uppercase tracking-wider bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                      Recommended Action
+                    </span>
+                    <span className="text-xs font-semibold text-slate-600">
+                      Phase: {activeAssessment.status}
+                    </span>
                   </div>
-                ) : activeAssessment.status === "SUBMITTED" ? (
-                  <div>
-                    <h4 className="text-sm font-bold text-blue-950 flex items-center gap-1.5">
-                      <Clock size={14} className="text-blue-600" />
-                      Submitted for Screening Committee Evaluation
-                    </h4>
-                    <p className="text-xs text-slate-500">
-                      Inputs are locked. The designated reviewers are verifying documentary evidence.
-                    </p>
-                  </div>
-                ) : (
-                  <div>
-                    <h4 className="text-sm font-bold text-emerald-950 flex items-center gap-1.5">
-                      <ShieldCheck size={14} className="text-emerald-600" />
-                      Assessment Evaluated & Certified
-                    </h4>
-                    <p className="text-xs text-slate-500">
-                      Official scoring and audit reports are finalized.
-                    </p>
-                  </div>
-                )}
-              </div>
+                  {activeAssessment.status === "DRAFT" ? (
+                    <h3 className="text-sm sm:text-base font-bold text-slate-900">
+                      Complete Parameter Inputs and Submit for Screening
+                    </h3>
+                  ) : (
+                    <h3 className="text-sm sm:text-base font-bold text-slate-900">
+                      Assessment Locked for Official Committee Evaluation
+                    </h3>
+                  )}
+                  <p className="text-xs text-slate-500 mt-0.5 max-w-2xl leading-relaxed">
+                    {activeAssessment.status === "DRAFT"
+                      ? "Ensure all 20 parameter values are recorded and required evidence documents are attached prior to formal submission."
+                      : "Independent verification of your documentary evidence is underway by the Screening Committee."}
+                  </p>
+                </div>
 
-              <div className="flex items-center gap-2.5 shrink-0">
-                {activeAssessment.status === "DRAFT" && (
+                <div className="flex items-center gap-3 shrink-0">
+                  {activeAssessment.status === "DRAFT" && (
+                    <button
+                      onClick={handleSubmitAssessment}
+                      disabled={submitting}
+                      className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs disabled:opacity-50"
+                    >
+                      <Send size={13} />
+                      <span>{submitting ? "Submitting..." : "Submit to Committee"}</span>
+                    </button>
+                  )}
+
                   <button
-                    onClick={handleSubmitAssessment}
-                    disabled={submitting}
-                    className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm disabled:opacity-50"
+                    onClick={() => setShowReportModal(true)}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-xs font-semibold transition-colors"
                   >
-                    <Send size={13} />
-                    <span>{submitting ? "Submitting..." : "Submit to Screening Committee"}</span>
+                    <Eye size={13} />
+                    <span>View Inspection Report</span>
                   </button>
-                )}
-
-                <button
-                  onClick={() => setShowReportModal(true)}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold transition-colors shadow-xs"
-                >
-                  <Eye size={13} />
-                  <span>Audit Preview</span>
-                </button>
-
-                <button
-                  onClick={() => downloadAssessmentReportCSV(activeAssessment.assessment_id)}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold transition-colors shadow-xs"
-                  title="Export official CSV ledger"
-                >
-                  <FileSpreadsheet size={13} />
-                  <span>Export CSV</span>
-                </button>
+                </div>
               </div>
+
+              {/* Conditional Alert Inside the Action Card if Gating Requirements Unmet */}
+              {activeAssessment.status === "DRAFT" && readiness && !readiness.is_ready && (
+                <div className="flex items-start gap-3 p-3.5 bg-amber-50/80 border border-amber-200 rounded-lg text-xs text-amber-900">
+                  <AlertTriangle size={16} className="text-amber-600 shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-bold text-amber-950 mb-0.5">Evidence Gating Requirements Unmet</p>
+                    <p className="text-amber-800 leading-relaxed">
+                      {readiness.evidence_readiness_summary?.uncovered_subcriteria ?? 51} subcriteria still require documentary evidence before the evaluation engine will unlock earned marks.
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
-          {/* Evidence Readiness Summary */}
+          {/* 5. Evidence Readiness Breakdown */}
           {activeAssessment && readiness && (
             <EvidenceReadinessSummary
               summary={readiness.evidence_readiness_summary}
@@ -408,26 +458,26 @@ export default function UniversityDashboard() {
             />
           )}
 
-          {/* Statutory Parameters Table (U1–U20) */}
+          {/* 6. Statutory Parameters Table (U1–U20) */}
           {parameters.length > 0 && (
-            <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
-              <div className="p-4 sm:p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/50">
+            <div className="bg-white rounded-xl border border-slate-200/90 shadow-xs overflow-hidden">
+              <div className="p-4 sm:p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/60">
                 <div>
-                  <h2 className="text-sm font-bold text-slate-900 tracking-tight">
+                  <h2 className="text-sm sm:text-base font-bold text-slate-900 tracking-tight">
                     Statutory Parameters (U1–U20)
                   </h2>
                   <p className="text-xs text-slate-500">
-                    Authoritative parameters registered under UNIVERSITY_2026 framework
-                    {lastRefreshed && ` · Synced at ${lastRefreshed.toLocaleTimeString()}`}
+                    Authoritative parameters under the UNIVERSITY_2026 framework
+                    {lastRefreshed && ` · Last verified ${lastRefreshed.toLocaleTimeString()}`}
                   </p>
                 </div>
 
                 {/* Filter Tabs */}
-                <div className="inline-flex rounded-lg border border-slate-200 bg-white p-1 text-xs font-semibold text-slate-600">
+                <div className="inline-flex rounded-lg border border-slate-200 bg-white p-1 text-xs font-semibold text-slate-600 shadow-2xs">
                   <button
                     onClick={() => setParamFilter("ALL")}
                     className={`px-3 py-1 rounded-md transition-all ${
-                      paramFilter === "ALL" ? "bg-blue-600 text-white shadow-xs" : "hover:text-slate-900"
+                      paramFilter === "ALL" ? "bg-slate-900 text-white shadow-xs" : "hover:text-slate-900"
                     }`}
                   >
                     All ({parameters.length})
@@ -435,7 +485,7 @@ export default function UniversityDashboard() {
                   <button
                     onClick={() => setParamFilter("COMPLETED")}
                     className={`px-3 py-1 rounded-md transition-all ${
-                      paramFilter === "COMPLETED" ? "bg-blue-600 text-white shadow-xs" : "hover:text-slate-900"
+                      paramFilter === "COMPLETED" ? "bg-slate-900 text-white shadow-xs" : "hover:text-slate-900"
                     }`}
                   >
                     Completed ({completedParameters})
@@ -443,7 +493,7 @@ export default function UniversityDashboard() {
                   <button
                     onClick={() => setParamFilter("PENDING")}
                     className={`px-3 py-1 rounded-md transition-all ${
-                      paramFilter === "PENDING" ? "bg-blue-600 text-white shadow-xs" : "hover:text-slate-900"
+                      paramFilter === "PENDING" ? "bg-slate-900 text-white shadow-xs" : "hover:text-slate-900"
                     }`}
                   >
                     Pending ({totalParameters - completedParameters})
@@ -454,12 +504,12 @@ export default function UniversityDashboard() {
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
-                    <tr className="bg-slate-50 border-b border-slate-100 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                      <th className="py-3 px-4">Code</th>
+                    <tr className="bg-slate-50/80 border-b border-slate-100 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                      <th className="py-3 px-4 w-16">Code</th>
                       <th className="py-3 px-4">Parameter Title</th>
-                      <th className="py-3 px-4 text-center">Max Marks</th>
+                      <th className="py-3 px-4 text-center w-28">Max Marks</th>
                       <th className="py-3 px-4">Mandatory Evidence Types</th>
-                      <th className="py-3 px-4 text-center">Input Status</th>
+                      <th className="py-3 px-4 text-center w-36">Input Status</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -468,7 +518,7 @@ export default function UniversityDashboard() {
                       return (
                         <tr
                           key={param.code}
-                          className="hover:bg-slate-50/80 transition-colors"
+                          className="hover:bg-slate-50/70 transition-colors"
                         >
                           <td className="py-3.5 px-4 font-mono font-bold text-blue-700 whitespace-nowrap">
                             {param.code}

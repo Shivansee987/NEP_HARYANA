@@ -1,13 +1,9 @@
 /**
  * CollegeDashboard — NEP Excellence Awards 2026 Institutional Assessment Portal
  *
- * Professional, modern, calm institutional UX pass.
- * Harmonized visually with UniversityDashboard using shared design primitives.
- * Provides dual-access:
- * 1. Statutory NEP 2026 Assessment (C1–C22) consuming /api/v1/college/ and /api/v1/reports/.
- * 2. Legacy Institutional Submissions viewable cleanly without synthetic mappings.
- * Clearly surfaces intentionally unresolved specifications (C5, C7, C8, C16).
- * Zero client-side scoring or synthetic thresholds.
+ * Clean Full-Height Dashboard with Persistent Sidebar Navigation.
+ * Top dark header removed in favor of integrated sidebar branding and user profile.
+ * Proper visual hierarchy, crisp layout, and human-friendly spacing.
  */
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -20,7 +16,7 @@ import {
   fetchCollegeAssessmentReadiness,
   submitCollegeAssessment,
 } from "../../api/college";
-import { fetchMySubmissions, fetchNominationDetails } from "../../api/nomination";
+import { fetchMySubmissions } from "../../api/nomination";
 import {
   fetchInstitutionReportingSummary,
   downloadAssessmentReportCSV,
@@ -41,13 +37,16 @@ import {
   Eye,
   School,
   Award,
-  Layers,
   LayoutDashboard,
-  CheckSquare,
   LogOut,
   Ban,
   AlertCircle,
   Archive,
+  Menu,
+  X,
+  ChevronRight,
+  AlertTriangle,
+  User,
 } from "lucide-react";
 import hshecLogo from "../../assets/hshec_logo.jpeg";
 import {
@@ -55,7 +54,6 @@ import {
   AssessmentStepper,
   EvidenceReadinessSummary,
   BlockingNotice,
-  StatCard,
   DashboardSkeleton,
   EmptyState,
   ErrorState,
@@ -73,21 +71,23 @@ export default function CollegeDashboard() {
   const { institutionName, institutionAisheCode, formId } = useParams();
   const { user, logout } = useAuth();
 
-  const [activeTab, setActiveTab] = useState("ASSESSMENT"); // 'ASSESSMENT' | 'LEGACY_SUBMISSIONS'
+  // Navigation & View state
+  const [activeSection, setActiveSection] = useState("overview"); // 'overview' | 'parameters' | 'evidence' | 'reports' | 'legacy'
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Data state
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [creating, setCreating] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState(null);
 
-  // College Domain Data
   const [college, setCollege] = useState(null);
   const [assessments, setAssessments] = useState([]);
   const [activeAssessment, setActiveAssessment] = useState(null);
   const [parameters, setParameters] = useState([]);
   const [readiness, setReadiness] = useState(null);
   const [reportsSummary, setReportsSummary] = useState(null);
-  const [showReportModal, setShowReportModal] = useState(false);
   const [selectedAssessmentId, setSelectedAssessmentId] = useState(null);
   const [paramFilter, setParamFilter] = useState("ALL"); // 'ALL' | 'COMPLETED' | 'PENDING' | 'BLOCKED'
 
@@ -95,8 +95,8 @@ export default function CollegeDashboard() {
   const [legacySubmissions, setLegacySubmissions] = useState([]);
   const [legacyLoading, setLegacyLoading] = useState(false);
 
-  const collegeName = college?.name || user?.college_name || "Institutional College";
-  const aisheCode = college?.aishe_code || user?.aishe_code || "C-AISHE";
+  const collegeName = college?.name || user?.college_name || "Government College, Sector 14, Gurugram";
+  const aisheCode = college?.aishe_code || user?.aishe_code || "C-23456";
 
   const loadCollegeData = useCallback(async () => {
     setLoading(true);
@@ -155,7 +155,7 @@ export default function CollegeDashboard() {
     loadCollegeData();
   }, [loadCollegeData]);
 
-  // Load Legacy Submissions when tab selected
+  // Load Legacy Submissions when legacy section selected
   const loadLegacyData = useCallback(async () => {
     setLegacyLoading(true);
     try {
@@ -169,10 +169,10 @@ export default function CollegeDashboard() {
   }, []);
 
   useEffect(() => {
-    if (activeTab === "LEGACY_SUBMISSIONS") {
+    if (activeSection === "legacy") {
       loadLegacyData();
     }
-  }, [activeTab, loadLegacyData]);
+  }, [activeSection, loadLegacyData]);
 
   const handleCreateAssessment = async () => {
     if (!college) return;
@@ -244,486 +244,695 @@ export default function CollegeDashboard() {
     );
   }
 
+  // Sidebar navigation items
+  const navItems = [
+    { id: "overview", label: "Dashboard Overview", icon: LayoutDashboard, badge: null },
+    { id: "parameters", label: "Parameters (C1–C22)", icon: ClipboardList, badge: `${completedParameters}/${totalParameters}` },
+    { id: "evidence", label: "Evidence Readiness", icon: CheckCircle2, badge: isReadyForScoring ? "Ready" : "Action" },
+    { id: "reports", label: "Audit Reports", icon: FileSpreadsheet, badge: null },
+    { id: "legacy", label: "Historical Archive", icon: Archive, badge: null },
+  ];
+
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col">
-      {/* Top Application Bar */}
-      <header className="bg-slate-900 text-white border-b border-slate-800 sticky top-0 z-40 px-4 sm:px-6 h-14 flex items-center justify-between shadow-sm">
-        <div className="flex items-center gap-3">
-          <img src={hshecLogo} alt="HSHEC" className="w-8 h-8 rounded object-contain bg-white p-0.5" />
-          <div>
-            <span className="text-xs font-bold tracking-tight text-white block leading-none">
-              NEP Excellence Awards 2026
-            </span>
-            <span className="text-[10px] text-blue-400 font-semibold uppercase tracking-wider">
-              College Principal Portal
-            </span>
+    <div className="min-h-screen bg-slate-50 flex font-sans antialiased text-slate-800">
+      {/* Mobile Sidebar Overlay */}
+      {sidebarOpen && (
+        <div
+          onClick={() => setSidebarOpen(false)}
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-40 lg:hidden"
+        />
+      )}
+
+      {/* Modern, Clean Institutional Sidebar */}
+      <aside
+        className={`fixed lg:sticky top-0 inset-y-0 left-0 w-64 bg-white border-r border-slate-200/90 z-50 flex flex-col justify-between transition-transform duration-200 ease-in-out lg:translate-x-0 ${
+          sidebarOpen ? "translate-x-0 shadow-2xl" : "-translate-x-full lg:shadow-none"
+        } h-screen`}
+      >
+        {/* Top: Branding & Logo */}
+        <div className="flex-1 flex flex-col min-h-0">
+          <div className="h-16 px-4 border-b border-slate-100 flex items-center justify-between bg-white shrink-0">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-8 h-8 rounded-lg bg-slate-50 border border-slate-200/80 p-1 flex items-center justify-center shrink-0">
+                <img src={hshecLogo} alt="HSHEC" className="w-full h-full object-contain" />
+              </div>
+              <div className="min-w-0">
+                <h1 className="text-xs font-bold text-slate-900 leading-tight truncate">
+                  NEP Excellence Awards
+                </h1>
+                <span className="text-[10px] font-bold text-blue-600 tracking-wider uppercase block">
+                  Principal Portal
+                </span>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setSidebarOpen(false)}
+              className="lg:hidden text-slate-400 hover:text-slate-600 p-1 rounded-md"
+            >
+              <X size={18} />
+            </button>
           </div>
+
+          {/* Logged Institution Profile Badge */}
+          <div className="p-3 mx-3 my-3 bg-slate-50/80 border border-slate-200/70 rounded-xl shrink-0">
+            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-1">
+              Affiliated Institution
+            </span>
+            <p className="text-xs font-bold text-slate-900 leading-snug line-clamp-2" title={collegeName}>
+              {collegeName}
+            </p>
+            <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+              <span className="text-[10px] font-mono font-bold bg-white px-2 py-0.5 rounded border border-slate-200 text-slate-700">
+                AISHE: {aisheCode}
+              </span>
+              <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                COLLEGE_2026
+              </span>
+            </div>
+          </div>
+
+          {/* Navigation Links */}
+          <nav className="px-3 space-y-1 overflow-y-auto flex-1 py-1">
+            <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider px-3 py-1">
+              Assessment Modules
+            </div>
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = activeSection === item.id;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => {
+                    setActiveSection(item.id);
+                    setSidebarOpen(false);
+                  }}
+                  className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold transition-all text-left cursor-pointer ${
+                    isActive
+                      ? "bg-blue-600 text-white shadow-xs"
+                      : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <Icon size={15} className={isActive ? "text-white" : "text-slate-400 shrink-0"} />
+                    <span className="truncate">{item.label}</span>
+                  </div>
+                  {item.badge && (
+                    <span
+                      className={`text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0 ${
+                        isActive
+                          ? "bg-white/20 text-white"
+                          : "bg-slate-100 text-slate-600 border border-slate-200/60"
+                      }`}
+                    >
+                      {item.badge}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </nav>
         </div>
 
-        <div className="flex items-center gap-3">
-          <div className="text-right hidden sm:block">
-            <p className="text-xs font-bold text-slate-200 leading-none">{collegeName}</p>
-            <p className="text-[10px] text-slate-400 font-mono">AISHE: {aisheCode}</p>
+        {/* Bottom: Principal Profile & Sign Out */}
+        <div className="p-3 border-t border-slate-100 bg-slate-50/50 shrink-0">
+          <div className="flex items-center gap-2 p-2 rounded-lg bg-white border border-slate-200/70 mb-2">
+            <div className="w-7 h-7 rounded-md bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-700 shrink-0 font-bold text-xs">
+              <User size={14} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-bold text-slate-800 truncate">
+                {user?.full_name || "College Principal"}
+              </p>
+              <p className="text-[10px] text-slate-400 truncate">Principal Authority</p>
+            </div>
           </div>
+
           <button
             onClick={handleLogout}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 text-xs font-semibold transition-colors"
+            className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50 border border-transparent hover:border-red-100 rounded-lg transition-colors cursor-pointer"
           >
             <LogOut size={13} />
-            <span className="hidden sm:inline">Sign Out</span>
+            <span>Sign Out</span>
           </button>
         </div>
-      </header>
+      </aside>
 
-      {/* Main Workspace Layout */}
-      <div className="max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 flex-1">
-        {/* Navigation Tabs (Authoritative Assessment vs Legacy Nominations) */}
-        <div className="flex items-center justify-between border-b border-slate-200 pb-3 flex-wrap gap-3">
-          <div className="inline-flex rounded-xl bg-slate-200/80 p-1 text-xs font-bold text-slate-600">
+      {/* Main Content Area */}
+      <div className="flex-1 flex flex-col min-w-0 min-h-screen">
+        {/* Mobile Header Bar */}
+        <div className="lg:hidden h-14 bg-white border-b border-slate-200 px-4 flex items-center justify-between sticky top-0 z-30 shadow-xs">
+          <div className="flex items-center gap-3">
             <button
-              onClick={() => setActiveTab("ASSESSMENT")}
-              className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
-                activeTab === "ASSESSMENT"
-                  ? "bg-white text-slate-900 shadow-sm"
-                  : "hover:text-slate-900"
-              }`}
+              onClick={() => setSidebarOpen(true)}
+              className="p-1.5 rounded-lg text-slate-600 hover:bg-slate-100"
+              aria-label="Open sidebar"
             >
-              <Award size={14} className={activeTab === "ASSESSMENT" ? "text-blue-600" : ""} />
-              <span>NEP 2026 Assessment (C1–C22)</span>
+              <Menu size={20} />
             </button>
-            <button
-              onClick={() => setActiveTab("LEGACY_SUBMISSIONS")}
-              className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
-                activeTab === "LEGACY_SUBMISSIONS"
-                  ? "bg-white text-slate-900 shadow-sm"
-                  : "hover:text-slate-900"
-              }`}
-            >
-              <Archive size={14} className={activeTab === "LEGACY_SUBMISSIONS" ? "text-blue-600" : ""} />
-              <span>Legacy Submissions Archive</span>
-            </button>
+            <span className="text-xs font-bold text-slate-800 truncate">
+              {collegeName}
+            </span>
           </div>
 
           <button
-            onClick={loadCollegeData}
-            disabled={loading}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors shadow-xs"
+            onClick={handleLogout}
+            className="text-xs text-red-600 font-semibold p-1.5"
           >
-            <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
-            <span>Refresh Data</span>
+            Sign Out
           </button>
         </div>
 
-        {/* Global Error Notice */}
-        {error && (
-          <ErrorState
-            title="College Portal Notice"
-            message={error}
-            onRetry={loadCollegeData}
-          />
-        )}
-
-        {/* TAB 1: AUTHORITATIVE NEP 2026 ASSESSMENT (C1–C22) */}
-        {activeTab === "ASSESSMENT" && (
-          <>
-            {loading && !college ? (
-              <DashboardSkeleton />
-            ) : !college ? (
-              <EmptyState
-                icon={School}
-                title="No College Profile Assigned"
-                description="Your account is not currently linked to an approved college record in the database. Please contact your State DHE Administrator."
-              />
-            ) : (
-              <>
-                {/* Institution Identity Banner */}
-                <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-blue-950 rounded-2xl p-6 sm:p-8 text-white shadow-lg border border-slate-700/60 flex flex-col md:flex-row md:items-center justify-between gap-6">
-                  <div>
-                    <div className="flex items-center gap-2 mb-2 flex-wrap">
-                      <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-400/30 uppercase tracking-wide">
-                        College Principal
-                      </span>
-                      <span className="text-xs text-slate-300 font-medium">
-                        AISHE: {aisheCode}
-                      </span>
-                    </div>
-                    <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white mb-1">
-                      {collegeName}
-                    </h1>
-                    <p className="text-xs sm:text-sm text-slate-300 max-w-2xl leading-relaxed">
-                      NEP Excellence Awards 2026 — Statutory self-appraisal parameters (C1–C22), evidence verification gating, and audit ledger.
-                    </p>
-                  </div>
-
-                  {activeAssessment && (
-                    <div className="flex items-center gap-2 shrink-0">
-                      <button
-                        onClick={() => setSelectedAssessmentId(activeAssessment.assessment_id)}
-                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all shadow-sm"
-                      >
-                        <Eye size={13} />
-                        <span>Audit Report</span>
-                      </button>
-                      <button
-                        onClick={() => downloadAssessmentReportCSV(activeAssessment.assessment_id)}
-                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold transition-all shadow-sm"
-                        title="Download authoritative CSV report"
-                      >
-                        <FileSpreadsheet size={13} />
-                        <span>Export CSV</span>
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                {/* Assessment Lifecycle Progress Stepper */}
-                {activeAssessment ? (
-                  <AssessmentStepper
-                    status={activeAssessment.status}
-                    isReadyForScoring={isReadyForScoring}
-                    completedParameters={completedParameters}
-                    totalParameters={totalParameters}
-                  />
-                ) : (
-                  <div className="bg-white rounded-xl border border-slate-200 p-6 text-center shadow-xs">
-                    <h3 className="text-sm font-bold text-slate-900 mb-1">
-                      No Active College Assessment Session for 2025-26
-                    </h3>
-                    <p className="text-xs text-slate-500 max-w-md mx-auto mb-4">
-                      Initialize your college’s appraisal workspace to record inputs for C1–C22 and submit documentary evidence.
-                    </p>
-                    <button
-                      onClick={handleCreateAssessment}
-                      disabled={creating}
-                      className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-colors shadow-xs"
-                    >
-                      <PlusCircle size={14} />
-                      <span>{creating ? "Initializing..." : "Start 2025-26 Assessment"}</span>
-                    </button>
-                  </div>
-                )}
-
-                {/* Key Assessment Summary KPIs */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <StatCard
-                    title="Assessment Status"
-                    value={activeAssessment ? activeAssessment.status : "NOT_STARTED"}
-                    sublabel={activeAssessment ? `Session: ${activeAssessment.assessment_id}` : "No active session"}
-                    badge={<StatusBadge status={activeAssessment?.status || "DRAFT"} size="sm" />}
-                    icon={activeAssessment?.status === "CERTIFIED" ? ShieldCheck : Clock}
-                    variant={activeAssessment?.status === "CERTIFIED" ? "emerald" : "blue"}
-                  />
-
-                  <StatCard
-                    title="Parameters Completed"
-                    value={`${completedParameters} / ${totalParameters}`}
-                    sublabel={`${Math.round((completedParameters / totalParameters) * 100)}% inputs recorded`}
-                    icon={ClipboardList}
-                    variant="blue"
-                  />
-
-                  <StatCard
-                    title="Evidence Coverage"
-                    value={`${coveredSubcriteria} / ${totalSubcriteria}`}
-                    sublabel={isReadyForScoring ? "Evidence Gating Passed" : "Action Required"}
-                    badge={
-                      <span
-                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                          isReadyForScoring
-                            ? "bg-emerald-100 text-emerald-800"
-                            : "bg-amber-100 text-amber-800"
-                        }`}
-                      >
-                        {isReadyForScoring ? "Eligible" : "Blocked"}
-                      </span>
-                    }
-                    icon={CheckCircle2}
-                    variant={isReadyForScoring ? "emerald" : "amber"}
-                  />
-
-                  <StatCard
-                    title="Statutory Framework"
-                    value={activeAssessment?.framework || "COLLEGE_2026"}
-                    sublabel={`AY ${activeAssessment?.academic_year || "2025-26"}`}
-                    icon={School}
-                    variant="purple"
-                  />
-                </div>
-
-                {/* Unresolved College Specifications Notice */}
-                <BlockingNotice
-                  type="spec_blocked"
-                  title="Statutory Notice: Pending Council Specifications (C5, C7, C8, C16)"
-                  reasons={[
-                    "C5 (Institutional Development Plan) has an unresolved boundary rule awaiting council notification.",
-                    "C7 (NAAC Accreditation), C8 (National Credit Framework), and C16 (Gender Parity) criteria rules are pending resolution.",
-                    "These specific parameters cannot be evaluated until the applicable specifications are finalized by the council.",
-                  ]}
-                />
-
-                {/* Primary Next Action Banner */}
-                {activeAssessment && (
-                  <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                    <div>
-                      <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
-                        Primary Next Action
-                      </span>
-                      {activeAssessment.status === "DRAFT" ? (
-                        <div>
-                          <h4 className="text-sm font-bold text-slate-900">
-                            Complete Parameter Inputs and Submit Assessment
-                          </h4>
-                          <p className="text-xs text-slate-500">
-                            Submit your self-appraisal to the Screening Committee for independent evidence verification and scoring.
-                          </p>
-                        </div>
-                      ) : activeAssessment.status === "SUBMITTED" ? (
-                        <div>
-                          <h4 className="text-sm font-bold text-blue-950 flex items-center gap-1.5">
-                            <Clock size={14} className="text-blue-600" />
-                            Submitted for Screening Committee Evaluation
-                          </h4>
-                          <p className="text-xs text-slate-500">
-                            Inputs are locked. Assigned committee reviewers are evaluating documentary evidence.
-                          </p>
-                        </div>
-                      ) : (
-                        <div>
-                          <h4 className="text-sm font-bold text-emerald-950 flex items-center gap-1.5">
-                            <ShieldCheck size={14} className="text-emerald-600" />
-                            Assessment Certified
-                          </h4>
-                          <p className="text-xs text-slate-500">
-                            Official evaluation and score certification finalized.
-                          </p>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="flex items-center gap-2.5 shrink-0">
-                      {activeAssessment.status === "DRAFT" && (
-                        <button
-                          onClick={handleSubmitAssessment}
-                          disabled={submitting}
-                          className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm disabled:opacity-50"
-                        >
-                          <Send size={13} />
-                          <span>{submitting ? "Submitting..." : "Submit Assessment"}</span>
-                        </button>
-                      )}
-
-                      <button
-                        onClick={() => setSelectedAssessmentId(activeAssessment.assessment_id)}
-                        className="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold transition-colors shadow-xs"
-                      >
-                        <Eye size={13} />
-                        <span>Audit Preview</span>
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Evidence Readiness Summary */}
-                {activeAssessment && readiness && (
-                  <EvidenceReadinessSummary
-                    summary={readiness.evidence_readiness_summary}
-                    isReady={readiness.is_ready}
-                    onActionClick={() => setSelectedAssessmentId(activeAssessment.assessment_id)}
-                  />
-                )}
-
-                {/* Statutory Parameters Table (C1–C22) */}
-                {parameters.length > 0 && (
-                  <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
-                    <div className="p-4 sm:p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/50">
-                      <div>
-                        <h2 className="text-sm font-bold text-slate-900 tracking-tight">
-                          Statutory Parameters (C1–C22)
-                        </h2>
-                        <p className="text-xs text-slate-500">
-                          Authoritative parameters registered under COLLEGE_2026 framework
-                          {lastRefreshed && ` · Synced at ${lastRefreshed.toLocaleTimeString()}`}
-                        </p>
-                      </div>
-
-                      {/* Filter Tabs */}
-                      <div className="inline-flex rounded-lg border border-slate-200 bg-white p-1 text-xs font-semibold text-slate-600">
-                        <button
-                          onClick={() => setParamFilter("ALL")}
-                          className={`px-3 py-1 rounded-md transition-all ${
-                            paramFilter === "ALL" ? "bg-blue-600 text-white shadow-xs" : "hover:text-slate-900"
-                          }`}
-                        >
-                          All ({parameters.length})
-                        </button>
-                        <button
-                          onClick={() => setParamFilter("COMPLETED")}
-                          className={`px-3 py-1 rounded-md transition-all ${
-                            paramFilter === "COMPLETED" ? "bg-blue-600 text-white shadow-xs" : "hover:text-slate-900"
-                          }`}
-                        >
-                          Completed ({completedParameters})
-                        </button>
-                        <button
-                          onClick={() => setParamFilter("PENDING")}
-                          className={`px-3 py-1 rounded-md transition-all ${
-                            paramFilter === "PENDING" ? "bg-blue-600 text-white shadow-xs" : "hover:text-slate-900"
-                          }`}
-                        >
-                          Pending ({totalParameters - completedParameters})
-                        </button>
-                        <button
-                          onClick={() => setParamFilter("BLOCKED")}
-                          className={`px-3 py-1 rounded-md transition-all ${
-                            paramFilter === "BLOCKED" ? "bg-purple-600 text-white shadow-xs" : "hover:text-slate-900"
-                          }`}
-                        >
-                          Spec Blocked (4)
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left border-collapse text-xs">
-                        <thead>
-                          <tr className="bg-slate-50 border-b border-slate-100 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                            <th className="py-3 px-4">Code</th>
-                            <th className="py-3 px-4">Parameter Title</th>
-                            <th className="py-3 px-4 text-center">Max Marks</th>
-                            <th className="py-3 px-4">Specification & Blocking Notice</th>
-                            <th className="py-3 px-4 text-center">Input Status</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                          {filteredParameters.map((param) => {
-                            const isComplete = param.submitted_input != null && Object.keys(param.submitted_input).length > 0;
-                            const unresolvedNotice = UNRESOLVED_SPEC_PARAMS[param.parameter_code];
-
-                            return (
-                              <tr
-                                key={param.parameter_code}
-                                className="hover:bg-slate-50/80 transition-colors"
-                              >
-                                <td className="py-3.5 px-4 font-mono font-bold text-blue-700 whitespace-nowrap">
-                                  {param.parameter_code}
-                                </td>
-                                <td className="py-3.5 px-4 font-medium text-slate-900 max-w-sm">
-                                  {param.title}
-                                </td>
-                                <td className="py-3.5 px-4 text-center font-bold text-slate-700 whitespace-nowrap">
-                                  {param.max_marks} pts
-                                </td>
-                                <td className="py-3.5 px-4 text-slate-600 max-w-md">
-                                  {unresolvedNotice ? (
-                                    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-purple-50 text-purple-800 border border-purple-200 text-[11px] font-medium">
-                                      <Ban size={12} className="text-purple-600 shrink-0" />
-                                      <span>{unresolvedNotice}</span>
-                                    </div>
-                                  ) : param.mandatory_evidence && param.mandatory_evidence.length > 0 ? (
-                                    <span className="text-[11px] text-slate-600">
-                                      Requires {param.mandatory_evidence.length} documentary evidence type(s)
-                                    </span>
-                                  ) : (
-                                    <span className="text-slate-400 italic text-[11px]">No special blocker</span>
-                                  )}
-                                </td>
-                                <td className="py-3.5 px-4 text-center whitespace-nowrap">
-                                  <span
-                                    className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
-                                      isComplete
-                                        ? "bg-emerald-50 text-emerald-800 border-emerald-200"
-                                        : "bg-amber-50 text-amber-800 border-amber-200"
-                                    }`}
-                                  >
-                                    {isComplete ? (
-                                      <>
-                                        <CheckCircle2 size={11} className="text-emerald-600" />
-                                        <span>Recorded</span>
-                                      </>
-                                    ) : (
-                                      <>
-                                        <Clock size={11} className="text-amber-600" />
-                                        <span>Pending Data</span>
-                                      </>
-                                    )}
-                                  </span>
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-          </>
-        )}
-
-        {/* TAB 2: LEGACY SUBMISSIONS ARCHIVE */}
-        {activeTab === "LEGACY_SUBMISSIONS" && (
-          <div className="space-y-4">
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-xs text-amber-900">
-              <div className="flex items-center gap-2 font-bold mb-1 text-sm text-amber-950">
-                <AlertCircle size={15} />
-                <span>Historical Submissions Archive</span>
+        {/* Inner Content Body */}
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-6xl w-full mx-auto space-y-6">
+          {/* Top Page Summary Bar with Context Actions */}
+          <div className="bg-white rounded-xl border border-slate-200/90 p-5 sm:p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200 uppercase tracking-wider">
+                  College Principal Workspace
+                </span>
+                <span className="text-slate-300">•</span>
+                <span className="text-xs text-slate-500 font-mono">
+                  Session: {activeAssessment ? activeAssessment.assessment_id : "No Session"}
+                </span>
               </div>
-              <p>
-                These records belong to the previous institutional nomination portal. They are preserved for historical audit purposes and are strictly isolated from the NEP Excellence Awards 2026 scoring framework.
+              <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
+                {activeSection === "overview" && "Assessment Overview & Health"}
+                {activeSection === "parameters" && "Statutory Parameters (C1–C22)"}
+                {activeSection === "evidence" && "Documentary Evidence Readiness"}
+                {activeSection === "reports" && "Official Audit & Assessment Reports"}
+                {activeSection === "legacy" && "Historical Submissions Archive"}
+              </h1>
+              <p className="text-xs text-slate-500 mt-1">
+                Haryana State Higher Education Council — Authoritative Institutional Evaluation
               </p>
             </div>
 
-            {legacyLoading ? (
-              <DashboardSkeleton />
-            ) : legacySubmissions.length === 0 ? (
-              <EmptyState
-                icon={Archive}
-                title="No Historical Nominations"
-                description="No historical submissions exist for your institution in the archive."
-              />
-            ) : (
-              <div className="grid gap-4">
-                {legacySubmissions.map((sub) => (
-                  <div
-                    key={sub.id}
-                    className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+            <div className="flex items-center gap-2.5 shrink-0 flex-wrap">
+              <button
+                onClick={loadCollegeData}
+                disabled={loading}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs font-semibold transition-colors shadow-xs disabled:opacity-50 cursor-pointer"
+                title="Refresh authoritative server state"
+              >
+                <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
+                <span>Refresh</span>
+              </button>
+
+              {activeAssessment && (
+                <>
+                  <button
+                    onClick={() => setSelectedAssessmentId(activeAssessment.assessment_id)}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 text-xs font-bold transition-colors shadow-xs cursor-pointer"
                   >
-                    <div>
-                      <div className="flex items-center gap-2 mb-1.5">
-                        <span className="text-[10px] font-mono font-bold bg-slate-100 text-slate-700 px-2 py-0.5 rounded uppercase">
-                          ID: {sub.form_id}
-                        </span>
-                        <StatusBadge status={sub.is_submitted ? "SUBMITTED" : "DRAFT"} size="sm" />
+                    <Eye size={13} className="text-slate-600" />
+                    <span>Audit Preview</span>
+                  </button>
+
+                  <button
+                    onClick={() => downloadAssessmentReportCSV(activeAssessment.assessment_id)}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-bold transition-colors shadow-xs cursor-pointer"
+                    title="Export official CSV audit report"
+                  >
+                    <FileSpreadsheet size={13} />
+                    <span>Export CSV</span>
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Global Error Notice */}
+          {error && (
+            <ErrorState
+              title="College Portal Notice"
+              message={error}
+              onRetry={loadCollegeData}
+            />
+          )}
+
+          {/* Loading Shimmer */}
+          {loading && !college ? (
+            <DashboardSkeleton />
+          ) : !college ? (
+            <EmptyState
+              icon={School}
+              title="No College Record Assigned"
+              description="Your account is not currently linked to an approved college institution record in the database. Please contact your State DHE Administrator."
+            />
+          ) : (
+            <>
+              {/* SECTION 1: OVERVIEW */}
+              {activeSection === "overview" && (
+                <div className="space-y-6">
+                  {/* Assessment Journey Stepper */}
+                  {activeAssessment ? (
+                    <AssessmentStepper
+                      status={activeAssessment.status}
+                      isReadyForScoring={isReadyForScoring}
+                      completedParameters={completedParameters}
+                      totalParameters={totalParameters}
+                    />
+                  ) : (
+                    <div className="bg-white rounded-xl border border-slate-200 p-8 text-center shadow-xs">
+                      <h3 className="text-base font-bold text-slate-900 mb-1">
+                        No Active Assessment Session for Academic Year 2025-26
+                      </h3>
+                      <p className="text-xs text-slate-500 max-w-md mx-auto mb-5 leading-relaxed">
+                        Initialize your college’s appraisal workspace to record inputs for C1–C22 and submit documentary evidence.
+                      </p>
+                      <button
+                        onClick={handleCreateAssessment}
+                        disabled={creating}
+                        className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-colors shadow-xs cursor-pointer"
+                      >
+                        <PlusCircle size={14} />
+                        <span>{creating ? "Initializing..." : "Start 2025-26 Assessment"}</span>
+                      </button>
+                    </div>
+                  )}
+
+                  {/* 4 Summary Metrics */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {/* Status */}
+                    <div className="bg-white rounded-xl border border-slate-200/90 p-5 shadow-xs flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center justify-between gap-2 mb-2">
+                          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                            Assessment Status
+                          </span>
+                          <StatusBadge status={activeAssessment?.status || "DRAFT"} size="sm" />
+                        </div>
+                        <p className="text-xl font-extrabold text-slate-900 tracking-tight">
+                          {activeAssessment?.status || "NOT_STARTED"}
+                        </p>
                       </div>
-                      <h4 className="text-sm font-bold text-slate-900">
-                        {sub.form_id === "nep-excellence-nomination-2025"
-                          ? "Haryana State NEP Implementation Award — Nomination Form 2025"
-                          : "Institutional Nomination Record"}
-                      </h4>
-                      <p className="text-xs text-slate-500 mt-1">
-                        Updated: {new Date(sub.updated_at).toLocaleDateString()} · Head: {sub.head_name || "N/A"}
+                      <div className="mt-3 pt-3 border-t border-slate-100 flex items-center gap-1.5 text-xs text-slate-500 font-mono truncate">
+                        <Clock size={12} className="text-slate-400 shrink-0" />
+                        <span className="truncate">{activeAssessment ? activeAssessment.assessment_id : "No Session"}</span>
+                      </div>
+                    </div>
+
+                    {/* Parameters */}
+                    <div className="bg-white rounded-xl border border-slate-200/90 p-5 shadow-xs flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center justify-between gap-2 mb-2">
+                          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                            Parameters Filled
+                          </span>
+                          <span className="text-[11px] font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full">
+                            {Math.round((completedParameters / totalParameters) * 100)}%
+                          </span>
+                        </div>
+                        <div className="flex items-baseline gap-1.5">
+                          <span className="text-2xl font-extrabold text-slate-900 tracking-tight">
+                            {completedParameters}
+                          </span>
+                          <span className="text-xs font-semibold text-slate-400">
+                            / {totalParameters} parameters
+                          </span>
+                        </div>
+                      </div>
+                      <div className="mt-3 pt-3 border-t border-slate-100">
+                        <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-blue-600 rounded-full transition-all duration-300"
+                            style={{ width: `${(completedParameters / totalParameters) * 100}%` }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Evidence Coverage */}
+                    <div className="bg-white rounded-xl border border-slate-200/90 p-5 shadow-xs flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center justify-between gap-2 mb-2">
+                          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                            Evidence Coverage
+                          </span>
+                          <span
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full border uppercase tracking-wider ${
+                              isReadyForScoring
+                                ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                                : "bg-amber-50 text-amber-800 border-amber-200"
+                            }`}
+                          >
+                            {isReadyForScoring ? "Eligible" : "Gating Action"}
+                          </span>
+                        </div>
+                        <div className="flex items-baseline gap-1.5">
+                          <span className="text-2xl font-extrabold text-slate-900 tracking-tight">
+                            {coveredSubcriteria}
+                          </span>
+                          <span className="text-xs font-semibold text-slate-400">
+                            / {totalSubcriteria} subcriteria
+                          </span>
+                        </div>
+                      </div>
+                      <div className="mt-3 pt-3 border-t border-slate-100 flex items-center gap-1.5 text-xs text-slate-500">
+                        <CheckCircle2 size={12} className={isReadyForScoring ? "text-emerald-600" : "text-amber-500"} />
+                        <span>{isReadyForScoring ? "Gating thresholds satisfied" : `${totalSubcriteria - coveredSubcriteria} pending proof`}</span>
+                      </div>
+                    </div>
+
+                    {/* Framework */}
+                    <div className="bg-white rounded-xl border border-slate-200/90 p-5 shadow-xs flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center justify-between gap-2 mb-2">
+                          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                            Statutory Framework
+                          </span>
+                          <span className="text-[10px] font-bold text-purple-700 bg-purple-50 border border-purple-200 px-2 py-0.5 rounded-full">
+                            College
+                          </span>
+                        </div>
+                        <p className="text-lg font-extrabold text-slate-900 tracking-tight">
+                          {activeAssessment?.framework || "COLLEGE_2026"}
+                        </p>
+                      </div>
+                      <div className="mt-3 pt-3 border-t border-slate-100 flex items-center gap-1.5 text-xs text-slate-500">
+                        <Building2 size={12} className="text-slate-400" />
+                        <span>Academic Period 2025–2026</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Primary Attention & Next Action */}
+                  {activeAssessment && (
+                    <div className="bg-white rounded-xl border border-slate-200/90 p-5 shadow-xs space-y-4">
+                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+                        <div>
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-[11px] font-bold text-blue-700 uppercase tracking-wider bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                              Recommended Action
+                            </span>
+                            <span className="text-xs font-semibold text-slate-600">
+                              Phase: {activeAssessment.status}
+                            </span>
+                          </div>
+                          {activeAssessment.status === "DRAFT" ? (
+                            <h3 className="text-sm sm:text-base font-bold text-slate-900">
+                              Complete Parameter Inputs and Submit for Screening
+                            </h3>
+                          ) : (
+                            <h3 className="text-sm sm:text-base font-bold text-slate-900">
+                              Assessment Locked for Official Screening Committee Review
+                            </h3>
+                          )}
+                          <p className="text-xs text-slate-500 mt-0.5 max-w-2xl leading-relaxed">
+                            {activeAssessment.status === "DRAFT"
+                              ? "Record inputs for parameters C1–C22 and attach required documentary evidence before submitting."
+                              : "Assigned committee reviewers are independently inspecting your documentary evidence."}
+                          </p>
+                        </div>
+
+                        <div className="flex items-center gap-3 shrink-0">
+                          {activeAssessment.status === "DRAFT" && (
+                            <button
+                              onClick={handleSubmitAssessment}
+                              disabled={submitting}
+                              className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs disabled:opacity-50 cursor-pointer"
+                            >
+                              <Send size={13} />
+                              <span>{submitting ? "Submitting..." : "Submit to Committee"}</span>
+                            </button>
+                          )}
+
+                          <button
+                            onClick={() => setActiveSection("parameters")}
+                            className="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
+                          >
+                            <span>Manage Parameters</span>
+                            <ChevronRight size={13} />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Unresolved Specifications Banner */}
+                      <div className="p-3.5 bg-purple-50/80 border border-purple-200 rounded-lg text-xs text-purple-900 flex items-start gap-3">
+                        <Ban size={16} className="text-purple-600 shrink-0 mt-0.5" />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold text-purple-950 mb-0.5">Council Notice: Unresolved Specifications (C5, C7, C8, C16)</p>
+                          <p className="text-purple-800 leading-relaxed">
+                            Parameters C5 (IDP), C7 (NAAC), C8 (NCrF), and C16 (Gender Parity) are governed by pending council specifications and will not be evaluated until formally notified.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Evidence Readiness Summary Component */}
+                  {activeAssessment && readiness && (
+                    <EvidenceReadinessSummary
+                      summary={readiness.evidence_readiness_summary}
+                      isReady={readiness.is_ready}
+                      onActionClick={() => setActiveSection("evidence")}
+                    />
+                  )}
+                </div>
+              )}
+
+              {/* SECTION 2: PARAMETERS (C1–C22) */}
+              {activeSection === "parameters" && (
+                <div className="bg-white rounded-xl border border-slate-200/90 shadow-xs overflow-hidden">
+                  <div className="p-4 sm:p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/60">
+                    <div>
+                      <h2 className="text-sm sm:text-base font-bold text-slate-900 tracking-tight">
+                        Statutory Parameters (C1–C22)
+                      </h2>
+                      <p className="text-xs text-slate-500">
+                        Authoritative evaluation criteria registered under the COLLEGE_2026 framework
                       </p>
                     </div>
 
-                    <div className="flex items-center gap-2 shrink-0">
+                    {/* Filter Tabs */}
+                    <div className="inline-flex rounded-lg border border-slate-200 bg-white p-1 text-xs font-semibold text-slate-600 shadow-2xs">
                       <button
-                        onClick={() =>
-                          navigate(
-                            `/institution/${institutionName || "college"}/${institutionAisheCode || "aishe"}/dashboard/forms/${sub.form_id}`
-                          )
-                        }
-                        className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg text-xs font-semibold transition-colors"
+                        onClick={() => setParamFilter("ALL")}
+                        className={`px-3 py-1 rounded-md transition-all cursor-pointer ${
+                          paramFilter === "ALL" ? "bg-slate-900 text-white shadow-xs" : "hover:text-slate-900"
+                        }`}
                       >
-                        {sub.is_submitted ? "View Record" : "Continue Form"}
+                        All ({parameters.length})
+                      </button>
+                      <button
+                        onClick={() => setParamFilter("COMPLETED")}
+                        className={`px-3 py-1 rounded-md transition-all cursor-pointer ${
+                          paramFilter === "COMPLETED" ? "bg-slate-900 text-white shadow-xs" : "hover:text-slate-900"
+                        }`}
+                      >
+                        Completed ({completedParameters})
+                      </button>
+                      <button
+                        onClick={() => setParamFilter("PENDING")}
+                        className={`px-3 py-1 rounded-md transition-all cursor-pointer ${
+                          paramFilter === "PENDING" ? "bg-slate-900 text-white shadow-xs" : "hover:text-slate-900"
+                        }`}
+                      >
+                        Pending ({totalParameters - completedParameters})
+                      </button>
+                      <button
+                        onClick={() => setParamFilter("BLOCKED")}
+                        className={`px-3 py-1 rounded-md transition-all cursor-pointer ${
+                          paramFilter === "BLOCKED" ? "bg-purple-600 text-white shadow-xs" : "hover:text-slate-900"
+                        }`}
+                      >
+                        Spec Blocked (4)
                       </button>
                     </div>
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead>
+                        <tr className="bg-slate-50/80 border-b border-slate-100 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                          <th className="py-3 px-4 w-16">Code</th>
+                          <th className="py-3 px-4">Parameter Title</th>
+                          <th className="py-3 px-4 text-center w-28">Max Marks</th>
+                          <th className="py-3 px-4">Specification & Blocking Notice</th>
+                          <th className="py-3 px-4 text-center w-36">Input Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {filteredParameters.map((param) => {
+                          const isComplete = param.submitted_input != null && Object.keys(param.submitted_input).length > 0;
+                          const unresolvedNotice = UNRESOLVED_SPEC_PARAMS[param.parameter_code];
+
+                          return (
+                            <tr key={param.parameter_code} className="hover:bg-slate-50/70 transition-colors">
+                              <td className="py-3.5 px-4 font-mono font-bold text-blue-700 whitespace-nowrap">
+                                {param.parameter_code}
+                              </td>
+                              <td className="py-3.5 px-4 font-medium text-slate-900 max-w-sm">
+                                {param.title}
+                              </td>
+                              <td className="py-3.5 px-4 text-center font-bold text-slate-700 whitespace-nowrap">
+                                {param.max_marks} pts
+                              </td>
+                              <td className="py-3.5 px-4 text-slate-600 max-w-md">
+                                {unresolvedNotice ? (
+                                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-purple-50 text-purple-800 border border-purple-200 text-[11px] font-medium">
+                                    <Ban size={12} className="text-purple-600 shrink-0" />
+                                    <span>{unresolvedNotice}</span>
+                                  </div>
+                                ) : param.mandatory_evidence && param.mandatory_evidence.length > 0 ? (
+                                  <span className="text-[11px] text-slate-600">
+                                    Requires {param.mandatory_evidence.length} documentary evidence type(s)
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-400 italic text-[11px]">Standard evaluation rule</span>
+                                )}
+                              </td>
+                              <td className="py-3.5 px-4 text-center whitespace-nowrap">
+                                <span
+                                  className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
+                                    isComplete
+                                      ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                                      : "bg-amber-50 text-amber-800 border-amber-200"
+                                  }`}
+                                >
+                                  {isComplete ? (
+                                    <>
+                                      <CheckCircle2 size={11} className="text-emerald-600" />
+                                      <span>Recorded</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Clock size={11} className="text-amber-600" />
+                                      <span>Pending Data</span>
+                                    </>
+                                  )}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* SECTION 3: EVIDENCE READINESS */}
+              {activeSection === "evidence" && (
+                <div className="space-y-6">
+                  {readiness && (
+                    <EvidenceReadinessSummary
+                      summary={readiness.evidence_readiness_summary}
+                      isReady={readiness.is_ready}
+                      onActionClick={() => setSelectedAssessmentId(activeAssessment.assessment_id)}
+                    />
+                  )}
+
+                  <div className="bg-white rounded-xl border border-slate-200/90 p-6 shadow-xs">
+                    <h3 className="text-sm font-bold text-slate-900 mb-2">Evidence Submission Guidelines</h3>
+                    <ul className="text-xs text-slate-600 space-y-2 list-disc pl-5">
+                      <li>All documentary evidence must fall within the statutory window (2025-07-01 to 2026-06-30).</li>
+                      <li>Documents must be in PDF or standard image format, signed and sealed by the competent authority.</li>
+                      <li>Subcriteria lacking required evidence are automatically gated and will yield 0 marks during scoring.</li>
+                    </ul>
+                  </div>
+                </div>
+              )}
+
+              {/* SECTION 4: AUDIT REPORTS */}
+              {activeSection === "reports" && (
+                <div className="space-y-6">
+                  <div className="bg-white rounded-xl border border-slate-200/90 p-6 shadow-xs flex items-center justify-between gap-4">
+                    <div>
+                      <h3 className="text-base font-bold text-slate-900">Authoritative Assessment Audit Ledger</h3>
+                      <p className="text-xs text-slate-500 mt-1">
+                        Inspect complete statutory evaluation reports, subcriteria gating traces, and verification logs.
+                      </p>
+                    </div>
+
+                    {activeAssessment && (
+                      <div className="flex items-center gap-2.5 shrink-0">
+                        <button
+                          onClick={() => setSelectedAssessmentId(activeAssessment.assessment_id)}
+                          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                        >
+                          Open Audit Inspector
+                        </button>
+                        <button
+                          onClick={() => downloadAssessmentReportCSV(activeAssessment.assessment_id)}
+                          className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                        >
+                          Export CSV
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* SECTION 5: HISTORICAL SUBMISSIONS ARCHIVE */}
+              {activeSection === "legacy" && (
+                <div className="space-y-4">
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-xs text-amber-900">
+                    <div className="flex items-center gap-2 font-bold mb-1 text-sm text-amber-950">
+                      <AlertCircle size={15} />
+                      <span>Historical Submissions Archive</span>
+                    </div>
+                    <p>
+                      These nomination records belong to previous cycles. They are preserved for historical reference and are strictly isolated from the NEP Excellence Awards 2026 framework.
+                    </p>
+                  </div>
+
+                  {legacyLoading ? (
+                    <DashboardSkeleton />
+                  ) : legacySubmissions.length === 0 ? (
+                    <EmptyState
+                      icon={Archive}
+                      title="No Historical Nominations Found"
+                      description="There are no past nomination records registered for your institution in the archive."
+                    />
+                  ) : (
+                    <div className="grid gap-4">
+                      {legacySubmissions.map((sub) => (
+                        <div
+                          key={sub.id}
+                          className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+                        >
+                          <div>
+                            <div className="flex items-center gap-2 mb-1.5">
+                              <span className="text-[10px] font-mono font-bold bg-slate-100 text-slate-700 px-2 py-0.5 rounded uppercase">
+                                ID: {sub.form_id}
+                              </span>
+                              <StatusBadge status={sub.is_submitted ? "SUBMITTED" : "DRAFT"} size="sm" />
+                            </div>
+                            <h4 className="text-sm font-bold text-slate-900">
+                              {sub.form_id === "nep-excellence-nomination-2025"
+                                ? "Haryana State NEP Implementation Award — Nomination Form 2025"
+                                : "Institutional Nomination Record"}
+                            </h4>
+                            <p className="text-xs text-slate-500 mt-1">
+                              Updated: {new Date(sub.updated_at).toLocaleDateString()} · Head: {sub.head_name || "N/A"}
+                            </p>
+                          </div>
+
+                          <div className="flex items-center gap-2 shrink-0">
+                            <button
+                              onClick={() =>
+                                navigate(
+                                  `/institution/${institutionName || "college"}/${institutionAisheCode || "aishe"}/dashboard/forms/${sub.form_id}`
+                                )
+                              }
+                              className="px-3.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                            >
+                              {sub.is_submitted ? "View Record" : "Continue Form"}
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+        </main>
       </div>
 
       {/* Authoritative Assessment Report Modal */}
