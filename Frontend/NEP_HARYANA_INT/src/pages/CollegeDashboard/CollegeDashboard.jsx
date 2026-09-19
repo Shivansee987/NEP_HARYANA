@@ -1041,6 +1041,36 @@ export default function CollegeDashboard() {
             </>
           )}
         </main>
+
+        {/* Professional Clean White Institutional Footer */}
+        <footer className="mt-auto bg-white border-t border-slate-200/80 py-6 px-4 sm:px-6 lg:px-8">
+          <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-3 text-center md:text-left">
+              <div className="w-8 h-8 rounded-lg bg-slate-50 border border-slate-200 p-1 flex items-center justify-center shrink-0">
+                <img src={hshecLogo} alt="HSHEC" className="w-full h-full object-contain" />
+              </div>
+              <div>
+                <p className="text-xs font-bold text-slate-800">
+                  Haryana State Higher Education Council (HSHEC)
+                </p>
+                <p className="text-[11px] text-slate-500">
+                  NEP Excellence Awards 2026 · Authoritative Institutional Evaluation Platform
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-center gap-4 text-xs text-slate-500">
+              <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200/80 rounded-full px-3 py-1 text-[11px] font-medium text-slate-600">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                <span>Statutory Window: 2025–26</span>
+              </div>
+              <span className="text-slate-300 hidden sm:inline">•</span>
+              <span className="text-[11px] text-slate-400">
+                Logged in as <strong className="text-slate-700 font-semibold">{collegeName}</strong> (AISHE: {aisheCode})
+              </span>
+            </div>
+          </div>
+        </footer>
       </div>
 
       {/* Authoritative Assessment Report Modal */}
