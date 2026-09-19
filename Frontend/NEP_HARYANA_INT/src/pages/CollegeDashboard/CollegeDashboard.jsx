@@ -1,1043 +1,729 @@
+/**
+ * CollegeDashboard — NEP Excellence Awards 2026 Institutional Assessment Portal
+ *
+ * Professional, modern, calm institutional UX pass.
+ * Harmonized visually with UniversityDashboard using shared design primitives.
+ * Provides dual-access:
+ * 1. Statutory NEP 2026 Assessment (C1–C22) consuming /api/v1/college/ and /api/v1/reports/.
+ * 2. Legacy Institutional Submissions viewable cleanly without synthetic mappings.
+ * Clearly surfaces intentionally unresolved specifications (C5, C7, C8, C16).
+ * Zero client-side scoring or synthetic thresholds.
+ */
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import styles from "../Dashboard/Dashboard.module.css";
-import pageStyles from "./CollegeDashboard.module.css";
 import { useAuth } from "../../context/AuthContext.jsx";
-import { fetchNominationDetails, fetchMySubmissions } from "../../api/nomination";
-import { fetchInstitutionReportingSummary, downloadAssessmentReportCSV } from "../../api/reports";
+import {
+  fetchMyColleges,
+  fetchCollegeAssessments,
+  createCollegeAssessment,
+  fetchCollegeAssessmentParameters,
+  fetchCollegeAssessmentReadiness,
+  submitCollegeAssessment,
+} from "../../api/college";
+import { fetchMySubmissions, fetchNominationDetails } from "../../api/nomination";
+import {
+  fetchInstitutionReportingSummary,
+  downloadAssessmentReportCSV,
+} from "../../api/reports";
 import AssessmentReportModal from "../../components/Reports/AssessmentReportModal";
 import NominationWorkspace from "./NominationWorkspace";
 import {
+  Building2,
+  ClipboardList,
+  CheckCircle2,
+  Clock,
+  RefreshCw,
+  FileText,
+  ShieldCheck,
+  Send,
+  PlusCircle,
+  FileSpreadsheet,
+  Eye,
+  School,
+  Award,
+  Layers,
   LayoutDashboard,
   CheckSquare,
-  School,
-  Trophy,
-  Award,
-  Eye,
-  FileSpreadsheet,
-  ShieldCheck,
+  LogOut,
+  Ban,
   AlertCircle,
-  RefreshCw,
+  Archive,
 } from "lucide-react";
 import hshecLogo from "../../assets/hshec_logo.jpeg";
 import {
-  ResponsiveContainer,
-  RadarChart,
-  PolarGrid,
-  PolarAngleAxis,
-  PolarRadiusAxis,
-  Radar,
-  Tooltip,
-  Legend,
-} from "recharts";
+  StatusBadge,
+  AssessmentStepper,
+  EvidenceReadinessSummary,
+  BlockingNotice,
+  StatCard,
+  DashboardSkeleton,
+  EmptyState,
+  ErrorState,
+} from "../../components/common";
 
-function formatRole(role) {
-  if (role === "principal") {
-    return "College Principal";
-  }
-  if (role === "admin") {
-    return "DHE Admin";
-  }
-  if (role === "committee") {
-    return "Screening Committee";
-  }
-  return "Principal";
-}
+const UNRESOLVED_SPEC_PARAMS = {
+  C5: "BOUNDARY_UNRESOLVED: Parameter boundary definitions are pending council clarification.",
+  C7: "UNRESOLVED_RULE: Applicable statutory evaluation rule is pending resolution.",
+  C8: "UNRESOLVED_RULE: Applicable statutory evaluation rule is pending resolution.",
+  C16: "UNRESOLVED_RULE: Applicable statutory evaluation rule is pending resolution.",
+};
 
-const INDICATORS_METADATA = [
-  { num: 1, title: "Two Simultaneous Academic Programmes", max: 4 },
-  { num: 2, title: "Internship/Apprenticeship Embedded Degree Programmes", max: 4 },
-  { num: 3, title: "Courses Offered in Indian Languages", max: 4 },
-  { num: 4, title: "Special Programmes in IKS", max: 4 },
-  { num: 5, title: "Institutional Development Plan (IDP) Developed", max: 6 },
-  { num: 6, title: "Appointment of Ombudsperson", max: 2 },
-  { num: 7, title: "NAAC Accreditation Status", max: 8 },
-  { num: 8, title: "Adoption of National Credit Framework (NCrF)", max: 2 },
-  { num: 9, title: "Academic Bank of Credits (ABC) Registered", max: 8 },
-  { num: 10, title: "Annual Update on AISHE Portal", max: 4 },
-  { num: 11, title: "Professor of Practice Appointed", max: 4 },
-  { num: 12, title: "Incubation/Startup Cell Functional", max: 6 },
-  { num: 13, title: "National Innovation & Start-up Policy Implemented", max: 4 },
-  { num: 14, title: "Academic/Research Collaboration with Foreign HEIs", max: 6 },
-  { num: 15, title: "Alumni Connect Cell Functional", max: 6 },
-  { num: 16, title: "Gender Parity Initiatives", max: 6 },
-  { num: 17, title: "Psychological Support Programmes", max: 6 },
-  { num: 18, title: "UGC Guidelines on Student Welfare Implemented", max: 6 },
-  { num: 19, title: "Provision for Online Courses / MOOCs Policy", max: 4 },
-  { num: 20, title: "Teachers Trained & Certified under MMTTC", max: 6 },
-];
-
-function getIndicatorScore(num, answers = {}) {
-  const ans = answers[`indicator_${num}`] || {};
-  if (!ans.value && !ans.percentage) return 0;
-  
-  switch(num) {
-    case 1:
-    case 2:
-      return ans.value === 'Yes' ? 4 : 0;
-    case 3:
-    case 4:
-      return ans.value === 'Yes' ? Math.min((ans.items || []).length, 4) : 0;
-    case 5:
-      return ans.value === 'Yes' ? 6 : 0;
-    case 6:
-      return ans.value === 'Yes' ? 2 : 0;
-    case 7:
-      const gradeScores = { 'A++': 8, 'A+': 6, 'A': 4, 'B+': 3, 'B': 2, 'C': 2, 'Not Accredited': 0 };
-      return gradeScores[ans.value] || 0;
-    case 8:
-      return ans.value === 'Yes' ? 2 : 0;
-    case 9:
-      if (ans.value !== 'Yes') return 0;
-      const pct = parseFloat(ans.percentage || 0);
-      if (pct > 75) return 8;
-      if (pct > 50) return 6;
-      if (pct > 25) return 4;
-      if (pct > 0) return 2;
-      return 0;
-    case 10:
-      return ans.value === 'Yes' ? 4 : 0;
-    case 11:
-      return ans.value === 'Yes' ? Math.min((ans.items || []).length * 2, 4) : 0;
-    case 12:
-      if (ans.value !== 'Yes') return 0;
-      const count = parseInt(ans.count || 0, 10);
-      if (count > 10) return 6;
-      if (count >= 6) return 4;
-      if (count >= 1) return 2;
-      return 0;
-    case 13:
-      return ans.value === 'Yes' ? 4 : 0;
-    case 14:
-    case 15:
-    case 16:
-    case 17:
-    case 18:
-      return ans.value === 'Yes' ? Math.min((ans.items || []).length, 6) : 0;
-    case 19:
-      return ans.value === 'Yes' ? 4 : 0;
-    case 20:
-      const pct20 = parseFloat(ans.percentage || 0);
-      if (pct20 > 75) return 6;
-      if (pct20 > 50) return 4;
-      if (pct20 > 0) return 2;
-      return 0;
-    default:
-      return 0;
-  }
-}
-
-function calculateCategoryScores(nomination = {}) {
-  const answers = nomination?.answers || {};
-  const reviewerScores = nomination?.reviewer_scores || {};
-  const isSubmitted = nomination?.is_submitted;
-
-  const getScore = (num) => {
-    const key = `indicator_${num}`;
-    if (isSubmitted && reviewerScores[key] !== undefined && reviewerScores[key] !== null) {
-      return Number(reviewerScores[key]);
-    }
-    return getIndicatorScore(num, answers);
-  };
-
-  let cat1 = 0;
-  for (let i = 1; i <= 4; i++) cat1 += getScore(i);
-
-  let cat2 = 0;
-  for (let i = 5; i <= 10; i++) cat2 += getScore(i);
-
-  let cat3 = 0;
-  for (let i = 11; i <= 15; i++) cat3 += getScore(i);
-
-  let cat4 = 0;
-  for (let i = 16; i <= 20; i++) cat4 += getScore(i);
-
-  return [
-    { name: "Academic Programs", score: cat1, max: 16 },
-    { name: "Governance & NAAC", score: cat2, max: 30 },
-    { name: "Innovation & Cells", score: cat3, max: 26 },
-    { name: "Welfare & MMTTC", score: cat4, max: 28 },
-  ];
-}
-
-function CollegeDashboard() {
+export default function CollegeDashboard() {
   const navigate = useNavigate();
   const { institutionName, institutionAisheCode, formId } = useParams();
-  const [activeMenu, setActiveMenu] = useState("Dashboard");
-  const [showProfileDropdown, setShowProfileDropdown] = useState(false);
+  const { user, logout } = useAuth();
 
-  const { user: savedUser, logout } = useAuth();
-  const collegeName = savedUser?.college_name || "Govt College Example";
-  const principalName = savedUser?.full_name || "Dr. Rajesh Kumar";
-  const principalRole = formatRole(savedUser?.role);
-  const aisheCode = savedUser?.aishe_code || "C-12345";
-  
-  // Nomination Details State
-  const [nomination, setNomination] = useState(null);
-  const [nominationLoading, setNominationLoading] = useState(false);
-  const [nominationError, setNominationError] = useState("");
-  
-  const [selectedFormId, setSelectedFormId] = useState(null);
+  const [activeTab, setActiveTab] = useState("ASSESSMENT"); // 'ASSESSMENT' | 'LEGACY_SUBMISSIONS'
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [lastRefreshed, setLastRefreshed] = useState(null);
 
-  // Submissions loading state
-  const [submissionsList, setSubmissionsList] = useState([]);
-  const [submissionsLoading, setSubmissionsLoading] = useState(false);
-  const [submissionsError, setSubmissionsError] = useState("");
+  // College Domain Data
+  const [college, setCollege] = useState(null);
+  const [assessments, setAssessments] = useState([]);
+  const [activeAssessment, setActiveAssessment] = useState(null);
+  const [parameters, setParameters] = useState([]);
+  const [readiness, setReadiness] = useState(null);
+  const [reportsSummary, setReportsSummary] = useState(null);
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [selectedAssessmentId, setSelectedAssessmentId] = useState(null);
+  const [paramFilter, setParamFilter] = useState("ALL"); // 'ALL' | 'COMPLETED' | 'PENDING' | 'BLOCKED'
 
-  const collegeNameSlug = String(savedUser?.college_name || "college")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)+/g, "");
-  const collegeAisheSlug = String(savedUser?.aishe_code || "code")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)+/g, "");
+  // Legacy Nominations State
+  const [legacySubmissions, setLegacySubmissions] = useState([]);
+  const [legacyLoading, setLegacyLoading] = useState(false);
 
-  const instName = institutionName || collegeNameSlug;
-  const instAishe = institutionAisheCode || collegeAisheSlug;
+  const collegeName = college?.name || user?.college_name || "Institutional College";
+  const aisheCode = college?.aishe_code || user?.aishe_code || "C-AISHE";
+
+  const loadCollegeData = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      // 1. Fetch authorized college record
+      const colResponse = await fetchMyColleges();
+      const colList = colResponse?.results || (Array.isArray(colResponse) ? colResponse : []);
+      const myCol = colList.length > 0 ? colList[0] : null;
+
+      if (!myCol) {
+        setCollege(null);
+        setAssessments([]);
+        setActiveAssessment(null);
+        setParameters([]);
+        setReadiness(null);
+        return;
+      }
+      setCollege(myCol);
+
+      // 2. Fetch assessments for this college
+      const assessResponse = await fetchCollegeAssessments(myCol.id);
+      const assessList = assessResponse?.results || (Array.isArray(assessResponse) ? assessResponse : []);
+      setAssessments(assessList);
+
+      if (assessList.length > 0) {
+        const latest = assessList[0];
+        setActiveAssessment(latest);
+
+        // 3. Fetch parameter metadata and readiness for the active assessment
+        const [paramsData, readyData, reportsData] = await Promise.all([
+          fetchCollegeAssessmentParameters(latest.assessment_id).catch(() => []),
+          fetchCollegeAssessmentReadiness(latest.assessment_id).catch(() => null),
+          fetchInstitutionReportingSummary().catch(() => null),
+        ]);
+
+        setParameters(Array.isArray(paramsData) ? paramsData : []);
+        setReadiness(readyData);
+        setReportsSummary(reportsData);
+      } else {
+        setActiveAssessment(null);
+        setParameters([]);
+        setReadiness(null);
+      }
+
+      setLastRefreshed(new Date());
+    } catch (err) {
+      console.error("College dashboard data load failed:", err);
+      setError(err?.message || "Failed to load institutional college data.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    if (formId) {
-      setSelectedFormId(formId);
-    } else {
-      setSelectedFormId(null);
-    }
-  }, [formId]);
+    loadCollegeData();
+  }, [loadCollegeData]);
 
-  const loadSubmissionsList = useCallback(async () => {
-    setSubmissionsLoading(true);
-    setSubmissionsError("");
+  // Load Legacy Submissions when tab selected
+  const loadLegacyData = useCallback(async () => {
+    setLegacyLoading(true);
     try {
       const data = await fetchMySubmissions();
-      setSubmissionsList(data);
+      setLegacySubmissions(Array.isArray(data) ? data : []);
     } catch (err) {
-      console.error("Failed to load submissions list:", err);
-      setSubmissionsError(err.message || "Failed to load submissions.");
+      console.error("Failed to load legacy submissions:", err);
     } finally {
-      setSubmissionsLoading(false);
+      setLegacyLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    if (activeMenu === "My Submissions") {
-      loadSubmissionsList();
+    if (activeTab === "LEGACY_SUBMISSIONS") {
+      loadLegacyData();
     }
-  }, [activeMenu, loadSubmissionsList]);
+  }, [activeTab, loadLegacyData]);
 
-  const loadNomination = useCallback(async () => {
-    setNominationLoading(true);
-    setNominationError("");
+  const handleCreateAssessment = async () => {
+    if (!college) return;
+    setCreating(true);
+    setError(null);
     try {
-      const data = await fetchNominationDetails("nep-excellence-nomination-2025");
-      setNomination(data);
+      await createCollegeAssessment(college.id, { academic_year: "2025-26" });
+      await loadCollegeData();
     } catch (err) {
-      console.error("Failed to load nomination:", err);
-      setNominationError(err.message || "Failed to load nomination details.");
+      console.error("Failed to create college assessment:", err);
+      setError(err?.message || "Failed to initialize new assessment.");
     } finally {
-      setNominationLoading(false);
+      setCreating(false);
     }
-  }, []);
+  };
 
-  useEffect(() => {
-    if (activeMenu === "Dashboard") {
-      loadNomination();
+  const handleSubmitAssessment = async () => {
+    if (!activeAssessment) return;
+    if (
+      !window.confirm(
+        "Are you sure you want to formally submit this assessment for Screening Committee evaluation? Once submitted, parameter inputs are locked."
+      )
+    ) {
+      return;
     }
-  }, [activeMenu, loadNomination]);
+    setSubmitting(true);
+    setError(null);
+    try {
+      await submitCollegeAssessment(activeAssessment.assessment_id);
+      await loadCollegeData();
+    } catch (err) {
+      console.error("Submission failed:", err);
+      setError(err?.message || "College assessment submission rejected by validation rules.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const handleLogout = async () => {
     await logout();
-    setShowProfileDropdown(false);
     navigate("/auth/login");
   };
 
-  // Phase 9 Reports & Analytics state
-  const [reportsSummary, setReportsSummary] = useState(null);
-  const [reportsLoading, setReportsLoading] = useState(false);
-  const [reportsError, setReportsError] = useState("");
-  const [selectedAssessmentId, setSelectedAssessmentId] = useState(null);
+  // Metrics (server-authoritative)
+  const completedParameters = parameters.filter((p) => p.submitted_input != null && Object.keys(p.submitted_input).length > 0).length;
+  const totalParameters = parameters.length || 22;
+  const coveredSubcriteria = readiness?.evidence_readiness_summary?.covered_subcriteria ?? 0;
+  const totalSubcriteria = readiness?.evidence_readiness_summary?.total_subcriteria ?? 45;
+  const isReadyForScoring = readiness?.is_ready ?? false;
 
-  const loadReportsSummary = useCallback(async () => {
-    setReportsLoading(true);
-    setReportsError("");
-    try {
-      const data = await fetchInstitutionReportingSummary();
-      setReportsSummary(data);
-    } catch (err) {
-      console.error("Failed to load institution reports summary:", err);
-      setReportsError(err.message || "Failed to load assessment reports.");
-    } finally {
-      setReportsLoading(false);
-    }
-  }, []);
+  const filteredParameters = parameters.filter((p) => {
+    const isComplete = p.submitted_input != null && Object.keys(p.submitted_input).length > 0;
+    const isUnresolved = Boolean(UNRESOLVED_SPEC_PARAMS[p.parameter_code]);
+    if (paramFilter === "COMPLETED") return isComplete;
+    if (paramFilter === "PENDING") return !isComplete;
+    if (paramFilter === "BLOCKED") return isUnresolved;
+    return true;
+  });
 
-  useEffect(() => {
-    if (activeMenu === "Assessment Reports") {
-      loadReportsSummary();
-    }
-  }, [activeMenu, loadReportsSummary]);
-
-  const menuItems = [
-    { title: "Dashboard", icon: LayoutDashboard },
-    { title: "My Submissions", icon: CheckSquare },
-    { title: "Assessment Reports", icon: Award },
-  ];
-
-  const tier = nomination?.award_category;
-
-  const tierName =
-    tier === "Platinum"
-      ? "Platinum Tier"
-      : tier === "Gold"
-      ? "Gold Tier"
-      : tier === "Silver"
-      ? "Silver Tier"
-      : "No Tier Achieved";
-
-  const indicatorAnswers = nomination?.answers || {};
-  let filledIndicatorCount = 0;
-  for (let i = 1; i <= 20; i++) {
-    const val = indicatorAnswers[`indicator_${i}`];
-    if (val?.value || (i === 20 && val?.percentage !== undefined && val?.percentage !== "")) filledIndicatorCount++;
+  // Render Legacy Nomination Workspace if route has formId
+  if (formId) {
+    const collegeNameSlug = String(user?.college_name || "college").toLowerCase().replace(/[^a-z0-9]+/g, "-");
+    const collegeAisheSlug = String(user?.aishe_code || "code").toLowerCase().replace(/[^a-z0-9]+/g, "-");
+    return (
+      <NominationWorkspace
+        formId={formId}
+        onBack={() => navigate(`/institution/${institutionName || collegeNameSlug}/${institutionAisheCode || collegeAisheSlug}/dashboard`)}
+      />
+    );
   }
-  const progressPercent = Math.round((filledIndicatorCount / 20) * 100);
-
-  const categoryScores = calculateCategoryScores(nomination);
-  const totalScored = categoryScores.reduce((sum, c) => sum + c.score, 0);
-  const totalMax = categoryScores.reduce((sum, c) => sum + c.max, 0);
-  const rankedCategories = [...categoryScores].sort((a, b) => (b.score / b.max) - (a.score / a.max));
-  const strongestCategory = rankedCategories[0];
-  const weakestCategory = rankedCategories[rankedCategories.length - 1];
-
-  // Tier thresholds (out of 100) — adjust these to match the council's actual cutoffs
-  const TIER_THRESHOLDS = { Silver: 40, Gold: 60, Platinum: 80 };
-  const nextTierInfo = (() => {
-    if (totalScored >= TIER_THRESHOLDS.Platinum) {
-      return { label: "Platinum (Highest Tier)", target: 100, color: "#4f46e5" };
-    }
-    if (totalScored >= TIER_THRESHOLDS.Gold) {
-      return { label: "Platinum", target: TIER_THRESHOLDS.Platinum, color: "#4f46e5" };
-    }
-    if (totalScored >= TIER_THRESHOLDS.Silver) {
-      return { label: "Gold", target: TIER_THRESHOLDS.Gold, color: "#b7791f" };
-    }
-    return { label: "Silver", target: TIER_THRESHOLDS.Silver, color: "#6b7280" };
-  })();
-  const tierProgressPercent = Math.min(100, Math.round((totalScored / nextTierInfo.target) * 100));
-
-  const recentActivity = (() => {
-    const items = [];
-    if (nomination?.status === "Clarification Requested") {
-      items.push({
-        key: "clarification",
-        title: "Clarification requested by Screening Committee",
-        detail: "Specific fields were unlocked for you to respond.",
-        date: nomination?.updated_at,
-        color: "#ef4444",
-      });
-    }
-    if (nomination?.is_submitted && nomination?.submitted_at) {
-      items.push({
-        key: "submitted",
-        title: "Nomination submitted to Screening Committee",
-        detail: "Your form has been locked for review.",
-        date: nomination?.submitted_at,
-        color: "#16a34a",
-      });
-    }
-    if (!nomination?.is_submitted && nomination?.updated_at) {
-      items.push({
-        key: "updated",
-        title: "Nomination form saved",
-        detail: `${filledIndicatorCount} of 20 indicators completed so far.`,
-        date: nomination?.updated_at,
-        color: "#e8791d",
-      });
-    }
-    if (nomination?.reviewer_scores && Object.keys(nomination.reviewer_scores).length > 0) {
-      items.push({
-        key: "reviewed",
-        title: "Scores updated by Screening Committee",
-        detail: `Current tier: ${tierName}.`,
-        date: nomination?.updated_at,
-        color: "#4f46e5",
-      });
-    }
-    return items
-      .filter((item) => item.date)
-      .sort((a, b) => new Date(b.date) - new Date(a.date));
-  })();
 
   return (
-    <div className={styles.dashboardLayout}>
-      <aside className="peer fixed inset-y-0 left-0 w-20 hover:w-64 bg-white text-slate-800 flex flex-col z-20 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border-r border-slate-100 transition-all duration-300 ease-in-out group overflow-hidden">
-        {/* Brand Header */}
-        <div className="h-16 flex items-center px-4 border-b border-slate-100 bg-slate-50/30">
-          <div className="flex items-center space-x-3 w-full">
-            <div className="w-10 h-10 rounded-xl bg-white border border-slate-200/60 flex items-center justify-center shadow-sm shrink-0 overflow-hidden p-1 transition-transform duration-300 group-hover:scale-105">
-              <img src={hshecLogo} alt="HSHEC Logo" className="w-full h-full object-contain" />
-            </div>
-            <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-300 whitespace-nowrap min-w-0">
-              <h1 className="text-xs font-bold tracking-tight text-slate-800 leading-none">HSHEC</h1>
-              <span className="text-[9px] text-blue-600 font-bold uppercase tracking-wider block mt-0.5">Principal Portal</span>
-            </div>
+    <div className="min-h-screen bg-slate-50 flex flex-col">
+      {/* Top Application Bar */}
+      <header className="bg-slate-900 text-white border-b border-slate-800 sticky top-0 z-40 px-4 sm:px-6 h-14 flex items-center justify-between shadow-sm">
+        <div className="flex items-center gap-3">
+          <img src={hshecLogo} alt="HSHEC" className="w-8 h-8 rounded object-contain bg-white p-0.5" />
+          <div>
+            <span className="text-xs font-bold tracking-tight text-white block leading-none">
+              NEP Excellence Awards 2026
+            </span>
+            <span className="text-[10px] text-blue-400 font-semibold uppercase tracking-wider">
+              College Principal Portal
+            </span>
           </div>
         </div>
 
-        {/* Nav Menu */}
-        <nav className="flex-1 overflow-y-auto py-6 px-3 space-y-1.5">
-          <span className="px-3.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2.5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 whitespace-nowrap">
-            Principal Portal
-          </span>
-          <ul className="space-y-1">
-            {menuItems.map((item, index) => {
-              const Icon = item.icon;
-              const isActive = activeMenu === item.title;
-              return (
-                <li key={index}>
-                  <button
-                    type="button"
-                    className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl transition-all duration-300 text-sm font-medium relative group/item ${isActive
-                        ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-500/20 font-semibold'
-                        : 'text-slate-600 hover:bg-blue-50/50 hover:text-blue-600'
-                      }`}
-                    onClick={() => {
-                      setActiveMenu(item.title);
-                      if (formId) {
-                        navigate(`/institution/${instName}/${instAishe}/dashboard`);
-                      }
-                    }}
-                  >
-                    <Icon className={`w-5 h-5 shrink-0 transition-transform duration-300 group-hover/item:scale-110 ${isActive ? 'text-white' : 'text-slate-400 group-hover/item:text-blue-600'
-                      }`} />
-                    <span className="opacity-0 group-hover:opacity-100 transition-opacity duration-300 whitespace-nowrap">
-                      {item.title}
-                    </span>
-                    {/* Subtle hover/active indicator */}
-                    {isActive && (
-                      <span className="absolute right-3 w-1.5 h-1.5 rounded-full bg-white opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                    )}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        </nav>
-
-        {/* Institution Profile Footer */}
-        <div className="p-4 border-t border-slate-100 bg-slate-50/40 backdrop-blur-md">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-100 to-indigo-50 border border-blue-200/50 flex items-center justify-center text-blue-600 font-bold shadow-sm shrink-0">
-              <School className="w-5 h-5 text-blue-600" />
-            </div>
-            <div className="min-w-0 flex-1 opacity-0 group-hover:opacity-100 transition-opacity duration-300 whitespace-nowrap">
-              <p className="text-xs font-semibold text-slate-800 truncate" title={collegeName}>{collegeName}</p>
-              <p className="text-[10px] text-blue-600 font-semibold truncate">AISHE: {aisheCode}</p>
-            </div>
+        <div className="flex items-center gap-3">
+          <div className="text-right hidden sm:block">
+            <p className="text-xs font-bold text-slate-200 leading-none">{collegeName}</p>
+            <p className="text-[10px] text-slate-400 font-mono">AISHE: {aisheCode}</p>
           </div>
+          <button
+            onClick={handleLogout}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 text-xs font-semibold transition-colors"
+          >
+            <LogOut size={13} />
+            <span className="hidden sm:inline">Sign Out</span>
+          </button>
         </div>
-      </aside>
+      </header>
 
-      <div className={styles.mainContent}>
-        <header className={styles.topNavbar}>
-          <div className={styles.headerTitle}>
-            <div className={styles.breadcrumbs}>
-              <span>Home</span>
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-              >
-                <path d="M9 5l7 7-7 7" />
-              </svg>
-              <span className={styles.breadcrumbActive}>{activeMenu}</span>
-            </div>
-            <h2>{activeMenu}</h2>
-            <p>NEP Excellence Awards Evaluation Portal.</p>
-          </div>
-
-          <div className={styles.headerActions}>
-            <div className={styles.profileWrapper}>
-              <div
-                className={styles.userProfile}
-                onClick={() => setShowProfileDropdown(!showProfileDropdown)}
-              >
-                <div className={styles.avatar}>PP</div>
-                <div>
-                  <h4>{principalName}</h4>
-                  <span>{principalRole}</span>
-                </div>
-              </div>
-
-              {showProfileDropdown && (
-                <div className={styles.dropdownMenu}>
-                  <button
-                    type="button"
-                    className={styles.dropdownItemButton}
-                    onClick={handleLogout}
-                  >
-                    Logout
-                  </button>
-                </div>
-              )}
-            </div>
-
+      {/* Main Workspace Layout */}
+      <div className="max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 flex-1">
+        {/* Navigation Tabs (Authoritative Assessment vs Legacy Nominations) */}
+        <div className="flex items-center justify-between border-b border-slate-200 pb-3 flex-wrap gap-3">
+          <div className="inline-flex rounded-xl bg-slate-200/80 p-1 text-xs font-bold text-slate-600">
             <button
-              type="button"
-              className={styles.logoutButton}
-              onClick={handleLogout}
+              onClick={() => setActiveTab("ASSESSMENT")}
+              className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
+                activeTab === "ASSESSMENT"
+                  ? "bg-white text-slate-900 shadow-sm"
+                  : "hover:text-slate-900"
+              }`}
             >
-              Logout
+              <Award size={14} className={activeTab === "ASSESSMENT" ? "text-blue-600" : ""} />
+              <span>NEP 2026 Assessment (C1–C22)</span>
+            </button>
+            <button
+              onClick={() => setActiveTab("LEGACY_SUBMISSIONS")}
+              className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
+                activeTab === "LEGACY_SUBMISSIONS"
+                  ? "bg-white text-slate-900 shadow-sm"
+                  : "hover:text-slate-900"
+              }`}
+            >
+              <Archive size={14} className={activeTab === "LEGACY_SUBMISSIONS" ? "text-blue-600" : ""} />
+              <span>Legacy Submissions Archive</span>
             </button>
           </div>
-        </header>
 
-        {selectedFormId ? (
-          <NominationWorkspace formId={selectedFormId} onBack={() => navigate(`/institution/${instName}/${instAishe}/dashboard`)} />
-        ) : activeMenu === "Dashboard" ? (
-          <div style={{ padding: "24px" }}>
-            {nominationError && (
-              <div style={{ backgroundColor: "#fee2e2", borderLeft: "4px solid #ef4444", color: "#b91c1c", padding: "12px", borderRadius: "8px", fontSize: "0.875rem", marginBottom: "24px" }}>
-                {nominationError}
-              </div>
-            )}
+          <button
+            onClick={loadCollegeData}
+            disabled={loading}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors shadow-xs"
+          >
+            <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
+            <span>Refresh Data</span>
+          </button>
+        </div>
 
-            {nominationLoading ? (
-              <div className={pageStyles.loadingContainer}>
-                <div className={pageStyles.spinner}></div>
-                <p style={{ color: "#64748b", fontSize: "0.875rem" }}>Loading dashboard details...</p>
-              </div>
+        {/* Global Error Notice */}
+        {error && (
+          <ErrorState
+            title="College Portal Notice"
+            message={error}
+            onRetry={loadCollegeData}
+          />
+        )}
+
+        {/* TAB 1: AUTHORITATIVE NEP 2026 ASSESSMENT (C1–C22) */}
+        {activeTab === "ASSESSMENT" && (
+          <>
+            {loading && !college ? (
+              <DashboardSkeleton />
+            ) : !college ? (
+              <EmptyState
+                icon={School}
+                title="No College Profile Assigned"
+                description="Your account is not currently linked to an approved college record in the database. Please contact your State DHE Administrator."
+              />
             ) : (
               <>
-              
-                <div className={pageStyles.overviewGrid}>
-                  <section className={pageStyles.welcomeCard}>
-                    <h3>HSHEC Principal Portal</h3>
-                    <p>
-                      Welcome to the Haryana State Higher Education Council portal.
-                      Review your metrics, fill indicators, and submit the institutional nomination form.
-                    </p>
-                    <button
-                      type="button"
-                      className={pageStyles.startBtn}
-                      onClick={() => navigate(`/institution/${instName}/${instAishe}/dashboard/forms/nep-excellence-nomination-2025`)}
-                    >
-                      {nomination?.is_submitted ? "View Nomination" : nomination?.answers && Object.keys(nomination.answers).length > 0 ? "Continue Form" : "Start Nomination"}
-                    </button>
-                  </section>
-
-                  <section className={pageStyles.infoCard}>
-                    <h3>Institution Profile</h3>
-                    <div className={pageStyles.infoDetails}>
-                      <div className={pageStyles.infoRow}>
-                        <span>College Name:</span>
-                        <strong>{collegeName}</strong>
-                      </div>
-                      <div className={pageStyles.infoRow}>
-                        <span>AISHE Code:</span>
-                        <strong>{aisheCode}</strong>
-                      </div>
-                      <div className={pageStyles.infoRow}>
-                        <span>Principal:</span>
-                        <strong>{principalName}</strong>
-                      </div>
-                      <div className={pageStyles.infoRow}>
-                        <span>Role:</span>
-                        <strong>{principalRole}</strong>
-                      </div>
-                    </div>
-                  </section>
-
-                  <section className={pageStyles.statusCard}>
-                    <div className={pageStyles.statusHeader}>
-                      <h3>Nomination Status</h3>
-                      <span className={`${pageStyles.statusBadge} ${nomination?.is_submitted ? pageStyles.submitted : pageStyles.draft}`}>
-                        {nomination?.is_submitted ? "Submitted" : "Draft Mode"}
+                {/* Institution Identity Banner */}
+                <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-blue-950 rounded-2xl p-6 sm:p-8 text-white shadow-lg border border-slate-700/60 flex flex-col md:flex-row md:items-center justify-between gap-6">
+                  <div>
+                    <div className="flex items-center gap-2 mb-2 flex-wrap">
+                      <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-400/30 uppercase tracking-wide">
+                        College Principal
+                      </span>
+                      <span className="text-xs text-slate-300 font-medium">
+                        AISHE: {aisheCode}
                       </span>
                     </div>
-                    <div className={pageStyles.statusContent}>
-                      <p>
-                        {nomination?.is_submitted
-                          ? "Your institutional nomination form has been locked and submitted to the screening committee."
-                          : "Your nomination form is in draft mode. You can edit answers and submit once all sections are complete."}
-                      </p>
-                      <div style={{ marginBottom: "16px" }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.8rem", color: "#64748b", marginBottom: "6px" }}>
-                          <span><strong>Progress</strong></span>
-                          <span>{filledIndicatorCount} of 20 indicators ({progressPercent}%)</span>
-                        </div>
-                        <div style={{ width: "100%", height: "8px", borderRadius: "9999px", backgroundColor: "#f1f5f9", overflow: "hidden" }}>
-                          <div
-                            style={{
-                              width: `${progressPercent}%`,
-                              height: "100%",
-                              borderRadius: "9999px",
-                              backgroundColor: "#e8791d",
-                              transition: "width 0.4s ease",
-                            }}
-                          />
-                        </div>
-                      </div>
-                      <div className={pageStyles.actionButtonGroup}>
-                        <button
-                          type="button"
-                          className={pageStyles.primaryActionBtn}
-                          onClick={() => navigate(`/institution/${instName}/${instAishe}/dashboard/forms/nep-excellence-nomination-2025`)}
-                        >
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: "4px" }}>
-                            <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
-                            <path d="M18.5 2.5a2.121 2.121 0 113 3L12 15l-4 1 1-4 9.5-9.5z" />
-                          </svg>
-                          {nomination?.is_submitted ? "View Answers" : "Edit Application"}
-                        </button>
-                      </div>
-                    </div>
-                  </section>
-
-                  <section
-                    className={pageStyles.scoreCard}
-                    style={{
-                      borderTop: `4px solid ${
-                        tier === "Platinum" ? "#4f46e5" : tier === "Gold" ? "#b7791f" : tier === "Silver" ? "#6b7280" : "#cbd5e1"
-                      }`,
-                      boxShadow: "0 4px 20px rgba(0,0,0,0.04)",
-                    }}
-                  >
-                    <div className={pageStyles.scoreHeader}>
-                      <h3>College Tier</h3>
-                    </div>
-                    <div className={pageStyles.gaugeArea}>
-                      <div
-                        className={`${pageStyles.tierDisplay} ${
-                          tier === "Platinum"
-                            ? pageStyles.platinumTier
-                            : tier === "Gold"
-                            ? pageStyles.goldTier
-                            : tier === "Silver"
-                            ? pageStyles.silverTier
-                            : pageStyles.noTier
-                        }`}
-                      >
-                        <Trophy className={pageStyles.tierIcon} />
-
-                        {tier === "Platinum" || tier === "Gold" || tier === "Silver" ? (
-                          <p>Congratulations! Your institution achieved the {tier} Tier.</p>
-                        ) : (
-                          <p>Your institution has not qualified for any tier.</p>
-                        )}
-                      </div>
-                    </div>
-                    <span className={`${pageStyles.tierBadge} ${
-                      tier === "Platinum"
-                        ? pageStyles.badgePlatinum
-                        : tier === "Gold"
-                        ? pageStyles.badgeGold
-                        : tier === "Silver"
-                        ? pageStyles.badgeSilver
-                        : pageStyles.badgeNone
-                    }`}>
-                      {tierName}
-                    </span>
-                    <span className={pageStyles.tierSub}>Current College Tier
-</span>
-
-                    <div style={{ marginTop: "16px", padding: "0 4px" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.75rem", color: "#64748b", marginBottom: "6px" }}>
-                        <span><strong>{totalScored}</strong> / 100 pts</span>
-                        <span>
-                          {tier === "Platinum"
-                            ? "Top Tier Reached"
-                            : `${nextTierInfo.target - totalScored} pts to ${nextTierInfo.label}`}
-                        </span>
-                      </div>
-                      <div style={{ width: "100%", height: "8px", borderRadius: "9999px", backgroundColor: "#f1f5f9", overflow: "hidden" }}>
-                        <div
-                          style={{
-                            width: `${tierProgressPercent}%`,
-                            height: "100%",
-                            borderRadius: "9999px",
-                            backgroundColor: nextTierInfo.color,
-                            transition: "width 0.4s ease",
-                          }}
-                        />
-                      </div>
-                    </div>
-                  </section>
-                </div>
-
-                <div className={pageStyles.chartsGrid} style={{ gridTemplateColumns: "1fr" }}>
-                  <div className={pageStyles.chartCard} style={{ width: "100%" }}>
-                    <h3>NEP Pillars Balance</h3>
-                    <p>Balance distribution map showing overall strengths and area focus.</p>
-                    <div style={{ flex: 1, minHeight: 0 }}>
-                      <ResponsiveContainer width="100%" height="100%">
-                        <RadarChart cx="50%" cy="50%" outerRadius="75%" data={categoryScores}>
-                          <PolarGrid stroke="#cbd5e1" />
-                          <PolarAngleAxis dataKey="name" tick={{ fill: "#475569", fontSize: 9 }} />
-                          <PolarRadiusAxis angle={30} domain={[0, 30]} tick={{ fill: "#94a3b8", fontSize: 8 }} />
-                          <Radar name="Points Scored" dataKey="score" stroke="#e8791d" fill="#e8791d" fillOpacity={0.5} />
-                          <Radar name="Max Points" dataKey="max" stroke="#64748b" fill="#64748b" fillOpacity={0.08} />
-                          <Tooltip />
-                          <Legend wrapperStyle={{ fontSize: 10 }} />
-                        </RadarChart>
-                      </ResponsiveContainer>
-                    </div>
+                    <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white mb-1">
+                      {collegeName}
+                    </h1>
+                    <p className="text-xs sm:text-sm text-slate-300 max-w-2xl leading-relaxed">
+                      NEP Excellence Awards 2026 — Statutory self-appraisal parameters (C1–C22), evidence verification gating, and audit ledger.
+                    </p>
                   </div>
-                </div>
 
-                <div
-                  style={{
-                    backgroundColor: "#ffffff",
-                    border: "1px solid #f1f5f9",
-                    borderRadius: "16px",
-                    padding: "24px",
-                    marginTop: "24px",
-                    boxShadow: "0 4px 20px rgba(0,0,0,0.02)",
-                  }}
-                >
-                  <h3 style={{ margin: 0, fontSize: "1.05rem", fontWeight: "700", color: "#1e293b" }}>Recent Activity</h3>
-                  <p style={{ margin: "4px 0 20px", fontSize: "0.85rem", color: "#64748b" }}>
-                    Latest updates on your nomination.
-                  </p>
-
-                  {recentActivity.length === 0 ? (
-                    <p style={{ fontSize: "0.875rem", color: "#94a3b8" }}>No activity yet. Start filling your nomination to see updates here.</p>
-                  ) : (
-                    <div style={{ display: "flex", flexDirection: "column", gap: "0" }}>
-                      {recentActivity.map((item, idx) => (
-                        <div
-                          key={item.key}
-                          style={{
-                            display: "flex",
-                            gap: "16px",
-                            paddingBottom: idx === recentActivity.length - 1 ? 0 : "18px",
-                            marginBottom: idx === recentActivity.length - 1 ? 0 : "18px",
-                            borderBottom: idx === recentActivity.length - 1 ? "none" : "1px solid #f1f5f9",
-                          }}
-                        >
-                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", paddingTop: "4px" }}>
-                            <span
-                              style={{
-                                width: "10px",
-                                height: "10px",
-                                borderRadius: "9999px",
-                                backgroundColor: item.color,
-                                display: "inline-block",
-                                flexShrink: 0,
-                              }}
-                            />
-                          </div>
-                          <div style={{ flex: 1 }}>
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: "8px" }}>
-                              <p style={{ margin: 0, fontSize: "0.9rem", fontWeight: "600", color: "#0f172a" }}>{item.title}</p>
-                              <span style={{ fontSize: "0.75rem", color: "#94a3b8", whiteSpace: "nowrap" }}>
-                                {new Date(item.date).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}
-                              </span>
-                            </div>
-                            <p style={{ margin: "4px 0 0", fontSize: "0.8125rem", color: "#64748b" }}>{item.detail}</p>
-                          </div>
-                        </div>
-                      ))}
+                  {activeAssessment && (
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        onClick={() => setSelectedAssessmentId(activeAssessment.assessment_id)}
+                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all shadow-sm"
+                      >
+                        <Eye size={13} />
+                        <span>Audit Report</span>
+                      </button>
+                      <button
+                        onClick={() => downloadAssessmentReportCSV(activeAssessment.assessment_id)}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold transition-all shadow-sm"
+                        title="Download authoritative CSV report"
+                      >
+                        <FileSpreadsheet size={13} />
+                        <span>Export CSV</span>
+                      </button>
                     </div>
                   )}
                 </div>
 
-              </>
-            )}
-          </div>
-        ) : activeMenu === "My Submissions" ? (
-          <div style={{ padding: "24px" }}>
-            <h3 style={{ fontSize: "1.25rem", fontWeight: "700", marginBottom: "18px", color: "#1e293b" }}>My Submissions</h3>
-            {submissionsError && (
-              <div style={{ backgroundColor: "#fee2e2", borderLeft: "4px solid #ef4444", color: "#b91c1c", padding: "12px", borderRadius: "8px", fontSize: "0.875rem", marginBottom: "16px" }}>
-                {submissionsError}
-              </div>
-            )}
-            {submissionsLoading ? (
-              <div className={pageStyles.loadingContainer}>
-                <div className={pageStyles.spinner}></div>
-                <p style={{ color: "#64748b", fontSize: "0.875rem" }}>Loading submissions...</p>
-              </div>
-            ) : submissionsList.length === 0 ? (
-              <p style={{ color: "#64748b", fontSize: "0.875rem" }}>No submissions found for your institution.</p>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-                {submissionsList.map((sub) => (
-                  <div key={sub.id} style={{ backgroundColor: "#ffffff", border: "1px solid #e2e8f0", borderRadius: "16px", padding: "24px", boxShadow: "0 4px 20px rgba(0,0,0,0.02)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "20px" }}>
-                    <div style={{ flex: "1", minWidth: "280px" }}>
-                      <span style={{ fontSize: "0.6875rem", backgroundColor: "#f1f5f9", padding: "4px 10px", borderRadius: "9999px", textTransform: "uppercase", fontWeight: "700", color: "#64748b" }}>Form ID: {sub.form_id}</span>
-                      <h4 style={{ fontSize: "1.1rem", fontWeight: "700", marginTop: "12px", marginBottom: "8px", color: "#0f172a" }}>
-                        {sub.form_id === "nep-excellence-nomination-2025" 
-                          ? "Haryana State NEP 2020 Implementation Excellence Award — Nomination Form 2025" 
-                          : "Institutional Nomination Form"}
-                      </h4>
-                      <div style={{ display: "flex", gap: "16px", flexWrap: "wrap", fontSize: "0.85rem", color: "#64748b", marginTop: "12px" }}>
-                        <span><strong>Head:</strong> {sub.head_name || "N/A"}</span>
-                        <span><strong>Contact:</strong> {sub.head_contact || "N/A"}</span>
-                        <span><strong>Updated:</strong> {new Date(sub.updated_at).toLocaleDateString()}</span>
-                        {sub.submitted_at && <span><strong>Submitted:</strong> {new Date(sub.submitted_at).toLocaleDateString()}</span>}
-                      </div>
+                {/* Assessment Lifecycle Progress Stepper */}
+                {activeAssessment ? (
+                  <AssessmentStepper
+                    status={activeAssessment.status}
+                    isReadyForScoring={isReadyForScoring}
+                    completedParameters={completedParameters}
+                    totalParameters={totalParameters}
+                  />
+                ) : (
+                  <div className="bg-white rounded-xl border border-slate-200 p-6 text-center shadow-xs">
+                    <h3 className="text-sm font-bold text-slate-900 mb-1">
+                      No Active College Assessment Session for 2025-26
+                    </h3>
+                    <p className="text-xs text-slate-500 max-w-md mx-auto mb-4">
+                      Initialize your college’s appraisal workspace to record inputs for C1–C22 and submit documentary evidence.
+                    </p>
+                    <button
+                      onClick={handleCreateAssessment}
+                      disabled={creating}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-colors shadow-xs"
+                    >
+                      <PlusCircle size={14} />
+                      <span>{creating ? "Initializing..." : "Start 2025-26 Assessment"}</span>
+                    </button>
+                  </div>
+                )}
+
+                {/* Key Assessment Summary KPIs */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <StatCard
+                    title="Assessment Status"
+                    value={activeAssessment ? activeAssessment.status : "NOT_STARTED"}
+                    sublabel={activeAssessment ? `Session: ${activeAssessment.assessment_id}` : "No active session"}
+                    badge={<StatusBadge status={activeAssessment?.status || "DRAFT"} size="sm" />}
+                    icon={activeAssessment?.status === "CERTIFIED" ? ShieldCheck : Clock}
+                    variant={activeAssessment?.status === "CERTIFIED" ? "emerald" : "blue"}
+                  />
+
+                  <StatCard
+                    title="Parameters Completed"
+                    value={`${completedParameters} / ${totalParameters}`}
+                    sublabel={`${Math.round((completedParameters / totalParameters) * 100)}% inputs recorded`}
+                    icon={ClipboardList}
+                    variant="blue"
+                  />
+
+                  <StatCard
+                    title="Evidence Coverage"
+                    value={`${coveredSubcriteria} / ${totalSubcriteria}`}
+                    sublabel={isReadyForScoring ? "Evidence Gating Passed" : "Action Required"}
+                    badge={
+                      <span
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                          isReadyForScoring
+                            ? "bg-emerald-100 text-emerald-800"
+                            : "bg-amber-100 text-amber-800"
+                        }`}
+                      >
+                        {isReadyForScoring ? "Eligible" : "Blocked"}
+                      </span>
+                    }
+                    icon={CheckCircle2}
+                    variant={isReadyForScoring ? "emerald" : "amber"}
+                  />
+
+                  <StatCard
+                    title="Statutory Framework"
+                    value={activeAssessment?.framework || "COLLEGE_2026"}
+                    sublabel={`AY ${activeAssessment?.academic_year || "2025-26"}`}
+                    icon={School}
+                    variant="purple"
+                  />
+                </div>
+
+                {/* Unresolved College Specifications Notice */}
+                <BlockingNotice
+                  type="spec_blocked"
+                  title="Statutory Notice: Pending Council Specifications (C5, C7, C8, C16)"
+                  reasons={[
+                    "C5 (Institutional Development Plan) has an unresolved boundary rule awaiting council notification.",
+                    "C7 (NAAC Accreditation), C8 (National Credit Framework), and C16 (Gender Parity) criteria rules are pending resolution.",
+                    "These specific parameters cannot be evaluated until the applicable specifications are finalized by the council.",
+                  ]}
+                />
+
+                {/* Primary Next Action Banner */}
+                {activeAssessment && (
+                  <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div>
+                      <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
+                        Primary Next Action
+                      </span>
+                      {activeAssessment.status === "DRAFT" ? (
+                        <div>
+                          <h4 className="text-sm font-bold text-slate-900">
+                            Complete Parameter Inputs and Submit Assessment
+                          </h4>
+                          <p className="text-xs text-slate-500">
+                            Submit your self-appraisal to the Screening Committee for independent evidence verification and scoring.
+                          </p>
+                        </div>
+                      ) : activeAssessment.status === "SUBMITTED" ? (
+                        <div>
+                          <h4 className="text-sm font-bold text-blue-950 flex items-center gap-1.5">
+                            <Clock size={14} className="text-blue-600" />
+                            Submitted for Screening Committee Evaluation
+                          </h4>
+                          <p className="text-xs text-slate-500">
+                            Inputs are locked. Assigned committee reviewers are evaluating documentary evidence.
+                          </p>
+                        </div>
+                      ) : (
+                        <div>
+                          <h4 className="text-sm font-bold text-emerald-950 flex items-center gap-1.5">
+                            <ShieldCheck size={14} className="text-emerald-600" />
+                            Assessment Certified
+                          </h4>
+                          <p className="text-xs text-slate-500">
+                            Official evaluation and score certification finalized.
+                          </p>
+                        </div>
+                      )}
                     </div>
-                    
-                    <div style={{ display: "flex", alignItems: "center", gap: "24px", flexWrap: "wrap" }}>
-                      <div style={{ textAlign: "center" }}>
-                        <span style={{ display: "block", fontSize: "0.75rem", color: "#64748b", fontWeight: "600", textTransform: "uppercase", marginBottom: "4px" }}>Award</span>
-                        <span className={`${pageStyles.tierBadge} ${
-                          sub.award_category === "Platinum" ? pageStyles.badgePlatinum : sub.award_category === "Gold" ? pageStyles.badgeGold : sub.award_category === "Silver" ? pageStyles.badgeSilver : pageStyles.badgeNone
-                        }`} style={{ padding: "6px 14px", fontSize: "0.75rem", marginTop: 0 }}>
-                          {sub.award_category}
-                        </span>
-                      </div>
 
-                      <div style={{ textAlign: "center" }}>
-                        <span style={{ display: "block", fontSize: "0.75rem", color: "#64748b", fontWeight: "600", textTransform: "uppercase", marginBottom: "4px" }}>Status</span>
-                        <span style={{
-                          fontSize: "0.75rem",
-                          fontWeight: "700",
-                          padding: "6px 14px",
-                          borderRadius: "9999px",
-                          textTransform: "uppercase",
-                          backgroundColor: sub.status === "Clarification Requested" 
-                            ? "#fee2e2" 
-                            : sub.is_submitted 
-                              ? "#d1fae5" 
-                              : "#fef3c7",
-                          color: sub.status === "Clarification Requested"
-                            ? "#ef4444"
-                            : sub.is_submitted
-                              ? "#065f46"
-                              : "#78350f"
-                        }}>{sub.status === "Clarification Requested" ? "Clarification Requested" : sub.is_submitted ? "Submitted" : "Draft"}</span>
-                      </div>
-
-                      <div>
+                    <div className="flex items-center gap-2.5 shrink-0">
+                      {activeAssessment.status === "DRAFT" && (
                         <button
-                          type="button"
-                          className={styles.secondaryBtn}
-                          style={{ padding: "10px 20px", fontSize: "0.875rem", fontWeight: "600", borderColor: "#e8791d", color: "#e8791d", cursor: "pointer" }}
-                          onClick={() => navigate(`/institution/${instName}/${instAishe}/dashboard/forms/${sub.form_id}`)}
+                          onClick={handleSubmitAssessment}
+                          disabled={submitting}
+                          className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm disabled:opacity-50"
                         >
-                          {sub.is_submitted ? "View Answers" : "Continue Editing"}
+                          <Send size={13} />
+                          <span>{submitting ? "Submitting..." : "Submit Assessment"}</span>
+                        </button>
+                      )}
+
+                      <button
+                        onClick={() => setSelectedAssessmentId(activeAssessment.assessment_id)}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold transition-colors shadow-xs"
+                      >
+                        <Eye size={13} />
+                        <span>Audit Preview</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Evidence Readiness Summary */}
+                {activeAssessment && readiness && (
+                  <EvidenceReadinessSummary
+                    summary={readiness.evidence_readiness_summary}
+                    isReady={readiness.is_ready}
+                    onActionClick={() => setSelectedAssessmentId(activeAssessment.assessment_id)}
+                  />
+                )}
+
+                {/* Statutory Parameters Table (C1–C22) */}
+                {parameters.length > 0 && (
+                  <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
+                    <div className="p-4 sm:p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/50">
+                      <div>
+                        <h2 className="text-sm font-bold text-slate-900 tracking-tight">
+                          Statutory Parameters (C1–C22)
+                        </h2>
+                        <p className="text-xs text-slate-500">
+                          Authoritative parameters registered under COLLEGE_2026 framework
+                          {lastRefreshed && ` · Synced at ${lastRefreshed.toLocaleTimeString()}`}
+                        </p>
+                      </div>
+
+                      {/* Filter Tabs */}
+                      <div className="inline-flex rounded-lg border border-slate-200 bg-white p-1 text-xs font-semibold text-slate-600">
+                        <button
+                          onClick={() => setParamFilter("ALL")}
+                          className={`px-3 py-1 rounded-md transition-all ${
+                            paramFilter === "ALL" ? "bg-blue-600 text-white shadow-xs" : "hover:text-slate-900"
+                          }`}
+                        >
+                          All ({parameters.length})
+                        </button>
+                        <button
+                          onClick={() => setParamFilter("COMPLETED")}
+                          className={`px-3 py-1 rounded-md transition-all ${
+                            paramFilter === "COMPLETED" ? "bg-blue-600 text-white shadow-xs" : "hover:text-slate-900"
+                          }`}
+                        >
+                          Completed ({completedParameters})
+                        </button>
+                        <button
+                          onClick={() => setParamFilter("PENDING")}
+                          className={`px-3 py-1 rounded-md transition-all ${
+                            paramFilter === "PENDING" ? "bg-blue-600 text-white shadow-xs" : "hover:text-slate-900"
+                          }`}
+                        >
+                          Pending ({totalParameters - completedParameters})
+                        </button>
+                        <button
+                          onClick={() => setParamFilter("BLOCKED")}
+                          className={`px-3 py-1 rounded-md transition-all ${
+                            paramFilter === "BLOCKED" ? "bg-purple-600 text-white shadow-xs" : "hover:text-slate-900"
+                          }`}
+                        >
+                          Spec Blocked (4)
                         </button>
                       </div>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse text-xs">
+                        <thead>
+                          <tr className="bg-slate-50 border-b border-slate-100 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                            <th className="py-3 px-4">Code</th>
+                            <th className="py-3 px-4">Parameter Title</th>
+                            <th className="py-3 px-4 text-center">Max Marks</th>
+                            <th className="py-3 px-4">Specification & Blocking Notice</th>
+                            <th className="py-3 px-4 text-center">Input Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {filteredParameters.map((param) => {
+                            const isComplete = param.submitted_input != null && Object.keys(param.submitted_input).length > 0;
+                            const unresolvedNotice = UNRESOLVED_SPEC_PARAMS[param.parameter_code];
+
+                            return (
+                              <tr
+                                key={param.parameter_code}
+                                className="hover:bg-slate-50/80 transition-colors"
+                              >
+                                <td className="py-3.5 px-4 font-mono font-bold text-blue-700 whitespace-nowrap">
+                                  {param.parameter_code}
+                                </td>
+                                <td className="py-3.5 px-4 font-medium text-slate-900 max-w-sm">
+                                  {param.title}
+                                </td>
+                                <td className="py-3.5 px-4 text-center font-bold text-slate-700 whitespace-nowrap">
+                                  {param.max_marks} pts
+                                </td>
+                                <td className="py-3.5 px-4 text-slate-600 max-w-md">
+                                  {unresolvedNotice ? (
+                                    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-purple-50 text-purple-800 border border-purple-200 text-[11px] font-medium">
+                                      <Ban size={12} className="text-purple-600 shrink-0" />
+                                      <span>{unresolvedNotice}</span>
+                                    </div>
+                                  ) : param.mandatory_evidence && param.mandatory_evidence.length > 0 ? (
+                                    <span className="text-[11px] text-slate-600">
+                                      Requires {param.mandatory_evidence.length} documentary evidence type(s)
+                                    </span>
+                                  ) : (
+                                    <span className="text-slate-400 italic text-[11px]">No special blocker</span>
+                                  )}
+                                </td>
+                                <td className="py-3.5 px-4 text-center whitespace-nowrap">
+                                  <span
+                                    className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
+                                      isComplete
+                                        ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                                        : "bg-amber-50 text-amber-800 border-amber-200"
+                                    }`}
+                                  >
+                                    {isComplete ? (
+                                      <>
+                                        <CheckCircle2 size={11} className="text-emerald-600" />
+                                        <span>Recorded</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Clock size={11} className="text-amber-600" />
+                                        <span>Pending Data</span>
+                                      </>
+                                    )}
+                                  </span>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </>
+        )}
+
+        {/* TAB 2: LEGACY SUBMISSIONS ARCHIVE */}
+        {activeTab === "LEGACY_SUBMISSIONS" && (
+          <div className="space-y-4">
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-xs text-amber-900">
+              <div className="flex items-center gap-2 font-bold mb-1 text-sm text-amber-950">
+                <AlertCircle size={15} />
+                <span>Historical Submissions Archive</span>
+              </div>
+              <p>
+                These records belong to the previous institutional nomination portal. They are preserved for historical audit purposes and are strictly isolated from the NEP Excellence Awards 2026 scoring framework.
+              </p>
+            </div>
+
+            {legacyLoading ? (
+              <DashboardSkeleton />
+            ) : legacySubmissions.length === 0 ? (
+              <EmptyState
+                icon={Archive}
+                title="No Historical Nominations"
+                description="No historical submissions exist for your institution in the archive."
+              />
+            ) : (
+              <div className="grid gap-4">
+                {legacySubmissions.map((sub) => (
+                  <div
+                    key={sub.id}
+                    className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+                  >
+                    <div>
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <span className="text-[10px] font-mono font-bold bg-slate-100 text-slate-700 px-2 py-0.5 rounded uppercase">
+                          ID: {sub.form_id}
+                        </span>
+                        <StatusBadge status={sub.is_submitted ? "SUBMITTED" : "DRAFT"} size="sm" />
+                      </div>
+                      <h4 className="text-sm font-bold text-slate-900">
+                        {sub.form_id === "nep-excellence-nomination-2025"
+                          ? "Haryana State NEP Implementation Award — Nomination Form 2025"
+                          : "Institutional Nomination Record"}
+                      </h4>
+                      <p className="text-xs text-slate-500 mt-1">
+                        Updated: {new Date(sub.updated_at).toLocaleDateString()} · Head: {sub.head_name || "N/A"}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        onClick={() =>
+                          navigate(
+                            `/institution/${institutionName || "college"}/${institutionAisheCode || "aishe"}/dashboard/forms/${sub.form_id}`
+                          )
+                        }
+                        className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg text-xs font-semibold transition-colors"
+                      >
+                        {sub.is_submitted ? "View Record" : "Continue Form"}
+                      </button>
                     </div>
                   </div>
                 ))}
               </div>
             )}
           </div>
-        ) : activeMenu === "Assessment Reports" ? (
-          <div style={{ padding: "24px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "24px", flexWrap: "wrap", gap: "16px" }}>
-              <div>
-                <h3 style={{ fontSize: "1.25rem", fontWeight: "700", color: "#0f172a", margin: "0 0 4px" }}>
-                  NEP Excellence Awards 2026 — Assessment Reports
-                </h3>
-                <p style={{ fontSize: "0.875rem", color: "#64748b", margin: 0 }}>
-                  Authoritative, read-only audit ledger and statutory evaluation reports under the COLLEGE_2026 framework.
-                </p>
-              </div>
-              <button
-                onClick={loadReportsSummary}
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  padding: "8px 16px",
-                  backgroundColor: "#f8fafc",
-                  border: "1px solid #cbd5e1",
-                  borderRadius: "8px",
-                  fontSize: "0.8125rem",
-                  fontWeight: "600",
-                  color: "#334155",
-                  cursor: "pointer",
-                }}
-              >
-                <RefreshCw size={14} className={reportsLoading ? "animate-spin" : ""} />
-                Refresh
-              </button>
-            </div>
-
-            {/* Institution Summary Metadata Banner */}
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-                gap: "16px",
-                marginBottom: "24px",
-              }}
-            >
-              <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: "12px", padding: "16px" }}>
-                <span style={{ fontSize: "10px", fontWeight: "700", color: "#94a3b8", textTransform: "uppercase", display: "block", marginBottom: "4px" }}>Institution</span>
-                <div style={{ fontSize: "14px", fontWeight: "700", color: "#0f172a" }}>{reportsSummary?.institution_name || collegeName}</div>
-                <div style={{ fontSize: "11px", color: "#64748b", fontFamily: "monospace", marginTop: "2px" }}>AISHE: {reportsSummary?.aishe_code || aisheCode}</div>
-              </div>
-
-              <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: "12px", padding: "16px" }}>
-                <span style={{ fontSize: "10px", fontWeight: "700", color: "#94a3b8", textTransform: "uppercase", display: "block", marginBottom: "4px" }}>Evaluation Framework</span>
-                <div style={{ fontSize: "14px", fontWeight: "700", color: "#1d4ed8" }}>COLLEGE_2026</div>
-                <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>22 Statutory Parameters (C1–C22)</div>
-              </div>
-
-              <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: "12px", padding: "16px" }}>
-                <span style={{ fontSize: "10px", fontWeight: "700", color: "#94a3b8", textTransform: "uppercase", display: "block", marginBottom: "4px" }}>Sessions Registered</span>
-                <div style={{ fontSize: "14px", fontWeight: "700", color: "#0f172a" }}>
-                  {reportsSummary?.assessments?.length ?? 0} Assessment Session{reportsSummary?.assessments?.length === 1 ? "" : "s"}
-                </div>
-                <div style={{ fontSize: "11px", color: "#16a34a", fontWeight: "600", marginTop: "2px" }}>Statutory Read-Only Projection</div>
-              </div>
-            </div>
-
-            {/* Error state */}
-            {reportsError && (
-              <div style={{ backgroundColor: "#fee2e2", borderLeft: "4px solid #ef4444", color: "#b91c1c", padding: "12px 16px", borderRadius: "8px", fontSize: "0.875rem", marginBottom: "20px", display: "flex", alignItems: "center", gap: "8px" }}>
-                <AlertCircle size={16} />
-                <span>{reportsError}</span>
-              </div>
-            )}
-
-            {/* Loading or Assessment List */}
-            {reportsLoading ? (
-              <div style={{ textAlign: "center", padding: "48px 0" }}>
-                <div style={{ width: "32px", height: "32px", border: "3px solid #cbd5e1", borderTopColor: "#1d4ed8", borderRadius: "50%", margin: "0 auto 12px", animation: "spin 1s linear infinite" }} />
-                <p style={{ fontSize: "0.8125rem", color: "#94a3b8", fontWeight: "600" }}>Loading authoritative assessment sessions...</p>
-              </div>
-            ) : reportsSummary?.assessments?.length === 0 ? (
-              <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: "16px", padding: "48px 24px", textAlign: "center" }}>
-                <Award size={40} color="#cbd5e1" style={{ margin: "0 auto 12px" }} />
-                <h4 style={{ fontSize: "15px", fontWeight: "700", color: "#0f172a", margin: "0 0 6px" }}>
-                  No Assessment Sessions Found
-                </h4>
-                <p style={{ fontSize: "13px", color: "#64748b", margin: 0, maxWidth: "420px", marginLeft: "auto", marginRight: "auto" }}>
-                  Official assessment sessions for this college will appear here once registered under the COLLEGE_2026 framework.
-                </p>
-              </div>
-            ) : (
-              <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: "16px", overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
-                <div style={{ overflowX: "auto" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px", textAlign: "left" }}>
-                    <thead>
-                      <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
-                        <th style={{ padding: "12px 16px", fontWeight: "700", color: "#64748b", fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.05em" }}>Session ID</th>
-                        <th style={{ padding: "12px 16px", fontWeight: "700", color: "#64748b", fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.05em" }}>Academic Year</th>
-                        <th style={{ padding: "12px 16px", fontWeight: "700", color: "#64748b", fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.05em" }}>Lifecycle Status</th>
-                        <th style={{ padding: "12px 16px", fontWeight: "700", color: "#64748b", fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.05em" }}>Certification Status</th>
-                        <th style={{ padding: "12px 16px", fontWeight: "700", color: "#64748b", fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.05em", textAlign: "right" }}>Certified Score</th>
-                        <th style={{ padding: "12px 16px", fontWeight: "700", color: "#64748b", fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.05em", textAlign: "center" }}>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {reportsSummary?.assessments?.map((a, idx) => {
-                        const isCertified = a.status === "CERTIFIED";
-                        const isBlocked = a.certification_status === "BLOCKED_BY_SPECIFICATION";
-                        return (
-                          <tr
-                            key={a.assessment_id}
-                            style={{
-                              borderBottom: idx < reportsSummary.assessments.length - 1 ? "1px solid #f1f5f9" : "none",
-                              transition: "background 0.1s",
-                            }}
-                          >
-                            <td style={{ padding: "14px 16px", fontFamily: "monospace", fontWeight: "700", color: "#1d4ed8" }}>
-                              {a.assessment_id}
-                            </td>
-                            <td style={{ padding: "14px 16px", fontWeight: "600", color: "#334155" }}>
-                              {a.academic_year || "2025-26"}
-                            </td>
-                            <td style={{ padding: "14px 16px" }}>
-                              <span
-                                style={{
-                                  display: "inline-block",
-                                  padding: "3px 10px",
-                                  borderRadius: "9999px",
-                                  fontSize: "10px",
-                                  fontWeight: "700",
-                                  textTransform: "uppercase",
-                                  letterSpacing: "0.04em",
-                                  background: isCertified ? "#f0fdf4" : a.status === "SUBMITTED" ? "#eff6ff" : a.status === "UNDER_REVIEW" ? "#fefce8" : "#f8fafc",
-                                  color: isCertified ? "#15803d" : a.status === "SUBMITTED" ? "#1d4ed8" : a.status === "UNDER_REVIEW" ? "#a16207" : "#475569",
-                                  border: `1px solid ${isCertified ? "#bbf7d0" : a.status === "SUBMITTED" ? "#bfdbfe" : a.status === "UNDER_REVIEW" ? "#fde68a" : "#cbd5e1"}`,
-                                }}
-                              >
-                                {a.status}
-                              </span>
-                            </td>
-                            <td style={{ padding: "14px 16px" }}>
-                              {isBlocked ? (
-                                <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "3px 8px", borderRadius: "9999px", fontSize: "10px", fontWeight: "700", background: "#faf5ff", color: "#7e22ce", border: "1px solid #e9d5ff" }}>
-                                  <AlertCircle size={10} />
-                                  Blocked by Spec
-                                </span>
-                              ) : isCertified ? (
-                                <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "3px 8px", borderRadius: "9999px", fontSize: "10px", fontWeight: "700", background: "#f0fdf4", color: "#15803d", border: "1px solid #bbf7d0" }}>
-                                  <ShieldCheck size={10} />
-                                  Certified
-                                </span>
-                              ) : (
-                                <span style={{ fontSize: "11px", color: "#64748b" }}>
-                                  {a.certification_status || "In Evaluation"}
-                                </span>
-                              )}
-                            </td>
-                            <td style={{ padding: "14px 16px", textAlign: "right", fontFamily: "monospace", fontWeight: "700", fontSize: "13px" }}>
-                              {a.certified_score != null ? (
-                                <span style={{ color: "#15803d" }}>{a.certified_score}</span>
-                              ) : (
-                                <span style={{ color: "#94a3b8", fontWeight: "normal" }}>Pending</span>
-                              )}
-                            </td>
-                            <td style={{ padding: "14px 16px", textAlign: "center" }}>
-                              <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
-                                <button
-                                  onClick={() => setSelectedAssessmentId(a.assessment_id)}
-                                  style={{
-                                    display: "inline-flex",
-                                    alignItems: "center",
-                                    gap: "4px",
-                                    padding: "6px 12px",
-                                    backgroundColor: "#1d4ed8",
-                                    color: "#ffffff",
-                                    border: "none",
-                                    borderRadius: "6px",
-                                    fontSize: "11px",
-                                    fontWeight: "700",
-                                    cursor: "pointer",
-                                  }}
-                                  title="Inspect full audit report"
-                                >
-                                  <Eye size={12} />
-                                  Audit Report
-                                </button>
-                                <button
-                                  onClick={() => downloadAssessmentReportCSV(a.assessment_id)}
-                                  style={{
-                                    display: "inline-flex",
-                                    alignItems: "center",
-                                    padding: "6px 10px",
-                                    backgroundColor: "#f0fdf4",
-                                    color: "#15803d",
-                                    border: "1px solid #bbf7d0",
-                                    borderRadius: "6px",
-                                    fontSize: "11px",
-                                    fontWeight: "700",
-                                    cursor: "pointer",
-                                  }}
-                                  title="Export CSV"
-                                >
-                                  <FileSpreadsheet size={12} />
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-          </div>
-        ) : null}
+        )}
       </div>
 
       {/* Authoritative Assessment Report Modal */}
@@ -1050,5 +736,3 @@ function CollegeDashboard() {
     </div>
   );
 }
-
-export default CollegeDashboard;
