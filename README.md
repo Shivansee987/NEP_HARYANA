@@ -1,4 +1,4 @@
-The Chatpt Link with all the phases work for refrence - https://chatgpt.com/c/6aa39c79-3f48-83ee-a64c-2c4e7c233f5b
+The Chatpt Link with all the phases work for refrence - https://chatgpt.com/share/6ab6b1b4-f8f0-83e8-b99e-07dde7fbff04
 
 ````markdown
 # NEP Excellence Awards 2026 — Haryana Platform
