@@ -182,15 +182,20 @@ export default function UniversityDashboard() {
   const universityName = university?.name || user?.university_name || "Kurukshetra University";
   const aisheCode = university?.aishe_code || user?.aishe_code || "U-0123";
 
-  // Compute metrics from actual domain data (no client-side score computation)
-  const completedParameters = parameters.filter((p) => p.submitted_input != null).length;
-  const totalParameters = parameters.length || 20;
+  // Compute metrics from actual domain data (strictly U1–U20 = 20 parameters)
+  const completedParameters = parameters.filter((p) => p.submitted_input != null && Object.keys(p.submitted_input).length > 0).length;
+  const totalParameters = 20;
   const coveredSubcriteria = readiness?.evidence_readiness_summary?.covered_subcriteria ?? 0;
   const totalSubcriteria = readiness?.evidence_readiness_summary?.total_subcriteria ?? 51;
   const isReadyForScoring = readiness?.is_ready ?? false;
 
+  const handleOpenAssessment = (parameterCode = null) => {
+    if (!activeAssessment) return;
+    navigate(`/university/assessment/${activeAssessment.assessment_id}`);
+  };
+
   const filteredParameters = parameters.filter((p) => {
-    const isComplete = p.submitted_input != null;
+    const isComplete = p.submitted_input != null && Object.keys(p.submitted_input).length > 0;
     if (paramFilter === "COMPLETED") return isComplete;
     if (paramFilter === "PENDING") return !isComplete;
     return true;
@@ -199,7 +204,7 @@ export default function UniversityDashboard() {
   // Sidebar navigation items
   const navItems = [
     { id: "overview", label: "Dashboard Overview", icon: LayoutDashboard, badge: null },
-    { id: "parameters", label: "Parameters (U1–U20)", icon: ClipboardList, badge: `${completedParameters}/${totalParameters}` },
+    { id: "parameters", label: "Parameters (U1–U20)", icon: ClipboardList, badge: `${completedParameters}/20` },
     { id: "evidence", label: "Evidence Readiness", icon: CheckCircle2, badge: isReadyForScoring ? "Ready" : "Action" },
     { id: "reports", label: "Audit Reports", icon: FileSpreadsheet, badge: null },
   ];
@@ -500,7 +505,7 @@ export default function UniversityDashboard() {
                             {completedParameters}
                           </span>
                           <span className="text-xs font-semibold text-slate-400">
-                            / {totalParameters} parameters
+                            / 20 filled
                           </span>
                         </div>
                       </div>
@@ -597,15 +602,23 @@ export default function UniversityDashboard() {
                           </p>
                         </div>
 
-                        <div className="flex items-center gap-3 shrink-0">
+                        <div className="flex items-center gap-3 shrink-0 flex-wrap">
+                          <button
+                            onClick={() => handleOpenAssessment()}
+                            className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
+                          >
+                            <span>Continue Assessment (U1–U20)</span>
+                            <ChevronRight size={13} />
+                          </button>
+
                           {activeAssessment.status === "DRAFT" && (
                             <button
                               onClick={handleSubmitAssessment}
                               disabled={submitting}
-                              className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs disabled:opacity-50 cursor-pointer"
+                              className="inline-flex items-center gap-2 px-3.5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold transition-all shadow-xs disabled:opacity-50 cursor-pointer"
                             >
                               <Send size={13} />
-                              <span>{submitting ? "Submitting..." : "Submit to Committee"}</span>
+                              <span>{submitting ? "Submitting..." : "Submit"}</span>
                             </button>
                           )}
 
@@ -661,32 +674,42 @@ export default function UniversityDashboard() {
                           </p>
                         </div>
 
-                        {/* Filter Tabs */}
-                        <div className="inline-flex rounded-lg border border-slate-200 bg-white p-1 text-xs font-semibold text-slate-600 shadow-2xs">
+                        {/* Filter Tabs & Open Workspace Button */}
+                        <div className="flex items-center gap-2 flex-wrap">
                           <button
-                            onClick={() => setParamFilter("ALL")}
-                            className={`px-3 py-1 rounded-md transition-all cursor-pointer ${
-                              paramFilter === "ALL" ? "bg-slate-900 text-white shadow-xs" : "hover:text-slate-900"
-                            }`}
+                            onClick={() => handleOpenAssessment()}
+                            className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer inline-flex items-center gap-1"
                           >
-                            All ({parameters.length})
+                            <span>Open Assessment Form</span>
+                            <ChevronRight size={13} />
                           </button>
-                          <button
-                            onClick={() => setParamFilter("COMPLETED")}
-                            className={`px-3 py-1 rounded-md transition-all cursor-pointer ${
-                              paramFilter === "COMPLETED" ? "bg-slate-900 text-white shadow-xs" : "hover:text-slate-900"
-                            }`}
-                          >
-                            Completed ({completedParameters})
-                          </button>
-                          <button
-                            onClick={() => setParamFilter("PENDING")}
-                            className={`px-3 py-1 rounded-md transition-all cursor-pointer ${
-                              paramFilter === "PENDING" ? "bg-slate-900 text-white shadow-xs" : "hover:text-slate-900"
-                            }`}
-                          >
-                            Pending ({totalParameters - completedParameters})
-                          </button>
+
+                          <div className="inline-flex rounded-lg border border-slate-200 bg-white p-1 text-xs font-semibold text-slate-600 shadow-2xs">
+                            <button
+                              onClick={() => setParamFilter("ALL")}
+                              className={`px-3 py-1 rounded-md transition-all cursor-pointer ${
+                                paramFilter === "ALL" ? "bg-slate-900 text-white shadow-xs" : "hover:text-slate-900"
+                              }`}
+                            >
+                              All ({parameters.length})
+                            </button>
+                            <button
+                              onClick={() => setParamFilter("COMPLETED")}
+                              className={`px-3 py-1 rounded-md transition-all cursor-pointer ${
+                                paramFilter === "COMPLETED" ? "bg-slate-900 text-white shadow-xs" : "hover:text-slate-900"
+                              }`}
+                            >
+                              Completed ({completedParameters})
+                            </button>
+                            <button
+                              onClick={() => setParamFilter("PENDING")}
+                              className={`px-3 py-1 rounded-md transition-all cursor-pointer ${
+                                paramFilter === "PENDING" ? "bg-slate-900 text-white shadow-xs" : "hover:text-slate-900"
+                              }`}
+                            >
+                              Pending ({totalParameters - completedParameters})
+                            </button>
+                          </div>
                         </div>
                       </div>
 
@@ -698,19 +721,20 @@ export default function UniversityDashboard() {
                               <th className="py-3 px-4">Parameter Title</th>
                               <th className="py-3 px-4 text-center w-28">Max Marks</th>
                               <th className="py-3 px-4">Mandatory Evidence Types</th>
-                              <th className="py-3 px-4 text-center w-36">Input Status</th>
+                              <th className="py-3 px-4 text-center w-32">Input Status</th>
+                              <th className="py-3 px-4 text-center w-24">Action</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100">
                             {filteredParameters.map((param) => {
-                              const isComplete = param.submitted_input != null;
+                              const isComplete = param.submitted_input != null && Object.keys(param.submitted_input).length > 0;
                               return (
                                 <tr
-                                  key={param.code}
+                                  key={param.parameter_code || param.code}
                                   className="hover:bg-slate-50/70 transition-colors"
                                 >
                                   <td className="py-3.5 px-4 font-mono font-bold text-blue-700 whitespace-nowrap">
-                                    {param.code}
+                                    {param.parameter_code || param.code}
                                   </td>
                                   <td className="py-3.5 px-4 font-medium text-slate-900 max-w-md">
                                     {param.title}
@@ -754,6 +778,14 @@ export default function UniversityDashboard() {
                                         </>
                                       )}
                                     </span>
+                                  </td>
+                                  <td className="py-3.5 px-4 text-center whitespace-nowrap">
+                                    <button
+                                      onClick={() => handleOpenAssessment(param.parameter_code || param.code)}
+                                      className="text-xs font-bold text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
+                                    >
+                                      Open in Form
+                                    </button>
                                   </td>
                                 </tr>
                               );

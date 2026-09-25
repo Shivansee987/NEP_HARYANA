@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import { MapPin, Phone, Mail } from 'lucide-react';
 import hshecLogo from '../../assets/hshec_logo.jpeg';
 import styles from './Footer.module.css';
@@ -57,8 +58,8 @@ function Footer() {
             <p className={styles.ctaSubtitle}>Register your college on the NEP 2020 evaluation portal today.</p>
           </div>
           <div className={styles.ctaButtons}>
-            <a href="#" className={styles.btnPrimary}>Get Started</a>
-            <a href="#" className={styles.btnSecondary}>Contact Helpdesk</a>
+            <Link to="/auth/login" className={styles.btnPrimary}>Get Started</Link>
+            <Link to="/contact" className={styles.btnSecondary}>Contact Helpdesk</Link>
           </div>
         </div>
       </div>

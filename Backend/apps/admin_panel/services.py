@@ -241,7 +241,8 @@ from apps.college.services import (
     CollegeReviewService,
     COLLEGE_FRAMEWORK_CODE,
 )
-from apps.evidence.models import ReviewerAuthorization
+from apps.evidence.models import EvidenceSubcriterionAssociation, ReviewerAuthorization
+from apps.evidence.services import EvidenceService
 from .api_permissions import (
     AdminPermissionDenied,
     FrameworkMismatchError,
@@ -594,6 +595,66 @@ class AdminControlPlaneService:
                 "timestamp": a.timestamp,
             })
 
+        # 11. Parameter Data
+        param_data = getattr(assessment, "parameter_data", {}) or {}
+
+        # 12. Evidence Associations & Coverage
+        associations_qs = EvidenceSubcriterionAssociation.objects.filter(
+            evidence__assessment_id=assessment.assessment_id,
+            is_active=True,
+        ).select_related('evidence', 'associated_by').prefetch_related('verifications__verifier')
+
+        evidence_associations = []
+        for assoc in associations_qs:
+            latest_v = assoc.latest_verification
+            v_data = None
+            if latest_v:
+                v_data = {
+                    "verification_id": str(latest_v.verification_id),
+                    "decision": latest_v.decision,
+                    "verifier_id": latest_v.verifier_id,
+                    "verifier_email": getattr(latest_v.verifier, 'email', str(latest_v.verifier_id)),
+                    "reason": latest_v.reason,
+                    "rejection_code": latest_v.rejection_code,
+                    "inspected_checksum": latest_v.inspected_checksum,
+                    "timestamp": latest_v.timestamp.isoformat(),
+                }
+            evidence_associations.append({
+                "association_id": str(assoc.association_id),
+                "id": assoc.pk,
+                "evidence_id": str(assoc.evidence.document_id),
+                "original_filename": assoc.evidence.original_filename,
+                "file_checksum": assoc.evidence.file_checksum,
+                "mime_type": assoc.evidence.mime_type,
+                "file_size": assoc.evidence.file_size,
+                "framework": assoc.evidence.framework,
+                "institution_id": assoc.evidence.institution_id,
+                "parameter_id": assoc.parameter_id,
+                "subcriterion_id": assoc.subcriterion_id,
+                "subcriterion_evidence_type": assoc.subcriterion_evidence_type,
+                "page_start": assoc.page_start,
+                "page_end": assoc.page_end,
+                "section_identifier": assoc.section_identifier,
+                "claim_description": assoc.claim_description,
+                "verification_status": assoc.verification_status or "PENDING",
+                "latest_verification": v_data,
+                "associated_at": assoc.associated_at.isoformat() if assoc.associated_at else None,
+                "is_active": assoc.is_active,
+            })
+
+        evidence_coverage_state = {}
+        try:
+            target_inst = institution_data.get("aishe_code") or str(institution_data.get("id"))
+            cov_report = EvidenceService.evaluate_evidence_coverage(
+                assessment_id=assessment.assessment_id,
+                institution_id=target_inst,
+                framework=framework,
+                requesting_user=user,
+            )
+            evidence_coverage_state = cov_report.to_dict()
+        except Exception:
+            evidence_coverage_state = {}
+
         return {
             "assessment_id": assessment.assessment_id,
             "framework": framework,
@@ -604,6 +665,9 @@ class AdminControlPlaneService:
             "submitted_at": assessment.submitted_at,
             "institution": institution_data,
             "assigned_reviewer": assigned_reviewer_data,
+            "parameter_data": param_data,
+            "evidence_associations": evidence_associations,
+            "evidence_coverage": evidence_coverage_state,
             "scoring": scoring_data,
             "evidence_readiness": evidence_readiness,
             "specification_blocks": specification_blocks,

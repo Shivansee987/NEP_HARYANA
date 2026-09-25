@@ -201,6 +201,57 @@ const AdminOverview = () => {
     .sort((a, b) => new Date(b.submitted_at) - new Date(a.submitted_at))
     .slice(0, 5);
 
+  // ─── Empty Queue State ─────────────────────────────────────────────────────
+  if (!loading && !error && queue.length === 0) {
+    return (
+      <div className="space-y-8">
+        {/* Welcome Banner — still show branding even when empty */}
+        <div className="bg-gradient-to-r from-[#1E3A5F] to-[#1D4ED8] p-6 rounded-2xl shadow-lg text-white flex flex-col md:flex-row justify-between items-start md:items-center">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">
+              NEP Excellence Awards Evaluation Portal
+            </h1>
+            <p className="text-blue-100 text-xs mt-1 font-medium max-w-xl">
+              Unified review queue across COLLEGE_2026 and UNIVERSITY_2026 frameworks.
+            </p>
+          </div>
+          <button
+            onClick={loadQueue}
+            className="mt-4 md:mt-0 flex items-center gap-1.5 text-xs font-bold bg-white/10 hover:bg-white/20 border border-white/20 py-2 px-3 rounded-xl transition-colors"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            Refresh
+          </button>
+        </div>
+
+        {/* Empty State Panel */}
+        <div className="flex flex-col items-center justify-center py-20 px-8 bg-white border border-slate-100 rounded-2xl shadow-sm text-center">
+          <div className="w-16 h-16 rounded-full bg-blue-50 border border-blue-100 flex items-center justify-center mb-5">
+            <School className="w-8 h-8 text-blue-400" />
+          </div>
+          <h2 className="text-lg font-bold text-slate-800 mb-2">
+            Review Queue is Empty
+          </h2>
+          <p className="text-sm text-slate-500 max-w-md mb-1">
+            No assessments have been submitted for review yet. The queue will populate once
+            colleges and universities submit their NEP 2026 assessments.
+          </p>
+          <p className="text-xs text-slate-400 max-w-sm mt-2">
+            Institutional users (principals, nodal officers) must complete their parameter
+            inputs and formally submit their assessments before they appear here.
+          </p>
+          <button
+            onClick={loadQueue}
+            className="mt-6 flex items-center gap-2 text-xs font-bold text-blue-600 hover:text-blue-800 border border-blue-200 hover:border-blue-400 py-2 px-4 rounded-xl transition-colors"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            Check Again
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-8 animate-fadeIn">
 

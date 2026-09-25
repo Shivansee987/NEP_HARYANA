@@ -159,10 +159,16 @@ class UniversityReviewEndToEndTests(TestCase):
         # ---------------------------------------------------------------------
         # Step 5: Submission Gate (DRAFT -> SUBMITTED)
         # ---------------------------------------------------------------------
-        # Submit assessment
+        # Submit assessment via modern institutional submission endpoint
+        client.force_authenticate(user=nodal_user)
+        submit_res = client.post(
+            f"/api/university-assessments/{assessment_id}/submit/",
+            {},
+            format="json",
+        )
+        self.assertEqual(submit_res.status_code, status.HTTP_200_OK)
+        self.assertEqual(submit_res.data["status"], "SUBMITTED")
         assessment = UniversityAssessment.objects.get(assessment_id=assessment_id)
-        assessment.status = "SUBMITTED"
-        assessment.save(update_fields=["status"])
 
         # ---------------------------------------------------------------------
         # Step 6: Review Queue Inspection

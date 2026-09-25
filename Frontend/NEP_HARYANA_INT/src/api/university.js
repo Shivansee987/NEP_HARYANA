@@ -72,6 +72,22 @@ export async function fetchUniversityAssessmentReadiness(assessmentId) {
   return request(`/v1/university/university-assessments/${assessmentId}/readiness/`);
 }
 
+export async function fetchUniversityAssessmentParameterDetail(assessmentId, parameterCode) {
+  return request(`/v1/university/university-assessments/${assessmentId}/parameters/${parameterCode}/`);
+}
+
+/**
+ * Update raw parameter input for a university assessment parameter (U1–U20).
+ * PUT /api/v1/university/university-assessments/<assessmentId>/parameters/<parameterCode>/
+ */
+export async function updateUniversityAssessmentParameter(assessmentId, parameterCode, data) {
+  return request(`/v1/university/university-assessments/${assessmentId}/parameters/${parameterCode}/`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
 /**
  * Submit assessment formally to screening committee.
  * POST /api/v1/university/university-assessments/<assessmentId>/submit/

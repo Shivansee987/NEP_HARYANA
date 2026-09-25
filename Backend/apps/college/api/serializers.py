@@ -65,6 +65,7 @@ class CollegeAssessmentSerializer(serializers.ModelSerializer):
     college_name = serializers.CharField(source='college.name', read_only=True)
     aishe_code = serializers.CharField(source='college.aishe_code', read_only=True)
     assigned_reviewer = serializers.PrimaryKeyRelatedField(read_only=True)
+    evidence_associations = serializers.SerializerMethodField()
 
     class Meta:
         model = CollegeAssessment
@@ -81,6 +82,7 @@ class CollegeAssessmentSerializer(serializers.ModelSerializer):
             'status',
             'submitted_at',
             'parameter_data',
+            'evidence_associations',
             'assigned_reviewer',
             'certified_score',
             'certification_status',
@@ -99,12 +101,22 @@ class CollegeAssessmentSerializer(serializers.ModelSerializer):
             'period_end',
             'status',
             'submitted_at',
+            'evidence_associations',
             'assigned_reviewer',
             'certified_score',
             'certification_status',
             'created_at',
             'updated_at',
         ]
+
+    def get_evidence_associations(self, obj):
+        from apps.evidence.models import EvidenceSubcriterionAssociation
+        from apps.evidence.api.serializers import EvidenceAssociationSerializer
+        assocs = EvidenceSubcriterionAssociation.objects.filter(
+            evidence__assessment_id=obj.assessment_id,
+            is_active=True,
+        ).select_related('evidence', 'associated_by').prefetch_related('verifications__verifier')
+        return EvidenceAssociationSerializer(assocs, many=True).data
 
     def validate(self, attrs):
         # Prevent client from injecting forbidden score fields

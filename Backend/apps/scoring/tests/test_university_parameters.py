@@ -415,19 +415,23 @@ class UniversityParametersTests(TestCase):
     # -------------------------------------------------------------
     def test_u7_sedg_fixed_items(self):
         eval_fn = UNIVERSITY_EVALUATORS["U7"]
-        doc = self._make_verified_doc("EVID_U7_APPOINTMENT")
+        doc1 = self._make_verified_doc("EVID_U7_APPOINTMENT")
+        doc2 = self._make_verified_doc("EVID_U7_TEACHING_LOGS")
+        doc3 = self._make_verified_doc("EVID_U7_WORKSHOP_REPORTS")
+        doc4 = self._make_verified_doc("EVID_U7_PROJECT_REPORTS")
         p_in = ParameterInput(
             parameter_code="U7",
             subcriteria_inputs={
-                "U7.1": SubcriterionInput(subcriterion_code="U7.1", raw_inputs={"verified": True}, evidence_docs=[doc]),
-                "U7.2": SubcriterionInput(subcriterion_code="U7.2", raw_inputs={"verified": True}, evidence_docs=[doc]),
-                "U7.3": SubcriterionInput(subcriterion_code="U7.3", raw_inputs={"verified": True}, evidence_docs=[doc]),
-                "U7.4": SubcriterionInput(subcriterion_code="U7.4", raw_inputs={"verified": False}, evidence_docs=[doc]),
+                "U7.1": SubcriterionInput(subcriterion_code="U7.1", raw_inputs={"verified": True}, evidence_docs=[doc1]),
+                "U7.2": SubcriterionInput(subcriterion_code="U7.2", raw_inputs={"verified": True}, evidence_docs=[doc2]),
+                "U7.3": SubcriterionInput(subcriterion_code="U7.3", raw_inputs={"verified": True}, evidence_docs=[doc3]),
+                "U7.4": SubcriterionInput(subcriterion_code="U7.4", raw_inputs={"verified": False}, evidence_docs=[doc4]),
             }
         )
         res = eval_fn(p_in, self.context, self.validator)
         self.assertEqual(res.raw_score, 3.0)
         self.assertEqual(res.evidence_gated_score, 3.0)
+
 
     # -------------------------------------------------------------
     # U8: Incubation / Startup Cell Performance as per NISP (Max: 6)
@@ -646,7 +650,8 @@ class UniversityParametersTests(TestCase):
         5 granted -> 2
         """
         eval_fn = UNIVERSITY_EVALUATORS["U16"]
-        doc = self._make_verified_doc("EVID_U16_FILING")
+        doc_filing = self._make_verified_doc("EVID_U16_FILING")
+        doc_grant = self._make_verified_doc("EVID_U16_GRANT")
         test_cases = [
             (0, 0.0),
             (1, 1.0),
@@ -659,9 +664,9 @@ class UniversityParametersTests(TestCase):
                 p_in = ParameterInput(
                     parameter_code="U16",
                     subcriteria_inputs={
-                        "U16.I": SubcriterionInput(subcriterion_code="U16.I", raw_inputs={"patents_filed": 0}, evidence_docs=[doc]),
-                        "U16.II": SubcriterionInput(subcriterion_code="U16.II", raw_inputs={"patents_granted": cnt}, evidence_docs=[doc]),
-                        "U16.III": SubcriterionInput(subcriterion_code="U16.III", raw_inputs={}, evidence_docs=[doc]),
+                        "U16.I": SubcriterionInput(subcriterion_code="U16.I", raw_inputs={"patents_filed": 0}, evidence_docs=[doc_filing]),
+                        "U16.II": SubcriterionInput(subcriterion_code="U16.II", raw_inputs={"patents_granted": cnt}, evidence_docs=[doc_grant]),
+                        "U16.III": SubcriterionInput(subcriterion_code="U16.III", raw_inputs={}, evidence_docs=[]),
                     }
                 )
                 res = eval_fn(p_in, self.context, self.validator)

@@ -20,7 +20,10 @@ from apps.scoring.enums import (
 )
 from apps.scoring.evaluators.counts import validate_count_quantity
 from apps.scoring.evaluators.double_counting import DoubleCountingValidator
-from apps.scoring.evaluators.evidence_gating import evaluate_evidence
+from apps.scoring.evaluators.evidence_gating import (
+    evaluate_evidence,
+    evaluate_subcriterion_contract_evidence,
+)
 from apps.scoring.evaluators.percentages import calculate_percentage
 from apps.scoring.evaluators.periods import validate_period
 from apps.scoring.evaluators.thresholds import evaluate_threshold
@@ -47,7 +50,6 @@ def _evaluate_standard_subcriterion(
     max_score = float(sub_def["max_score"])
     thresholds = sub_def.get("thresholds", [])
     boundary_voids = sub_def.get("boundary_voids", [])
-    mandatory_docs = sub_def.get("mandatory_evidence") if "mandatory_evidence" in sub_def else param_def.get("mandatory_evidence", [])
 
     trace: Dict[str, Any] = {"subcriterion_code": sub_code, "raw_val": raw_val}
 
@@ -175,7 +177,14 @@ def _evaluate_standard_subcriterion(
             continue
         valid_docs_for_sub.append(doc)
 
-    gating_status, multiplier, eg_trace = evaluate_evidence(mandatory_docs, valid_docs_for_sub)
+    gating_status, multiplier, eg_trace = evaluate_subcriterion_contract_evidence(
+        framework=getattr(context, "framework", "UNIVERSITY_2026"),
+        parameter_id=param_def.get("code", ""),
+        subcriterion_id=sub_code,
+        uploaded_docs=valid_docs_for_sub,
+        param_def=param_def,
+        sub_def=sub_def,
+    )
     trace["evidence_gating"] = eg_trace
 
     # EVIDENCE_GATED_SCORE: must be 0 if pending, rejected, or absent

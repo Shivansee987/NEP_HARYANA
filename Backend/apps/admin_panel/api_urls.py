@@ -19,6 +19,7 @@ urlpatterns = [
 
     # Assessment Inspection & Administration
     path('assessments/<str:assessment_id>/inspect/', AdminAssessmentInspectView.as_view(), name='admin-assessment-inspect'),
+    path('assessments/<str:assessment_id>/review/', AdminAssessmentInspectView.as_view(), name='admin-assessment-review'),
     path('assessments/<str:assessment_id>/assign/', AdminAssessmentAssignReviewerView.as_view(), name='admin-assessment-assign'),
     path('assessments/<str:assessment_id>/certify/', AdminAssessmentCertifyView.as_view(), name='admin-assessment-certify'),
 

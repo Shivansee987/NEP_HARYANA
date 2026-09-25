@@ -4,6 +4,81 @@ import { getDashboardPathForUser } from "../../api/auth";
 import { useAuth } from "../../context/AuthContext.jsx";
 import hshecLogo from "../../assets/hshec_logo.jpeg";
 import styles from "../Signup/Signup.module.css";
+import devStyles from "./Signin.module.css";
+import {
+  GraduationCap,
+  Landmark,
+  Building2,
+  ShieldCheck,
+  Award,
+  Users,
+  ArrowRight,
+  Sparkles,
+  Loader2,
+} from "lucide-react";
+
+const DEV_ACCOUNTS = [
+  {
+    key: "principal",
+    role: "College Principal",
+    badge: "College",
+    description: "C1–C22 Institutional Forms & Nominations",
+    email: "principal@dev.local",
+    password: "DevPrincipal@123",
+    icon: GraduationCap,
+    themeClass: devStyles.themeAmber,
+  },
+  {
+    key: "nodal",
+    role: "University Nodal Officer",
+    badge: "University",
+    description: "U1–U20 Forms & College Oversight",
+    email: "nodal@dev.local",
+    password: "DevNodal@123",
+    icon: Landmark,
+    themeClass: devStyles.themeIndigo,
+  },
+  {
+    key: "univadmin",
+    role: "University Admin",
+    badge: "Uni Admin",
+    description: "University Console & Settings",
+    email: "univadmin@dev.local",
+    password: "DevUnivAdmin@123",
+    icon: Building2,
+    themeClass: devStyles.themeBlue,
+  },
+  {
+    key: "admin",
+    role: "State Admin",
+    badge: "HSHEC State",
+    description: "Council Control Plane & Reports",
+    email: "admin@dev.local",
+    password: "DevAdmin@123",
+    icon: ShieldCheck,
+    themeClass: devStyles.themeMaroon,
+  },
+  {
+    key: "chair",
+    role: "Committee Chair",
+    badge: "Chairperson",
+    description: "Screening Committee Certification",
+    email: "chair@dev.local",
+    password: "DevChair@123",
+    icon: Award,
+    themeClass: devStyles.themeEmerald,
+  },
+  {
+    key: "committee",
+    role: "Committee Member",
+    badge: "Reviewer",
+    description: "Evaluation, Verification & Scoring",
+    email: "committee@dev.local",
+    password: "DevCommittee@123",
+    icon: Users,
+    themeClass: devStyles.themePurple,
+  },
+];
 
 function Signin() {
   const navigate = useNavigate();
@@ -15,6 +90,7 @@ function Signin() {
   const [showPassword, setShowPassword] = useState(false);
   const [status, setStatus] = useState({ type: "", message: "" });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [activeDevRole, setActiveDevRole] = useState(null);
 
   const handleChange = (e) => {
     setFormData({
@@ -45,12 +121,45 @@ function Signin() {
     }
   };
 
+  const handleDevLogin = async (account) => {
+    if (isSubmitting) return;
+
+    setFormData({
+      email: account.email,
+      password: account.password,
+    });
+    setActiveDevRole(account.key);
+    setIsSubmitting(true);
+    setStatus({
+      type: "success",
+      message: `Signing in as ${account.role}...`,
+    });
+
+    try {
+      const response = await login({
+        email: account.email,
+        password: account.password,
+      });
+      setStatus({
+        type: "success",
+        message: response.message || `Signed in as ${account.role}. Entering dashboard...`,
+      });
+      navigate(getDashboardPathForUser(response.user));
+    } catch (error) {
+      setStatus({
+        type: "error",
+        message: error.message || `Could not sign in as ${account.role}. Ensure backend server is running.`,
+      });
+      setActiveDevRole(null);
+      setIsSubmitting(false);
+    }
+  };
 
   return (
     <main className={styles.pageShell}>
       <div className={styles.pageGlow} aria-hidden="true" />
       <div className={`${styles.pageContainer} ${styles.centerFormWrapper}`}>
-        <section className={styles.formPanel} aria-labelledby="signin-title">
+        <section className={`${styles.formPanel} ${devStyles.signinPanel}`} aria-labelledby="signin-title">
           <div className={styles.formHeader}>
             <div className={styles.logoWrapper}>
               <img src={hshecLogo} alt="HSHEC Logo" className={styles.logoImage} />
@@ -179,7 +288,7 @@ function Signin() {
                 className={styles.submitBtn}
                 disabled={isSubmitting}
               >
-                {isSubmitting ? "Signing In..." : "Sign In"}
+                {isSubmitting && !activeDevRole ? "Signing In..." : "Sign In"}
               </button>
 
               <p className={styles.loginPrompt}>
@@ -190,6 +299,60 @@ function Signin() {
               </p>
             </div>
           </form>
+
+          {/* Quick Dev Login Buttons */}
+          <div className={devStyles.devLoginSection}>
+            <div className={devStyles.devHeader}>
+              <span className={devStyles.devBadge}>
+                <Sparkles size={13} className={devStyles.devBadgeIcon} />
+                Quick Dev Login
+              </span>
+              <p className={devStyles.devSubtitle}>
+                Click any role to sign in & enter instantly
+              </p>
+            </div>
+
+            <div className={devStyles.devGrid}>
+              {DEV_ACCOUNTS.map((account) => {
+                const IconComponent = account.icon;
+                const isActive = activeDevRole === account.key;
+                return (
+                  <button
+                    key={account.key}
+                    type="button"
+                    onClick={() => handleDevLogin(account)}
+                    disabled={isSubmitting}
+                    className={`${devStyles.devCard} ${account.themeClass} ${
+                      isActive ? devStyles.devCardActive : ""
+                    }`}
+                    title={`Click to login as ${account.role} (${account.email})`}
+                  >
+                    <div className={devStyles.cardTopRow}>
+                      <div className={devStyles.iconWrapper}>
+                        {isActive ? (
+                          <Loader2 size={16} className={devStyles.loadingSpinner} />
+                        ) : (
+                          <IconComponent size={16} />
+                        )}
+                      </div>
+                      <span className={devStyles.roleTag}>{account.badge}</span>
+                      <span className={devStyles.enterArrow}>
+                        <ArrowRight size={14} />
+                      </span>
+                    </div>
+
+                    <h4 className={devStyles.roleTitle}>
+                      {isActive ? "Entering..." : account.role}
+                    </h4>
+                    <p className={devStyles.roleDesc}>{account.description}</p>
+                    <div className={devStyles.credentialsPill}>
+                      <span>{account.email}</span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </section>
       </div>
     </main>
@@ -197,3 +360,4 @@ function Signin() {
 }
 
 export default Signin;
+

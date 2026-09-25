@@ -144,6 +144,11 @@ class UniversityAssessmentService:
         if assessment.status in ("FINALIZED", "CERTIFIED"):
             raise UniversityValidationError(f"Assessment '{assessment_id}' is finalized and cannot be modified.")
 
+        if assessment.status not in ("DRAFT", "RETURNED"):
+            raise InvalidStateTransitionError(
+                f"Assessment '{assessment_id}' is in '{assessment.status}' status and cannot be modified."
+            )
+
         # Temporal check for date-sensitive parameters
         if activity_date:
             validate_temporal_activity_date(activity_date, param_clean)
@@ -202,22 +207,7 @@ class UniversityAssessmentService:
             if doc.framework != UNIVERSITY_FRAMEWORK_CODE:
                 continue
 
-            scoring_state = EvidenceState.EVIDENCE_PENDING
-            if doc.status == EvidenceLifecycleState.EVIDENCE_VERIFIED:
-                scoring_state = EvidenceState.EVIDENCE_VERIFIED
-            elif doc.status == EvidenceLifecycleState.EVIDENCE_REJECTED:
-                scoring_state = EvidenceState.EVIDENCE_REJECTED
-            elif doc.status == EvidenceLifecycleState.EVIDENCE_PRESENT:
-                scoring_state = EvidenceState.EVIDENCE_PRESENT
-
-            scoring_doc = ScoringEvidenceDoc(
-                document_id=str(doc.document_id),
-                document_type=doc.evidence_type,
-                status=scoring_state,
-                verified_by=str(doc.assigned_reviewer.pk) if doc.assigned_reviewer else None,
-                file_checksum=doc.file_checksum,
-                academic_year=assoc.academic_year,
-            )
+            scoring_doc = EvidenceService.to_scoring_domain(assoc)
             subcrit_evidence_map.setdefault(assoc.subcriterion_id, []).append(scoring_doc)
 
         # 3. Build ParameterInput for all U1–U20 parameters
@@ -349,6 +339,41 @@ class UniversityAssessmentService:
         )
 
     @classmethod
+    def get_review_readiness(
+        cls,
+        assessment_id: str,
+        user: Any = None,
+    ):
+        """
+        Returns the structured ReviewReadinessReport for the complete_review gate.
+        Distinguishes MISSING/PENDING (blockers), REJECTED (correction required),
+        UNRESOLVED (governance), SOURCE_SILENT (not a requirement).
+        Returns (is_complete_review_allowed, review_readiness, summary).
+        """
+        try:
+            assessment = UniversityAssessment.objects.select_related("university").get(
+                assessment_id=assessment_id
+            )
+        except UniversityAssessment.DoesNotExist:
+            raise UniversityValidationError(f"Assessment '{assessment_id}' not found.")
+
+        eval_user = user
+        if user and (
+            getattr(user, "is_superuser", False)
+            or getattr(user, "role", "") in ("state_admin", "committee")
+        ):
+            eval_user = user
+        else:
+            eval_user = None
+
+        return EvidenceService.get_review_readiness(
+            assessment_id=assessment.assessment_id,
+            institution_id=assessment.university.aishe_code,
+            framework=UNIVERSITY_FRAMEWORK_CODE,
+            requesting_user=eval_user,
+        )
+
+    @classmethod
     @transaction.atomic
     def submit_assessment(
         cls,
@@ -357,8 +382,8 @@ class UniversityAssessmentService:
     ) -> UniversityAssessment:
         """
         Submits a University assessment for review.
-        Validates ownership, state (must be DRAFT), required parameter inputs,
-        and evidence readiness via Phase 5D.
+        Validates ownership, state (must be DRAFT), and required parameter inputs.
+        Does NOT gate submission on committee evidence verification.
         """
         try:
             assessment = UniversityAssessment.objects.select_for_update().select_related("university").get(
@@ -368,16 +393,17 @@ class UniversityAssessmentService:
             raise UniversityValidationError(f"Assessment '{assessment_id}' not found.", code="NOT_FOUND")
 
         # Ownership validation
-        if submitting_user and not (
-            getattr(submitting_user, "is_superuser", False)
-            or getattr(submitting_user, "role", "") in ("admin", "state_admin")
-        ):
-            user_uni = getattr(submitting_user, "university", None)
-            if not user_uni or user_uni.pk != assessment.university_id:
-                raise UniversityNotAuthorizedError(
-                    f"User '{getattr(submitting_user, 'email', '')}' is not authorized to submit assessment for '{assessment.university.name}'.",
-                    code="ASSESSMENT_NOT_AUTHORIZED"
-                )
+        if submitting_user and getattr(submitting_user, "is_authenticated", False):
+            if not (
+                getattr(submitting_user, "is_superuser", False)
+                or getattr(submitting_user, "role", "") in ("admin", "state_admin")
+            ):
+                user_uni = getattr(submitting_user, "university", None)
+                if not user_uni or user_uni.pk != assessment.university_id:
+                    raise UniversityNotAuthorizedError(
+                        f"User '{getattr(submitting_user, 'email', '')}' is not authorized to submit assessment for '{assessment.university.name}'.",
+                        code="ASSESSMENT_NOT_AUTHORIZED"
+                    )
 
         if assessment.status != "DRAFT":
             raise InvalidStateTransitionError(
@@ -390,18 +416,21 @@ class UniversityAssessmentService:
                 code="INVALID_PARAMETER_INPUT"
             )
 
-        is_ready, blocking_reasons, summary = cls.check_assessment_readiness(
-            assessment_id, user=submitting_user
-        )
-        if not is_ready or blocking_reasons:
-            reasons_str = "; ".join(blocking_reasons) if blocking_reasons else "Evidence requirements incomplete"
-            raise EvidenceNotReadyError(
-                f"Cannot submit assessment: Evidence is not ready. {reasons_str}"
-            )
-
+        prev_status = assessment.status
         assessment.status = "SUBMITTED"
         assessment.submitted_at = timezone.now()
         assessment.save(update_fields=["status", "submitted_at", "updated_at"])
+
+        UniversityAssessmentAuditLog.objects.create(
+            assessment=assessment,
+            actor=submitting_user if submitting_user and getattr(submitting_user, "is_authenticated", False) else None,
+            action="SUBMITTED",
+            previous_status=prev_status,
+            new_status="SUBMITTED",
+            outcome="SUCCESS",
+            reason="Formal submission by institution",
+        )
+
         return assessment
 
     @classmethod
@@ -726,14 +755,36 @@ class UniversityReviewService:
                 f"Cannot complete review on assessment in '{assessment.status}' status. Assessment must be in 'UNDER_REVIEW' or 'EVALUATED' status."
             )
 
-        # Gate: Evidence readiness check via Phase 5D
-        is_ready, blocking_reasons, summary = UniversityAssessmentService.check_assessment_readiness(
+        # Gate: Evidence readiness check via Phase 5D ReviewReadinessReport
+        # Uses structured classification to distinguish:
+        #   MISSING/PENDING  -> hard blockers (completion prevented)
+        #   REJECTED         -> correction-required state (reviewer must Return to Institution)
+        #   SOURCE_SILENT    -> not a documentary requirement, never blocks
+        #   UNRESOLVED       -> governance issue, not institution failure
+        is_complete_allowed, review_readiness, summary = UniversityAssessmentService.get_review_readiness(
             assessment.assessment_id, user=reviewer
         )
-        if not is_ready or blocking_reasons:
-            reasons_str = "; ".join(blocking_reasons) if blocking_reasons else "Evidence requirements incomplete"
+
+        if not is_complete_allowed:
+            error_parts = []
+
+            if review_readiness.blocking_reasons:
+                error_parts.append(
+                    "Evidence requirements incomplete (missing or pending): "
+                    + "; ".join(review_readiness.blocking_reasons)
+                )
+
+            if review_readiness.correction_required_reasons:
+                error_parts.append(
+                    "Rejected evidence found — use 'Return to Institution' to request correction: "
+                    + "; ".join(review_readiness.correction_required_reasons)
+                )
+
+            if not error_parts:
+                error_parts.append("Evidence requirements incomplete.")
+
             raise EvidenceNotReadyError(
-                f"Cannot complete review: Evidence requirements incomplete. {reasons_str}"
+                f"Cannot complete review: {' | '.join(error_parts)}"
             )
 
         # Gate: Scoring evaluation check
@@ -751,10 +802,13 @@ class UniversityReviewService:
         assessment.save(update_fields=["status", "updated_at"])
 
         evid_snapshot = {
-            "is_ready": is_ready,
-            "blocking_reasons": blocking_reasons,
-            "total_evaluated": getattr(summary, "total_evaluated", 0) if summary else 0,
-            "total_covered": getattr(summary, "total_covered", 0) if summary else 0,
+            "is_complete_allowed": is_complete_allowed,
+            "blocking_reasons": review_readiness.blocking_reasons if review_readiness else [],
+            "correction_required_reasons": review_readiness.correction_required_reasons if review_readiness else [],
+            "governance_reasons": review_readiness.governance_reasons if review_readiness else [],
+            "source_silent_subcriteria": review_readiness.source_silent_subcriteria if review_readiness else [],
+            "total_evaluated": getattr(summary, "active_documentary_subcriteria", 0) if summary else 0,
+            "total_covered": getattr(summary, "verified_subcriteria", 0) if summary else 0,
         }
 
         review_rec = UniversityReviewRecord.objects.create(

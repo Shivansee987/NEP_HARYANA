@@ -13,9 +13,11 @@ from apps.scoring.enums import FrameworkType, PeriodRule
 from apps.scoring.rules.definitions import COLLEGE_PARAMETERS, UNIVERSITY_PARAMETERS
 
 from .enums import (
+    AssociationVerificationDecision,
     CoverageDeficiencyCode,
     CoverageState,
     EvidenceLifecycleState,
+    VerificationDecision,
 )
 from .exceptions import (
     FrameworkMismatchError,
@@ -27,6 +29,15 @@ from .models import (
     ReviewerAuthorization,
 )
 from .period_validator import AssessmentPeriodValidator
+from .taxonomy import (
+    ContractStatus,
+    get_subcriterion_contract,
+    LEGACY_COARSE_EVIDENCE_TYPES,
+    MULTI_SUBCRITERION_PARAMETERS,
+    SINGLE_SUBCRITERION_PARAMETERS,
+    SOURCE_SILENT_PARAMETERS,
+)
+
 
 
 @dataclass
@@ -81,6 +92,7 @@ class ParameterCoverageResult:
 class CoverageSummary:
     """
     High-level metrics summarizing assessment evidence readiness.
+    SOURCE_SILENT and UNRESOLVED subcriteria are excluded from documentary coverage counts.
     """
     total_subcriteria: int = 0
     covered_subcriteria: int = 0
@@ -89,7 +101,44 @@ class CoverageSummary:
     rejected_evidence: int = 0
     period_invalid: int = 0
     verified_subcriteria: int = 0
+    # Subcriteria exempt from documentary evidence requirement
+    source_silent_subcriteria: int = 0
+    # Subcriteria with unresolved governance/source contracts
+    unresolved_subcriteria: int = 0
+    # Active subcriteria that require documentary evidence (excludes silent/unresolved)
+    active_documentary_subcriteria: int = 0
     is_ready_for_scoring: bool = False
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class ReviewReadinessReport:
+    """
+    Deterministic reviewer-facing readiness classification.
+
+    Distinguishes three categories of deficiency so the review workflow
+    can route correctly without conflating them:
+
+    - blocking_reasons: ACTIVE subcriteria with MISSING or PENDING evidence.
+      These prevent "Complete Review" and prevent scoring.
+
+    - correction_required_reasons: ACTIVE subcriteria with REJECTED evidence.
+      The reviewer should use "Return to Institution" rather than completing.
+
+    - governance_reasons: UNRESOLVED contract subcriteria.
+      These are source/governance issues, not missing documents.
+      They block certification per policy but do NOT represent institution failure.
+
+    - source_silent_subcriteria: Informational. No documentary requirement; not blocking.
+    """
+    is_complete_review_allowed: bool = False
+    blocking_reasons: List[str] = field(default_factory=list)       # MISSING/PENDING
+    correction_required_reasons: List[str] = field(default_factory=list)  # REJECTED
+    governance_reasons: List[str] = field(default_factory=list)     # UNRESOLVED
+    source_silent_subcriteria: List[str] = field(default_factory=list)  # informational
+    all_blocking_reasons: List[str] = field(default_factory=list)   # combined for backwards compat
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -109,6 +158,8 @@ class AssessmentCoverageReport:
     duplicates_detected: List[Dict[str, Any]] = field(default_factory=list)
     is_ready_for_scoring: bool = False
     blocking_reasons: List[str] = field(default_factory=list)
+    # Reviewer-facing structured readiness classification
+    review_readiness: Optional[ReviewReadinessReport] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -121,6 +172,7 @@ class AssessmentCoverageReport:
             "duplicates_detected": self.duplicates_detected,
             "is_ready_for_scoring": self.is_ready_for_scoring,
             "blocking_reasons": self.blocking_reasons,
+            "review_readiness": self.review_readiness.to_dict() if self.review_readiness else None,
         }
 
 
@@ -161,7 +213,7 @@ class EvidenceCoverageEvaluator:
         # 4. Fetch all active associations for this assessment context
         assoc_qs = EvidenceSubcriterionAssociation.objects.filter(
             is_active=True
-        ).select_related('evidence')
+        ).select_related('evidence').prefetch_related('verifications')
 
         if resolved_assessment_id:
             assoc_qs = assoc_qs.filter(evidence__assessment_id=resolved_assessment_id)
@@ -177,8 +229,12 @@ class EvidenceCoverageEvaluator:
         doc_subcriteria_map: Dict[str, Dict[str, Any]] = {}
 
         for assoc in assoc_qs:
-            key = (assoc.parameter_id, assoc.subcriterion_id)
+            param_key = (assoc.parameter_id or "").strip().upper()
+            sub_key = (assoc.subcriterion_id or "").strip().upper()
+            key = (param_key, sub_key)
             sub_assocs.setdefault(key, []).append(assoc)
+            if not sub_key and param_key:
+                sub_assocs.setdefault((param_key, ""), []).append(assoc)
 
             doc_id = str(assoc.evidence.document_id)
             if doc_id not in doc_subcriteria_map:
@@ -217,14 +273,33 @@ class EvidenceCoverageEvaluator:
                 if sub_filter and sub_id not in sub_filter:
                     continue
 
+                p_clean = param_id.strip().upper()
+                s_clean = sub_id.strip().upper()
+                matching_assocs = list(sub_assocs.get((p_clean, s_clean), []))
+
+                # Parameter-level associations without subcriterion_id
+                for pa in sub_assocs.get((p_clean, ""), []):
+                    if pa not in matching_assocs:
+                        matching_assocs.append(pa)
+
+                # Check aliases if contract defines them
+                c_temp = get_subcriterion_contract(resolved_framework, p_clean, s_clean)
+                if c_temp and hasattr(c_temp, 'aliases'):
+                    for al in getattr(c_temp, 'aliases', ()):
+                        for aa in sub_assocs.get((p_clean, al.upper()), []):
+                            if aa not in matching_assocs:
+                                matching_assocs.append(aa)
+
                 sub_result = cls._evaluate_subcriterion(
                     framework=resolved_framework,
                     parameter_id=param_id,
                     subcriterion_id=sub_id,
                     sub_def=sub_def,
                     is_period_sensitive=is_param_period_sensitive,
-                    associations=sub_assocs.get((param_id, sub_id), []),
+                    associations=matching_assocs,
                     reused_doc_ids=reused_doc_ids,
+                    institution_id=resolved_institution_id,
+                    param_def=param_def,
                 )
                 param_sub_results.append(sub_result)
                 all_sub_results.append(sub_result)
@@ -246,22 +321,112 @@ class EvidenceCoverageEvaluator:
                 )
 
         # 6. Compute summary
+        # -------------------------------------------------------------------
+        # CRITICAL CLASSIFICATION RULES:
+        # SOURCE_SILENT  → No documentary requirement. NEVER a blocking deficiency.
+        # UNRESOLVED     → Governance/source issue. NOT a missing-document deficiency.
+        # REJECTED       → Correction required. NOT a completion blocker (use Return).
+        # PENDING        → Blocking completion. Institution must wait for review.
+        # MISSING/NO_EV  → Hard blocking. Institution must upload.
+        # -------------------------------------------------------------------
         total_subcriteria = len(all_sub_results)
-        covered_subcriteria = sum(1 for s in all_sub_results if s.evidence_count > 0)
-        uncovered_subcriteria = total_subcriteria - covered_subcriteria
-        verified_subcriteria = sum(1 for s in all_sub_results if s.coverage_state == CoverageState.EVIDENCE_VERIFIED)
-        verification_pending = sum(1 for s in all_sub_results if s.pending_count > 0 or s.coverage_state == CoverageState.EVIDENCE_PENDING)
-        rejected_evidence = sum(1 for s in all_sub_results if s.rejected_count > 0)
-        period_invalid = sum(1 for s in all_sub_results if s.period_invalid_count > 0 or s.coverage_state == CoverageState.EVIDENCE_INVALID_PERIOD)
 
+        # Subcriteria with no documentary evidence requirement (SOURCE_SILENT)
+        source_silent_subs = [s for s in all_sub_results if s.coverage_state == CoverageState.SOURCE_SILENT]
+        # Subcriteria with unresolved governance contracts (UNRESOLVED)
+        unresolved_subs = [s for s in all_sub_results if s.coverage_state == CoverageState.UNRESOLVED]
+        # Active documentary subcriteria: exclude SOURCE_SILENT and UNRESOLVED
+        active_doc_subs = [
+            s for s in all_sub_results
+            if s.coverage_state not in (CoverageState.SOURCE_SILENT, CoverageState.UNRESOLVED)
+        ]
+
+        covered_subcriteria = sum(1 for s in active_doc_subs if s.evidence_count > 0)
+        uncovered_subcriteria = len(active_doc_subs) - covered_subcriteria
+        verified_subcriteria = sum(1 for s in active_doc_subs if s.coverage_state == CoverageState.EVIDENCE_VERIFIED)
+        verification_pending = sum(
+            1 for s in active_doc_subs
+            if s.pending_count > 0 or s.coverage_state == CoverageState.EVIDENCE_PENDING
+        )
+        rejected_evidence = sum(1 for s in active_doc_subs if s.rejected_count > 0)
+        period_invalid = sum(
+            1 for s in active_doc_subs
+            if s.period_invalid_count > 0 or s.coverage_state == CoverageState.EVIDENCE_INVALID_PERIOD
+        )
+
+        # Build reviewer-facing readiness classification
+        # Separate global_blocking_reasons by deficiency category
+        blocking_reasons_missing: List[str] = []    # MISSING or NO_EVIDENCE
+        blocking_reasons_pending: List[str] = []    # PENDING
+        correction_required_reasons: List[str] = []  # REJECTED
+        governance_reasons: List[str] = []           # UNRESOLVED
+        source_silent_ids: List[str] = []
+
+        for s in all_sub_results:
+            if s.coverage_state == CoverageState.SOURCE_SILENT:
+                source_silent_ids.append(s.subcriterion_id)
+            elif s.coverage_state == CoverageState.UNRESOLVED:
+                for br in s.blocking_reasons:
+                    msg = f"[{s.subcriterion_id}] {br}"
+                    if msg not in governance_reasons:
+                        governance_reasons.append(msg)
+            elif s.coverage_state == CoverageState.EVIDENCE_REJECTED:
+                for br in s.blocking_reasons:
+                    msg = f"[{s.subcriterion_id}] {br}"
+                    if msg not in correction_required_reasons:
+                        correction_required_reasons.append(msg)
+            elif s.coverage_state in (
+                CoverageState.NO_EVIDENCE,
+                CoverageState.EVIDENCE_PRESENT,
+            ):
+                for br in s.blocking_reasons:
+                    msg = f"[{s.subcriterion_id}] {br}"
+                    if msg not in blocking_reasons_missing:
+                        blocking_reasons_missing.append(msg)
+            elif s.coverage_state in (
+                CoverageState.EVIDENCE_PENDING,
+                CoverageState.EVIDENCE_INVALID_PERIOD,
+            ):
+                for br in s.blocking_reasons:
+                    msg = f"[{s.subcriterion_id}] {br}"
+                    if msg not in blocking_reasons_pending:
+                        blocking_reasons_pending.append(msg)
+
+        all_hard_blocking = blocking_reasons_missing + blocking_reasons_pending
+
+        # is_ready_for_scoring: all ACTIVE documentary subcriteria must be VERIFIED.
+        # SOURCE_SILENT and UNRESOLVED do NOT count as missing evidence.
+        # REJECTED evidence triggers correction required, not completion readiness.
         is_ready = (
-            total_subcriteria > 0 and
-            covered_subcriteria == total_subcriteria and
-            verified_subcriteria == total_subcriteria and
+            len(active_doc_subs) > 0 and
+            verified_subcriteria == len(active_doc_subs) and
             uncovered_subcriteria == 0 and
             verification_pending == 0 and
             period_invalid == 0 and
-            len(global_blocking_reasons) == 0
+            rejected_evidence == 0 and
+            len(all_hard_blocking) == 0
+        )
+
+        # Complete review is allowed when all ACTIVE subcriteria are verified.
+        # Rejected evidence is a correction-required state, not a blocking state.
+        # Governance issues (UNRESOLVED) do not block review completion per current policy.
+        is_complete_review_allowed = (
+            len(active_doc_subs) > 0 and
+            verified_subcriteria == len(active_doc_subs) and
+            uncovered_subcriteria == 0 and
+            verification_pending == 0 and
+            period_invalid == 0 and
+            len(blocking_reasons_missing) == 0 and
+            len(blocking_reasons_pending) == 0
+        )
+
+        review_readiness = ReviewReadinessReport(
+            is_complete_review_allowed=is_complete_review_allowed,
+            blocking_reasons=all_hard_blocking,
+            correction_required_reasons=correction_required_reasons,
+            governance_reasons=governance_reasons,
+            source_silent_subcriteria=source_silent_ids,
+            all_blocking_reasons=all_hard_blocking + correction_required_reasons + governance_reasons,
         )
 
         summary = CoverageSummary(
@@ -272,8 +437,16 @@ class EvidenceCoverageEvaluator:
             rejected_evidence=rejected_evidence,
             period_invalid=period_invalid,
             verified_subcriteria=verified_subcriteria,
+            source_silent_subcriteria=len(source_silent_subs),
+            unresolved_subcriteria=len(unresolved_subs),
+            active_documentary_subcriteria=len(active_doc_subs),
             is_ready_for_scoring=is_ready,
         )
+
+        # Backwards-compatible global_blocking_reasons:
+        # Only includes ACTIVE documentary deficiencies (missing + pending).
+        # SOURCE_SILENT and UNRESOLVED are excluded from hard blocking.
+        compatible_blocking_reasons = all_hard_blocking
 
         return AssessmentCoverageReport(
             framework=resolved_framework,
@@ -288,7 +461,8 @@ class EvidenceCoverageEvaluator:
             summary=summary,
             duplicates_detected=duplicates_detected,
             is_ready_for_scoring=is_ready,
-            blocking_reasons=global_blocking_reasons,
+            blocking_reasons=compatible_blocking_reasons,
+            review_readiness=review_readiness,
         )
 
     @classmethod
@@ -305,6 +479,10 @@ class EvidenceCoverageEvaluator:
         Convenience service answering whether the assessment's evidence is ready
         for scoring and review.
         Returns (is_ready, blocking_reasons, summary).
+
+        NOTE: blocking_reasons only includes ACTIVE documentary deficiencies
+        (MISSING + PENDING). SOURCE_SILENT and UNRESOLVED are excluded.
+        REJECTED evidence is returned via report.review_readiness.correction_required_reasons.
         """
         report = cls.evaluate_evidence_coverage(
             assessment_id=assessment_id,
@@ -317,6 +495,43 @@ class EvidenceCoverageEvaluator:
         return report.is_ready_for_scoring, report.blocking_reasons, report.summary
 
     @classmethod
+    def get_review_readiness(
+        cls,
+        assessment_id: Optional[str] = None,
+        nomination=None,
+        institution_id: Optional[str] = None,
+        framework: Optional[str] = None,
+        requesting_user=None,
+    ) -> Tuple[bool, "ReviewReadinessReport", CoverageSummary]:
+        """
+        Returns the structured ReviewReadinessReport for the reviewer workflow gate.
+
+        Distinguishes:
+          - is_complete_review_allowed: True only if all ACTIVE documentary subcriteria are VERIFIED.
+          - blocking_reasons: MISSING/PENDING \u2014 hard blockers for completion.
+          - correction_required_reasons: REJECTED evidence \u2014 reviewer should Return to Institution.
+          - governance_reasons: UNRESOLVED contracts \u2014 governance/source issues, not institution failure.
+          - source_silent_subcriteria: Informational. No documentary requirement.
+
+        Returns (is_complete_review_allowed, review_readiness, summary).
+        """
+        report = cls.evaluate_evidence_coverage(
+            assessment_id=assessment_id,
+            nomination=nomination,
+            institution_id=institution_id,
+            framework=framework,
+            requesting_user=requesting_user,
+        )
+        rr = report.review_readiness
+        if rr is None:
+            # Fallback: build a minimal report from is_ready_for_scoring
+            rr = ReviewReadinessReport(
+                is_complete_review_allowed=report.is_ready_for_scoring,
+                blocking_reasons=report.blocking_reasons,
+            )
+        return rr.is_complete_review_allowed, rr, report.summary
+
+    @classmethod
     def _evaluate_subcriterion(
         cls,
         framework: str,
@@ -326,20 +541,110 @@ class EvidenceCoverageEvaluator:
         is_period_sensitive: bool,
         associations: List[EvidenceSubcriterionAssociation],
         reused_doc_ids: Set[str],
+        institution_id: Optional[str] = None,
+        param_def: Optional[Dict[str, Any]] = None,
     ) -> SubcriterionCoverageResult:
         """
-        Evaluates a single subcriterion against its associated documents.
+        Evaluates a single subcriterion against its associated documents and Step 4C contracts.
+        Ensures exact subcriterion-level contract satisfaction and association verification.
         """
+        clean_fw = "UNIVERSITY_2026" if "UNIVERSITY" in str(framework).upper() else "COLLEGE_2026"
+        param_clean = (parameter_id or "").strip().upper()
+        sub_clean = (subcriterion_id or "").strip().upper()
         max_marks = float(sub_def.get("max_score", sub_def.get("max_marks", 0.0)))
+
         evidence_items: List[Dict[str, Any]] = []
         deficiency_codes: List[str] = []
         blocking_reasons: List[str] = []
 
-        verified_valid_docs = []
-        verified_invalid_docs = []
-        pending_docs = []
-        rejected_docs = []
-        present_docs = []
+        is_multi = param_clean in MULTI_SUBCRITERION_PARAMETERS
+        is_single = param_clean in SINGLE_SUBCRITERION_PARAMETERS
+
+        # 1. Resolve exact subcriterion contract
+        contract = get_subcriterion_contract(clean_fw, param_clean, sub_clean)
+
+        # 2. Check UNRESOLVED_MISSING contract
+        # UNRESOLVED is a GOVERNANCE/SOURCE issue, NOT a missing-document deficiency.
+        # It is represented as a governance_reason in ReviewReadinessReport, not a hard blocker.
+        if contract and contract.status == ContractStatus.UNRESOLVED_MISSING:
+            def_code = CoverageDeficiencyCode.CONTRACT_UNRESOLVED.value
+            deficiency_codes.append(def_code)
+            blocking_reasons.append(
+                f"Subcriterion '{sub_clean}' has an unresolved evidence contract "
+                f"(Authoritative PDF specifies Scopus metric but documentary evidence table is silent on documentation. "
+                f"Fails closed.). Cannot be marked covered until authoritative resolution."
+            )
+            return SubcriterionCoverageResult(
+                framework=clean_fw,
+                parameter_id=param_clean,
+                subcriterion_id=sub_clean,
+                max_marks=max_marks,
+                coverage_state=CoverageState.UNRESOLVED,
+                evidence_count=len(associations),
+                verified_count=0,
+                pending_count=0,
+                rejected_count=0,
+                period_valid_count=0,
+                period_invalid_count=0,
+                is_period_sensitive=is_period_sensitive,
+                evidence_items=[],
+                deficiency_codes=deficiency_codes,
+                blocking_reasons=blocking_reasons,
+            )
+
+        # 3. Check SOURCE_SILENT contract
+        # SOURCE_SILENT means: "The authoritative source specifies no documentary requirement."
+        # This is NOT missing evidence. It must NEVER appear as a hard blocker.
+        # It applies regardless of whether there are associations or not.
+        if (contract and contract.status == ContractStatus.SOURCE_SILENT) or param_clean in SOURCE_SILENT_PARAMETERS:
+            # SOURCE_SILENT subcriteria are exempt from documentary evidence requirements.
+            # Any uploaded associations are informational only.
+            def_code = CoverageDeficiencyCode.CONTRACT_SOURCE_SILENT.value
+            if def_code not in deficiency_codes:
+                deficiency_codes.append(def_code)
+            # No blocking_reasons — SOURCE_SILENT is never a hard blocker.
+            return SubcriterionCoverageResult(
+                framework=clean_fw,
+                parameter_id=param_clean,
+                subcriterion_id=sub_clean,
+                max_marks=max_marks,
+                coverage_state=CoverageState.SOURCE_SILENT,
+                evidence_count=len(associations),
+                verified_count=0,
+                pending_count=0,
+                rejected_count=0,
+                period_valid_count=0,
+                period_invalid_count=0,
+                is_period_sensitive=is_period_sensitive,
+                evidence_items=[],
+                deficiency_codes=deficiency_codes,
+                blocking_reasons=[],  # SOURCE_SILENT: no blocking reasons
+            )
+
+        # 4. Resolve allowed and quarantined evidence types
+        if contract:
+            allowed_types = list(contract.allowed_evidence_types)
+            if contract.canonical_evidence_type and contract.canonical_evidence_type not in allowed_types:
+                allowed_types.append(contract.canonical_evidence_type)
+            quarantined_types = list(contract.quarantined_types)
+            aliases = [a.upper() for a in getattr(contract, "aliases", ())]
+        else:
+            allowed_types = (
+                sub_def.get("mandatory_evidence")
+                if (sub_def and "mandatory_evidence" in sub_def)
+                else (param_def.get("mandatory_evidence", []) if param_def else [])
+            )
+            quarantined_types = []
+            aliases = []
+
+        if is_single and "EVID_GENERAL" not in allowed_types:
+            allowed_types.append("EVID_GENERAL")
+
+        verified_valid_assocs = []
+        verified_invalid_assocs = []
+        pending_assocs = []
+        rejected_assocs = []
+        present_assocs = []
         period_valid_count = 0
         period_invalid_count = 0
 
@@ -347,19 +652,26 @@ class EvidenceCoverageEvaluator:
         for assoc in associations:
             doc = assoc.evidence
             doc_id = str(doc.document_id)
-
             item_deficiencies: List[str] = []
             is_valid_assoc = True
 
-            # 1. Framework match verification
-            if doc.framework != framework:
+            # Framework match verification
+            if doc.framework != clean_fw:
                 item_deficiencies.append(CoverageDeficiencyCode.FRAMEWORK_MISMATCH.value)
                 if CoverageDeficiencyCode.FRAMEWORK_MISMATCH.value not in deficiency_codes:
                     deficiency_codes.append(CoverageDeficiencyCode.FRAMEWORK_MISMATCH.value)
-                blocking_reasons.append(f"Evidence {doc_id} framework '{doc.framework}' does not match assessment '{framework}'.")
+                blocking_reasons.append(f"Evidence {doc_id} framework '{doc.framework}' does not match assessment '{clean_fw}'.")
                 is_valid_assoc = False
 
-            # 2. Association status integrity
+            # Institution isolation check
+            if institution_id and doc.institution_id and doc.institution_id != institution_id:
+                item_deficiencies.append(CoverageDeficiencyCode.INSTITUTION_MISMATCH.value)
+                if CoverageDeficiencyCode.INSTITUTION_MISMATCH.value not in deficiency_codes:
+                    deficiency_codes.append(CoverageDeficiencyCode.INSTITUTION_MISMATCH.value)
+                blocking_reasons.append(f"Evidence {doc_id} belongs to institution '{doc.institution_id}', does not match assessment institution '{institution_id}'.")
+                is_valid_assoc = False
+
+            # Association status integrity
             if not doc.is_active or doc.status in (EvidenceLifecycleState.EVIDENCE_SUPERSEDED, EvidenceLifecycleState.EVIDENCE_WITHDRAWN):
                 item_deficiencies.append(CoverageDeficiencyCode.INVALID_ASSOCIATION.value)
                 if CoverageDeficiencyCode.INVALID_ASSOCIATION.value not in deficiency_codes:
@@ -367,9 +679,48 @@ class EvidenceCoverageEvaluator:
                 blocking_reasons.append(f"Evidence {doc_id} is inactive or has been superseded/withdrawn.")
                 is_valid_assoc = False
 
+            # Parameter isolation check
+            if assoc.parameter_id:
+                assoc_param = assoc.parameter_id.strip().upper()
+                if assoc_param != param_clean:
+                    is_valid_assoc = False
+                    blocking_reasons.append(f"Evidence association parameter '{assoc_param}' does not match '{param_clean}'.")
+
+            # Multi-subcriterion association identity checks
+            if is_multi:
+                # Disallow parameter-level evidence without subcriterion association
+                if assoc.parameter_id and not assoc.subcriterion_id:
+                    is_valid_assoc = False
+                    blocking_reasons.append(f"Parameter-level evidence without exact subcriterion association cannot satisfy multi-subcriterion '{param_clean}'.")
+
+                # Disallow sibling subcriterion evidence
+                if assoc.subcriterion_id:
+                    assoc_sub = assoc.subcriterion_id.strip().upper()
+                    if assoc_sub != sub_clean and assoc_sub not in aliases:
+                        is_valid_assoc = False
+                        blocking_reasons.append(f"Sibling association mismatch: '{assoc_sub}' cannot satisfy '{sub_clean}'.")
+
+            # Evidence type validation
+            cand_type = (assoc.subcriterion_evidence_type or doc.evidence_type or "").strip()
+            if cand_type in quarantined_types or (
+                cand_type in LEGACY_COARSE_EVIDENCE_TYPES and cand_type not in allowed_types
+            ):
+                item_deficiencies.append(CoverageDeficiencyCode.QUARANTINED_EVIDENCE.value)
+                if CoverageDeficiencyCode.QUARANTINED_EVIDENCE.value not in deficiency_codes:
+                    deficiency_codes.append(CoverageDeficiencyCode.QUARANTINED_EVIDENCE.value)
+                blocking_reasons.append(f"Evidence type '{cand_type}' is quarantined from satisfying '{sub_clean}'.")
+                is_valid_assoc = False
+            elif allowed_types and cand_type not in allowed_types:
+                item_deficiencies.append(CoverageDeficiencyCode.EVIDENCE_TYPE_MISMATCH.value)
+                if CoverageDeficiencyCode.EVIDENCE_TYPE_MISMATCH.value not in deficiency_codes:
+                    deficiency_codes.append(CoverageDeficiencyCode.EVIDENCE_TYPE_MISMATCH.value)
+                blocking_reasons.append(f"Evidence type '{cand_type}' does not satisfy subcriterion contract for '{sub_clean}'. Allowed: {allowed_types}.")
+                is_valid_assoc = False
+
             if not is_valid_assoc:
                 evidence_items.append({
                     "document_id": doc_id,
+                    "association_id": str(assoc.association_id),
                     "filename": doc.original_filename,
                     "status": doc.status,
                     "document_date": doc.document_date.isoformat() if doc.document_date else None,
@@ -378,7 +729,7 @@ class EvidenceCoverageEvaluator:
                 })
                 continue
 
-            # 3. Period validation
+            # Period validation
             period_valid, period_reason, period_code = AssessmentPeriodValidator.validate_document_period(
                 doc, is_period_sensitive=is_period_sensitive
             )
@@ -392,74 +743,114 @@ class EvidenceCoverageEvaluator:
                     if period_code.value not in deficiency_codes:
                         deficiency_codes.append(period_code.value)
 
-            # 4. Duplicate usage detection
+            # Duplicate usage detection
             if doc_id in reused_doc_ids:
                 if CoverageDeficiencyCode.DUPLICATE_EVIDENCE_DETECTED.value not in item_deficiencies:
                     item_deficiencies.append(CoverageDeficiencyCode.DUPLICATE_EVIDENCE_DETECTED.value)
 
-            # 5. Bucket by lifecycle state
-            if doc.status == EvidenceLifecycleState.EVIDENCE_VERIFIED:
-                if period_valid or not is_period_sensitive:
-                    verified_valid_docs.append(doc)
-                else:
-                    verified_invalid_docs.append(doc)
-            elif doc.status == EvidenceLifecycleState.EVIDENCE_PENDING:
-                pending_docs.append(doc)
-                if CoverageDeficiencyCode.VERIFICATION_PENDING.value not in deficiency_codes:
-                    deficiency_codes.append(CoverageDeficiencyCode.VERIFICATION_PENDING.value)
-            elif doc.status == EvidenceLifecycleState.EVIDENCE_REJECTED:
-                rejected_docs.append(doc)
+            # Association-level Verification Determination
+            assoc_status = assoc.verification_status
+
+            # Priority 1: Rejection
+            if (
+                assoc_status in (VerificationDecision.REJECTED, AssociationVerificationDecision.REJECTED, "REJECTED")
+                or doc.status == EvidenceLifecycleState.EVIDENCE_REJECTED
+            ):
+                rejected_assocs.append(assoc)
                 if CoverageDeficiencyCode.EVIDENCE_REJECTED.value not in deficiency_codes:
                     deficiency_codes.append(CoverageDeficiencyCode.EVIDENCE_REJECTED.value)
-            elif doc.status == EvidenceLifecycleState.EVIDENCE_PRESENT:
-                present_docs.append(doc)
-                if CoverageDeficiencyCode.UNVERIFIED_EVIDENCE.value not in deficiency_codes:
-                    deficiency_codes.append(CoverageDeficiencyCode.UNVERIFIED_EVIDENCE.value)
+            elif is_multi:
+                # Multi-subcriterion: strictly requires association-level verification
+                if assoc_status in (VerificationDecision.VERIFIED, AssociationVerificationDecision.VERIFIED, "VERIFIED"):
+                    if period_valid or not is_period_sensitive:
+                        verified_valid_assocs.append(assoc)
+                    else:
+                        verified_invalid_assocs.append(assoc)
+                else:
+                    pending_assocs.append(assoc)
+                    if CoverageDeficiencyCode.VERIFICATION_PENDING.value not in deficiency_codes:
+                        deficiency_codes.append(CoverageDeficiencyCode.VERIFICATION_PENDING.value)
+            else:
+                # Single subcriterion: inherits document-level verification if unreviewed
+                if (
+                    assoc_status in (VerificationDecision.VERIFIED, AssociationVerificationDecision.VERIFIED, "VERIFIED")
+                    or (assoc_status is None and doc.status == EvidenceLifecycleState.EVIDENCE_VERIFIED)
+                ):
+                    if period_valid or not is_period_sensitive:
+                        verified_valid_assocs.append(assoc)
+                    else:
+                        verified_invalid_assocs.append(assoc)
+                elif doc.status == EvidenceLifecycleState.EVIDENCE_PENDING or assoc_status in (VerificationDecision.PENDING, AssociationVerificationDecision.PENDING, "PENDING"):
+                    pending_assocs.append(assoc)
+                    if CoverageDeficiencyCode.VERIFICATION_PENDING.value not in deficiency_codes:
+                        deficiency_codes.append(CoverageDeficiencyCode.VERIFICATION_PENDING.value)
+                elif doc.status == EvidenceLifecycleState.EVIDENCE_PRESENT:
+                    present_assocs.append(assoc)
+                    if CoverageDeficiencyCode.UNVERIFIED_EVIDENCE.value not in deficiency_codes:
+                        deficiency_codes.append(CoverageDeficiencyCode.UNVERIFIED_EVIDENCE.value)
+                else:
+                    pending_assocs.append(assoc)
 
             evidence_items.append({
                 "document_id": doc_id,
+                "association_id": str(assoc.association_id),
                 "filename": doc.original_filename,
                 "status": doc.status,
+                "association_status": str(assoc_status) if assoc_status else None,
                 "document_date": doc.document_date.isoformat() if doc.document_date else None,
                 "period_valid": period_valid,
                 "deficiency_codes": item_deficiencies,
             })
 
         evidence_count = len(evidence_items)
-        verified_count = len(verified_valid_docs) + len(verified_invalid_docs)
-        pending_count = len(pending_docs)
-        rejected_count = len(rejected_docs)
+        verified_count = len(verified_valid_assocs) + len(verified_invalid_assocs)
+        pending_count = len(pending_assocs)
+        rejected_count = len(rejected_assocs)
 
         # 6. Determine overall subcriterion coverage_state
         if evidence_count == 0:
-            coverage_state = CoverageState.NO_EVIDENCE
-            if CoverageDeficiencyCode.NO_ASSOCIATED_EVIDENCE.value not in deficiency_codes:
-                deficiency_codes.append(CoverageDeficiencyCode.NO_ASSOCIATED_EVIDENCE.value)
-            blocking_reasons.append("No associated evidence.")
-        elif verified_valid_docs:
-            # Verified and period-valid document exists -> unlocks scoring!
+            if contract and contract.status == ContractStatus.SOURCE_SILENT:
+                coverage_state = CoverageState.SOURCE_SILENT
+                if CoverageDeficiencyCode.CONTRACT_SOURCE_SILENT.value not in deficiency_codes:
+                    deficiency_codes.append(CoverageDeficiencyCode.CONTRACT_SOURCE_SILENT.value)
+            elif contract and contract.status == ContractStatus.UNRESOLVED_MISSING:
+                coverage_state = CoverageState.UNRESOLVED
+                if CoverageDeficiencyCode.CONTRACT_UNRESOLVED.value not in deficiency_codes:
+                    deficiency_codes.append(CoverageDeficiencyCode.CONTRACT_UNRESOLVED.value)
+            else:
+                coverage_state = CoverageState.NO_EVIDENCE
+                if CoverageDeficiencyCode.NO_ASSOCIATED_EVIDENCE.value not in deficiency_codes:
+                    deficiency_codes.append(CoverageDeficiencyCode.NO_ASSOCIATED_EVIDENCE.value)
+                blocking_reasons.append("No associated evidence.")
+        elif verified_valid_assocs:
             coverage_state = CoverageState.EVIDENCE_VERIFIED
-        elif verified_invalid_docs:
-            # Verified but period invalid
+        elif verified_invalid_assocs:
             coverage_state = CoverageState.EVIDENCE_INVALID_PERIOD
             blocking_reasons.append("Evidence is verified but outside the authoritative assessment period (2025-07-01 to 2026-06-30).")
-        elif period_invalid_count > 0 and not pending_docs and not present_docs:
+        elif period_invalid_count > 0 and not pending_assocs and not present_assocs and not rejected_assocs:
             coverage_state = CoverageState.EVIDENCE_INVALID_PERIOD
             blocking_reasons.append("Evidence activity date falls outside the assessment period.")
-        elif pending_docs:
+        elif pending_assocs:
             coverage_state = CoverageState.EVIDENCE_PENDING
             blocking_reasons.append("Evidence is pending verification by the screening committee.")
-        elif rejected_docs and not present_docs:
+        elif rejected_assocs and not present_assocs:
             coverage_state = CoverageState.EVIDENCE_REJECTED
             blocking_reasons.append("All associated evidence was rejected by the reviewer.")
-        else:
+        elif present_assocs:
             coverage_state = CoverageState.EVIDENCE_PRESENT
             blocking_reasons.append("Evidence is uploaded but has not been submitted or verified.")
+        elif contract and contract.status == ContractStatus.SOURCE_SILENT:
+            coverage_state = CoverageState.SOURCE_SILENT
+        elif contract and contract.status == ContractStatus.UNRESOLVED_MISSING:
+            coverage_state = CoverageState.UNRESOLVED
+        else:
+            coverage_state = CoverageState.NO_EVIDENCE
+            blocking_reasons.append("No valid contract-compliant evidence associated with subcriterion.")
 
         return SubcriterionCoverageResult(
-            framework=framework,
-            parameter_id=parameter_id,
-            subcriterion_id=subcriterion_id,
+            framework=clean_fw,
+            parameter_id=param_clean,
+            subcriterion_id=sub_clean,
             max_marks=max_marks,
             coverage_state=coverage_state,
             evidence_count=evidence_count,

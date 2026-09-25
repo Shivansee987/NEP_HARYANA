@@ -18,9 +18,14 @@ function ContactUs() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    setSubmitted(true);
-    setFormData({ name: "", email: "", subject: "", message: "" });
-    setTimeout(() => setSubmitted(false), 5000);
+
+    const recipient = "info@hshec.gov.in";
+    const emailSubject = encodeURIComponent(formData.subject);
+    const emailBody = encodeURIComponent(
+      `Name: ${formData.name}\nFrom: ${formData.email}\n\n${formData.message}`
+    );
+
+    window.location.href = `mailto:${recipient}?subject=${emailSubject}&body=${emailBody}`;
   };
 
   return (

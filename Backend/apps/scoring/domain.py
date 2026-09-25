@@ -47,6 +47,10 @@ class EvidenceDocument:
     rejection_reason: Optional[str] = None
     file_checksum: Optional[str] = None
     academic_year: Optional[str] = None
+    framework: Optional[str] = None
+    parameter_id: Optional[str] = None
+    subcriterion_id: Optional[str] = None
+    association_verified: Optional[bool] = None
 
 
 @dataclass

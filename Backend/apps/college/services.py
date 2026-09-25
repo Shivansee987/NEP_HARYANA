@@ -224,22 +224,7 @@ class CollegeAssessmentService:
             if doc.framework != COLLEGE_FRAMEWORK_CODE:
                 continue
 
-            scoring_state = EvidenceState.EVIDENCE_PENDING
-            if doc.status == EvidenceLifecycleState.EVIDENCE_VERIFIED:
-                scoring_state = EvidenceState.EVIDENCE_VERIFIED
-            elif doc.status == EvidenceLifecycleState.EVIDENCE_REJECTED:
-                scoring_state = EvidenceState.EVIDENCE_REJECTED
-            elif doc.status == EvidenceLifecycleState.EVIDENCE_PRESENT:
-                scoring_state = EvidenceState.EVIDENCE_PRESENT
-
-            scoring_doc = ScoringEvidenceDoc(
-                document_id=str(doc.document_id),
-                document_type=doc.evidence_type,
-                status=scoring_state,
-                verified_by=str(doc.assigned_reviewer.pk) if doc.assigned_reviewer else None,
-                file_checksum=doc.file_checksum,
-                academic_year=assoc.academic_year,
-            )
+            scoring_doc = EvidenceService.to_scoring_domain(assoc)
             subcrit_evidence_map.setdefault(assoc.subcriterion_id, []).append(scoring_doc)
 
         # 3. Build ParameterInput for all C1–C22 parameters
@@ -377,6 +362,42 @@ class CollegeAssessmentService:
             framework=COLLEGE_FRAMEWORK_CODE,
             requesting_user=eval_user,
         )
+
+    @classmethod
+    def get_review_readiness(
+        cls,
+        assessment_id: str,
+        user: Any = None,
+    ):
+        """
+        Returns the structured ReviewReadinessReport for the complete_review gate.
+        Distinguishes MISSING/PENDING (blockers), REJECTED (correction required),
+        UNRESOLVED (governance), SOURCE_SILENT (not a requirement).
+        Returns (is_complete_review_allowed, review_readiness, summary).
+        """
+        try:
+            assessment = CollegeAssessment.objects.select_related("college").get(
+                assessment_id=assessment_id
+            )
+        except CollegeAssessment.DoesNotExist:
+            raise CollegeValidationError(f"Assessment '{assessment_id}' not found.")
+
+        eval_user = user
+        if user and (
+            getattr(user, "is_superuser", False)
+            or getattr(user, "role", "") in ("state_admin", "committee")
+        ):
+            eval_user = user
+        else:
+            eval_user = None
+
+        return EvidenceService.get_review_readiness(
+            assessment_id=assessment.assessment_id,
+            institution_id=assessment.college.aishe_code,
+            framework=COLLEGE_FRAMEWORK_CODE,
+            requesting_user=eval_user,
+        )
+
 
     @classmethod
     @transaction.atomic
@@ -780,14 +801,37 @@ class CollegeReviewService:
                 f"Cannot complete review on assessment in '{assessment.status}' status. Assessment must be in 'UNDER_REVIEW' status."
             )
 
-        # Gate: Evidence readiness check via Phase 5D
-        is_ready, blocking_reasons, summary = CollegeAssessmentService.check_assessment_readiness(
+        # Gate: Evidence readiness check via Phase 5D ReviewReadinessReport
+        # Uses structured classification to distinguish:
+        #   MISSING/PENDING  -> hard blockers (completion prevented)
+        #   REJECTED         -> correction-required state (reviewer must Return to Institution)
+        #   SOURCE_SILENT    -> not a documentary requirement, never blocks
+        #   UNRESOLVED       -> governance issue, not institution failure
+        is_complete_allowed, review_readiness, summary = CollegeAssessmentService.get_review_readiness(
             assessment.assessment_id, user=reviewer
         )
-        if not is_ready or blocking_reasons:
-            reasons_str = "; ".join(blocking_reasons) if blocking_reasons else "Evidence requirements incomplete"
+
+        if not is_complete_allowed:
+            # Build a human-readable error distinguishing the deficiency categories
+            error_parts = []
+
+            if review_readiness.blocking_reasons:
+                error_parts.append(
+                    "Evidence requirements incomplete (missing or pending): "
+                    + "; ".join(review_readiness.blocking_reasons)
+                )
+
+            if review_readiness.correction_required_reasons:
+                error_parts.append(
+                    "Rejected evidence found — use 'Return to Institution' to request correction: "
+                    + "; ".join(review_readiness.correction_required_reasons)
+                )
+
+            if not error_parts:
+                error_parts.append("Evidence requirements incomplete.")
+
             raise EvidenceNotReadyError(
-                f"Cannot complete review: Evidence requirements incomplete. {reasons_str}"
+                f"Cannot complete review: {' | '.join(error_parts)}"
             )
 
         # Gate: Scoring evaluation check
@@ -809,10 +853,13 @@ class CollegeReviewService:
         # Status remains UNDER_REVIEW; review action recorded in CollegeReviewRecord
 
         evid_snapshot = {
-            "is_ready": is_ready,
-            "blocking_reasons": blocking_reasons,
-            "total_evaluated": getattr(summary, "total_evaluated", 0) if summary else 0,
-            "total_covered": getattr(summary, "total_covered", 0) if summary else 0,
+            "is_complete_allowed": is_complete_allowed,
+            "blocking_reasons": review_readiness.blocking_reasons if review_readiness else [],
+            "correction_required_reasons": review_readiness.correction_required_reasons if review_readiness else [],
+            "governance_reasons": review_readiness.governance_reasons if review_readiness else [],
+            "source_silent_subcriteria": review_readiness.source_silent_subcriteria if review_readiness else [],
+            "total_evaluated": getattr(summary, "active_documentary_subcriteria", 0) if summary else 0,
+            "total_covered": getattr(summary, "verified_subcriteria", 0) if summary else 0,
         }
 
         review_rec = CollegeReviewRecord.objects.create(

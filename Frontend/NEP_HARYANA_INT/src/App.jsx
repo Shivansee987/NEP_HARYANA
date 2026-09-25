@@ -12,6 +12,8 @@ import Signin from "./pages/Signin/Signin";
 import ForgotPassword from "./pages/ForgotPassword/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword/ResetPassword";
 import CollegeDashboard from "./pages/CollegeDashboard/CollegeDashboard";
+import CollegeAssessmentWorkspace from "./pages/Institution/CollegeAssessmentWorkspace";
+import UniversityAssessmentWorkspace from "./pages/Institution/UniversityAssessmentWorkspace";
 
 // New Admin Panel imports
 import AdminLayout from "./components/Admin/AdminLayout";
@@ -28,7 +30,12 @@ import {
 } from "./components/ProtectedRoute/ProtectedRoute";
 import { AuthProvider } from "./context/AuthContext.jsx";
 
-// Screening Committee Dashboard imports
+// Modern Checker Dashboard imports (Phase W4)
+import CheckerLayout from "./components/Checker/CheckerLayout";
+import CheckerQueue from "./pages/Checker/CheckerQueue";
+import CheckerAssessmentReview from "./pages/Checker/CheckerAssessmentReview";
+
+// Screening Committee Dashboard imports (legacy)
 import CommitteeLayout from "./components/Committee/CommitteeLayout";
 import CommitteeOverview from "./pages/Committee/CommitteeOverview";
 import CommitteeSubmissions from "./pages/Committee/CommitteeSubmissions";
@@ -44,6 +51,7 @@ function App() {
     location.pathname.startsWith("/institution/") ||
     location.pathname.startsWith("/admin") ||
     location.pathname.startsWith("/committee") ||
+    location.pathname.startsWith("/checker") ||
     location.pathname.startsWith("/university");
 
   return (
@@ -95,12 +103,20 @@ function App() {
           }
         />
 
-        {/* Protected Routes - College Dashboard */}
+        {/* Protected Routes - College Dashboard & Assessment Workspace */}
         <Route
           path="/institution/:institutionName/:institutionAisheCode/dashboard"
           element={
             <ProtectedRoute allowedRoles={["principal"]}>
               <CollegeDashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/institution/:institutionName/:institutionAisheCode/assessment/:assessmentId"
+          element={
+            <ProtectedRoute allowedRoles={["principal"]}>
+              <CollegeAssessmentWorkspace />
             </ProtectedRoute>
           }
         />
@@ -131,8 +147,27 @@ function App() {
           <Route path="/admin/settings" element={<Settings />} />
         </Route>
 
-        {/* Protected Routes - Screening Committee Console */}
-        {/* committee_chair has a superset of committee permissions; backend enforces authority */}
+        {/* Protected Routes - Modern Screening Committee / Checker Console (Phase W4) */}
+        <Route
+          element={
+            <ProtectedRoute allowedRoles={["committee", "committee_chair", "admin"]}>
+              <CheckerLayout />
+            </ProtectedRoute>
+          }
+        >
+          <Route path="/checker" element={<Navigate to="/checker/queue" replace />} />
+          <Route path="/checker/queue" element={<CheckerQueue />} />
+          <Route path="/checker/assessment/:assessmentId" element={<CheckerAssessmentReview />} />
+
+          {/* Seamless rewiring of /committee to modern assessment review workflow */}
+          <Route path="/committee" element={<Navigate to="/checker/queue" replace />} />
+          <Route path="/committee/queue" element={<CheckerQueue />} />
+          <Route path="/committee/assessment/:assessmentId" element={<CheckerAssessmentReview />} />
+          <Route path="/committee/submissions" element={<CheckerQueue />} />
+          <Route path="/committee/history" element={<CheckerQueue />} />
+        </Route>
+
+        {/* Isolated Legacy Committee Questionnaire (Historical Route) */}
         <Route
           element={
             <ProtectedRoute allowedRoles={["committee", "committee_chair"]}>
@@ -140,13 +175,11 @@ function App() {
             </ProtectedRoute>
           }
         >
-          <Route path="/committee" element={<CommitteeOverview />} />
-          <Route path="/committee/submissions" element={<CommitteeSubmissions />} />
+          <Route path="/legacy/committee/submissions/:id" element={<CommitteeReviewDetail />} />
           <Route path="/committee/submissions/:id" element={<CommitteeReviewDetail />} />
-          <Route path="/committee/history" element={<CommitteeSubmissions onlyHistory={true} />} />
         </Route>
 
-        {/* Protected Routes - University Console (nodal_officer, university_admin) */}
+        {/* Protected Routes - University Console & Assessment Workspace (nodal_officer, university_admin) */}
         <Route
           element={
             <ProtectedRoute allowedRoles={["nodal_officer", "university_admin"]}>
@@ -155,6 +188,7 @@ function App() {
           }
         >
           <Route path="/university" element={<UniversityDashboard />} />
+          <Route path="/university/assessment/:assessmentId" element={<UniversityAssessmentWorkspace />} />
         </Route>
 
         {/* Redirects */}

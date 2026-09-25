@@ -482,7 +482,8 @@ class CollegeParametersTests(TestCase):
         5 granted -> 2
         """
         eval_fn = COLLEGE_EVALUATORS["C19"]
-        doc = self._make_verified_doc("EVID_C19_FILING_CERTS")
+        doc_filing = self._make_verified_doc("EVID_C19_FILING_CERTS")
+        doc_grant = self._make_verified_doc("EVID_C19_GRANT_CERTS")
         test_cases = [
             (0, 0.0),
             (1, 1.0),
@@ -495,9 +496,9 @@ class CollegeParametersTests(TestCase):
                 p_in = ParameterInput(
                     parameter_code="C19",
                     subcriteria_inputs={
-                        "C19.I": SubcriterionInput(subcriterion_code="C19.I", raw_inputs={"patents_filed": 0}, evidence_docs=[doc]),
-                        "C19.II": SubcriterionInput(subcriterion_code="C19.II", raw_inputs={"patents_granted": cnt}, evidence_docs=[doc]),
-                        "C19.III": SubcriterionInput(subcriterion_code="C19.III", raw_inputs={}, evidence_docs=[doc]),
+                        "C19.I": SubcriterionInput(subcriterion_code="C19.I", raw_inputs={"patents_filed": 0}, evidence_docs=[doc_filing]),
+                        "C19.II": SubcriterionInput(subcriterion_code="C19.II", raw_inputs={"patents_granted": cnt}, evidence_docs=[doc_grant]),
+                        "C19.III": SubcriterionInput(subcriterion_code="C19.III", raw_inputs={}, evidence_docs=[]),
                     }
                 )
                 res = eval_fn(p_in, self.context, self.validator)

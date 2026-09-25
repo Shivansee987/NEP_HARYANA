@@ -175,7 +175,7 @@ class IsUniversityAssessmentOwnerOrReviewer(BasePermission):
             auth_qs = ReviewerAuthorization.objects.filter(user=user, is_active=True)
             if auth_qs.exists():
                 match = auth_qs.filter(
-                    framework__in=[FrameworkType.UNIVERSITY_2026.value, "UNIVERSITY_2026", "UNIVERSITY"]
+                    framework__in=[FrameworkType.UNIVERSITY_2026.value, "UNIVERSITY_2026", "UNIVERSITY", "ALL"]
                 )
                 if obj.university.aishe_code:
                     match = match.filter(institution_id__in=["", obj.university.aishe_code])
