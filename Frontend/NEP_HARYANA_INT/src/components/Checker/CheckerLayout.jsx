@@ -13,7 +13,6 @@ import {
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext.jsx";
 import hshecLogo from "../../assets/hshec_logo.jpeg";
-import Footer from "../Admin/Footer";
 
 export default function CheckerLayout({ title = "Screening Committee Review Console" }) {
   const location = useLocation();
@@ -55,17 +54,17 @@ export default function CheckerLayout({ title = "Screening Committee Review Cons
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans text-slate-900">
-      {/* Persistent Left Sidebar */}
-      <aside className="peer fixed inset-y-0 left-0 w-20 hover:w-64 bg-white text-slate-800 flex flex-col z-30 shadow-[0_4px_24px_rgba(0,0,0,0.06)] border-r border-slate-200/80 transition-all duration-300 ease-in-out group overflow-hidden">
+      {/* Persistent Left Sidebar with Hover-to-Expand Interaction */}
+      <aside className="peer fixed inset-y-0 left-0 w-20 hover:w-64 bg-white text-slate-800 flex flex-col z-50 shadow-xs hover:shadow-2xl border-r border-[#ebdcd0] transition-all duration-300 ease-in-out group overflow-hidden">
         {/* Brand Header */}
-        <div className="h-16 flex items-center px-4 border-b border-slate-100 bg-slate-50/60">
+        <div className="h-16 flex items-center px-4 border-b border-slate-100 bg-[#fdfaf6]">
           <div className="flex items-center space-x-3 w-full">
-            <div className="w-10 h-10 rounded-xl bg-white border border-slate-200/80 flex items-center justify-center shadow-xs shrink-0 overflow-hidden p-1 transition-transform duration-300 group-hover:scale-105">
+            <div className="w-10 h-10 rounded-xl bg-white border border-[#ebdcd0] flex items-center justify-center shadow-xs shrink-0 overflow-hidden p-1 transition-transform duration-300 group-hover:scale-105">
               <img src={hshecLogo} alt="HSHEC Logo" className="w-full h-full object-contain" />
             </div>
             <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-300 whitespace-nowrap min-w-0">
               <h1 className="text-xs font-bold tracking-tight text-slate-800 leading-none">HSHEC NEP 2026</h1>
-              <span className="text-[10px] text-amber-700 font-bold uppercase tracking-wider block mt-0.5">
+              <span className="text-[10px] text-[#600b0b] font-bold uppercase tracking-wider block mt-0.5">
                 Review Portal
               </span>
             </div>
@@ -87,11 +86,11 @@ export default function CheckerLayout({ title = "Screening Committee Review Cons
                     to={link.path}
                     className={`flex items-center gap-3 px-3.5 py-3 rounded-xl transition-all duration-200 text-sm font-medium relative group/item ${
                       isActive
-                        ? "bg-gradient-to-r from-amber-600 to-orange-600 text-white shadow-md shadow-orange-600/20 font-semibold"
-                        : "text-slate-600 hover:bg-amber-50/60 hover:text-amber-700"
+                        ? "bg-[#600b0b] text-white shadow-xs border-l-4 border-[#c29b68] font-semibold"
+                        : "text-slate-600 hover:bg-[#eaded2]/50 hover:text-slate-900"
                     }`}
                   >
-                    <Icon className={`w-5 h-5 shrink-0 transition-transform duration-200 group-hover/item:scale-110 ${isActive ? "text-white" : "text-slate-400 group-hover/item:text-amber-700"}`} />
+                    <Icon className={`w-5 h-5 shrink-0 transition-transform duration-200 group-hover/item:scale-110 ${isActive ? "text-white" : "text-slate-400 group-hover/item:text-[#600b0b]"}`} />
                     <span className="opacity-0 group-hover:opacity-100 transition-opacity duration-300 whitespace-nowrap">
                       {link.name}
                     </span>
@@ -106,14 +105,14 @@ export default function CheckerLayout({ title = "Screening Committee Review Cons
         </nav>
 
         {/* Reviewer Profile Footer */}
-        <div className="p-3.5 border-t border-slate-100 bg-slate-50/60 backdrop-blur-xs">
+        <div className="p-3.5 border-t border-slate-100 bg-[#fdfaf6]">
           <div className="flex items-center space-x-3 mb-3">
-            <div className="w-10 h-10 rounded-xl bg-amber-100/80 border border-amber-200 flex items-center justify-center text-amber-700 font-bold shadow-xs shrink-0">
-              <UserCheck className="w-5 h-5 text-amber-700" />
+            <div className="w-10 h-10 rounded-xl bg-[#eaded2] border border-[#ebdcd0] flex items-center justify-center text-[#600b0b] font-bold shadow-xs shrink-0">
+              <UserCheck className="w-5 h-5 text-[#600b0b]" />
             </div>
             <div className="min-w-0 flex-1 opacity-0 group-hover:opacity-100 transition-opacity duration-300 whitespace-nowrap">
               <p className="text-xs font-bold text-slate-800 truncate">{user?.full_name || "Screening Reviewer"}</p>
-              <p className="text-[10px] text-amber-700 font-medium truncate">{roleTitle}</p>
+              <p className="text-[10px] text-[#600b0b] font-medium truncate">{roleTitle}</p>
             </div>
           </div>
           <button
@@ -128,9 +127,9 @@ export default function CheckerLayout({ title = "Screening Committee Review Cons
       </aside>
 
       {/* Main Content Area */}
-      <div className="pl-20 transition-all duration-300 ease-in-out flex-1 flex flex-col">
+      <div className="pl-20 transition-all duration-300 ease-in-out flex-1 flex flex-col min-w-0 min-h-screen bg-[#fdfaf6]">
         {/* Top Header Bar */}
-        <header className="h-16 bg-white border-b border-slate-200/80 sticky top-0 z-20 px-6 flex items-center justify-between shadow-2xs">
+        <header className="h-16 bg-white border-b border-[#ebdcd0] sticky top-0 z-20 px-6 flex items-center justify-between shadow-xs shrink-0">
           <div className="flex items-center gap-2.5">
             <span className="text-xs font-semibold text-slate-400">NEP 2026</span>
             <ChevronRight className="w-3.5 h-3.5 text-slate-300" />
@@ -138,8 +137,8 @@ export default function CheckerLayout({ title = "Screening Committee Review Cons
           </div>
 
           <div className="flex items-center gap-3">
-            <div className="hidden sm:flex items-center gap-2 px-3 py-1 bg-amber-50/80 border border-amber-200/60 rounded-full text-xs font-semibold text-amber-800">
-              <ShieldCheck className="w-3.5 h-3.5 text-amber-600" />
+            <div className="hidden sm:flex items-center gap-2 px-3 py-1 bg-[#eaded2]/60 border border-[#ebdcd0] rounded-full text-xs font-semibold text-[#600b0b]">
+              <ShieldCheck className="w-3.5 h-3.5 text-[#600b0b]" />
               <span>{roleTitle}</span>
             </div>
             <div className="text-right text-xs">
@@ -150,11 +149,9 @@ export default function CheckerLayout({ title = "Screening Committee Review Cons
         </header>
 
         {/* Page Content View */}
-        <main className="p-6 sm:p-8 flex-1">
+        <main className="p-4 sm:p-6 lg:p-8 flex-1 min-w-0">
           <Outlet />
         </main>
-
-        <Footer />
       </div>
     </div>
   );

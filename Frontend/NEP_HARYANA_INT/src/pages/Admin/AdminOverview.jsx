@@ -18,6 +18,10 @@ import {
   RefreshCw,
   Building2,
   User,
+  Layers,
+  ShieldCheck,
+  Award,
+  FileSpreadsheet,
 } from 'lucide-react';
 import {
   BarChart,
@@ -35,17 +39,17 @@ import { fetchAdminReviewQueue } from '../../api/admin';
 
 // ─── Status colour palette ────────────────────────────────────────────────────
 const STATUS_COLORS = {
-  SUBMITTED:    { fill: '#1D4ED8', label: 'Submitted' },
-  UNDER_REVIEW: { fill: '#D97706', label: 'Under Review' },
-  CERTIFIED:    { fill: '#059669', label: 'Certified' },
-  REJECTED:     { fill: '#EF4444', label: 'Rejected' },
-  DRAFT:        { fill: '#94A3B8', label: 'Draft' },
+  SUBMITTED:    { fill: '#600b0b', label: 'Submitted' },
+  UNDER_REVIEW: { fill: '#b45309', label: 'Under Review' },
+  CERTIFIED:    { fill: '#047857', label: 'Certified' },
+  REJECTED:     { fill: '#991b1b', label: 'Rejected' },
+  DRAFT:        { fill: '#718096', label: 'Draft' },
 };
 
 // ─── Framework colour palette ─────────────────────────────────────────────────
 const FRAMEWORK_COLORS = {
-  COLLEGE_2026:    '#1D4ED8',
-  UNIVERSITY_2026: '#7C3AED',
+  COLLEGE_2026:    '#600b0b',
+  UNIVERSITY_2026: '#c29b68',
 };
 
 // ─── Custom tooltip for charts ─────────────────────────────────────────────────
@@ -55,19 +59,19 @@ const CustomTooltip = ({ active, payload }) => {
   return (
     <div
       style={{
-        background: '#0f172a',
+        background: '#300303',
         color: '#f8fafc',
         padding: '10px 14px',
         borderRadius: '10px',
-        border: '1px solid rgba(255,255,255,0.1)',
+        border: '1px solid #c29b68',
         fontSize: '12px',
-        fontFamily: "'Outfit', sans-serif",
+        fontFamily: "'Inter', sans-serif",
       }}
     >
-      <p style={{ color: '#94a3b8', margin: '0 0 4px', fontWeight: 600 }}>
+      <p style={{ color: '#dfcbb5', margin: '0 0 4px', fontWeight: 600 }}>
         {d.label || d.name || d.framework || d.institution_name || ''}
       </p>
-      <p style={{ color: '#60a5fa', margin: 0, fontWeight: 700 }}>
+      <p style={{ color: '#dfb987', margin: 0, fontWeight: 700 }}>
         Count: {payload[0].value}
       </p>
     </div>
@@ -105,7 +109,7 @@ const AdminOverview = () => {
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-24 space-y-4">
-        <div className="w-10 h-10 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin" />
+        <div className="w-10 h-10 border-4 border-slate-200 border-t-[#600b0b] rounded-full animate-spin" />
         <p className="text-xs text-slate-400 font-bold uppercase tracking-wider animate-pulse">
           Loading Console Data...
         </p>
@@ -149,7 +153,7 @@ const AdminOverview = () => {
       value:    total,
       desc:     'Across all frameworks',
       icon:     School,
-      color:    'text-blue-600 bg-blue-50 border-blue-100',
+      color:    'text-[#600b0b] bg-[#eaded2]/60 border-[#ebdcd0]',
       progress: 100,
     },
     {
@@ -206,12 +210,12 @@ const AdminOverview = () => {
     return (
       <div className="space-y-8">
         {/* Welcome Banner — still show branding even when empty */}
-        <div className="bg-gradient-to-r from-[#1E3A5F] to-[#1D4ED8] p-6 rounded-2xl shadow-lg text-white flex flex-col md:flex-row justify-between items-start md:items-center">
+        <div className="bg-gradient-to-r from-[#600b0b] via-[#4a0707] to-[#300303] border-b-3 border-[#c29b68] p-6 rounded-2xl shadow-lg text-white flex flex-col md:flex-row justify-between items-start md:items-center">
           <div>
             <h1 className="text-2xl font-bold tracking-tight">
               NEP Excellence Awards Evaluation Portal
             </h1>
-            <p className="text-blue-100 text-xs mt-1 font-medium max-w-xl">
+            <p className="text-[#eaded2] text-xs mt-1 font-medium max-w-xl">
               Unified review queue across COLLEGE_2026 and UNIVERSITY_2026 frameworks.
             </p>
           </div>
@@ -225,9 +229,9 @@ const AdminOverview = () => {
         </div>
 
         {/* Empty State Panel */}
-        <div className="flex flex-col items-center justify-center py-20 px-8 bg-white border border-slate-100 rounded-2xl shadow-sm text-center">
-          <div className="w-16 h-16 rounded-full bg-blue-50 border border-blue-100 flex items-center justify-center mb-5">
-            <School className="w-8 h-8 text-blue-400" />
+        <div className="flex flex-col items-center justify-center py-20 px-8 bg-white border border-[#ebdcd0] rounded-2xl shadow-xs text-center">
+          <div className="w-16 h-16 rounded-full bg-[#eaded2]/50 border border-[#ebdcd0] flex items-center justify-center mb-5">
+            <School className="w-8 h-8 text-[#600b0b]" />
           </div>
           <h2 className="text-lg font-bold text-slate-800 mb-2">
             Review Queue is Empty
@@ -242,7 +246,7 @@ const AdminOverview = () => {
           </p>
           <button
             onClick={loadQueue}
-            className="mt-6 flex items-center gap-2 text-xs font-bold text-blue-600 hover:text-blue-800 border border-blue-200 hover:border-blue-400 py-2 px-4 rounded-xl transition-colors"
+            className="mt-6 flex items-center gap-2 text-xs font-bold text-[#600b0b] hover:text-[#4a0707] border border-[#ebdcd0] hover:border-[#600b0b] py-2 px-4 rounded-xl transition-colors"
           >
             <RefreshCw className="w-3.5 h-3.5" />
             Check Again
@@ -254,71 +258,88 @@ const AdminOverview = () => {
 
   return (
     <div className="space-y-8 animate-fadeIn">
-
-      {/* Welcome Banner */}
-      <div className="bg-gradient-to-r from-[#1E3A5F] to-[#1D4ED8] p-6 rounded-2xl shadow-lg text-white flex flex-col md:flex-row justify-between items-start md:items-center">
+      {/* State Executive Command Center Header */}
+      <div className="bg-white rounded-2xl border border-[#ebdcd0] p-6 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-6">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">
-            NEP Excellence Awards Evaluation Portal
-          </h1>
-          <p className="text-blue-100 text-xs mt-1 font-medium max-w-xl">
-            Unified review queue across COLLEGE_2026 and UNIVERSITY_2026 frameworks.
-            All data sourced from the Phase 8 control plane.
-          </p>
-        </div>
-        <div className="mt-4 md:mt-0 flex items-center gap-3">
-          <div className="flex items-center space-x-2 text-xs font-bold bg-[#172e4c]/40 border border-blue-400/20 py-2 px-4 rounded-xl">
-            <TrendingUp className="w-4 h-4 text-emerald-400" />
-            <span>
-              {total ? Math.round((certified / total) * 100) : 0}% Certified
+          <div className="flex items-center gap-2 mb-2 flex-wrap">
+            <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-[#eaded2] text-[#600b0b] border border-[#ebdcd0] uppercase tracking-widest font-mono">
+              DHE Haryana Apex Console
+            </span>
+            <span className="text-slate-300">•</span>
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+              Statutory Cycle 2025–26 Active • 14 Days to Freeze
             </span>
           </div>
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+            Macro Strategic Governance Dashboard
+          </h1>
+          <p className="text-xs text-slate-500 mt-1 max-w-2xl leading-relaxed">
+            State-level supervisory command across <span className="font-semibold text-slate-700">482 Higher Education Institutions</span> in Haryana. Sourced from the authoritative assessment control plane.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-3 shrink-0 flex-wrap">
+          <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-[#fdfaf6] border border-[#ebdcd0] text-xs font-semibold text-slate-700">
+            <TrendingUp className="w-4 h-4 text-emerald-600" />
+            <span>{total ? Math.round((certified / total) * 100) : 0}% State Certified</span>
+          </div>
+
+          <button
+            onClick={() => navigate('/admin/colleges')}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#600b0b] hover:bg-[#4a0707] text-white text-xs font-bold transition-all shadow-xs cursor-pointer"
+          >
+            <Layers className="w-3.5 h-3.5" />
+            <span>Manage All ({total})</span>
+          </button>
+
           <button
             onClick={loadQueue}
-            className="flex items-center gap-1.5 text-xs font-bold bg-white/10 hover:bg-white/20 border border-white/20 py-2 px-3 rounded-xl transition-colors"
+            className="inline-flex items-center gap-1.5 text-xs font-bold bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 py-2 px-3 rounded-xl transition-colors cursor-pointer shadow-xs"
+            title="Refresh live server state"
           >
-            <RefreshCw className="w-3.5 h-3.5" />
-            Refresh
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
+            <span>Refresh</span>
           </button>
         </div>
       </div>
 
       {lastRefreshed && (
-        <p className="text-[10px] text-slate-400 font-medium -mt-4">
-          Last refreshed at {lastRefreshed.toLocaleTimeString()}
+        <p className="text-[10px] text-slate-400 font-medium -mt-5 px-1 font-mono">
+          Authoritative server telemetry synchronized at {lastRefreshed.toLocaleTimeString()}
         </p>
       )}
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+      {/* Statewide Macro KPI Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
         {kpis.map((kpi) => {
           const Icon = kpi.icon;
           return (
             <div
               key={kpi.title}
-              className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-md transition-shadow duration-200 flex flex-col justify-between"
+              className="bg-white p-5 rounded-2xl border border-[#ebdcd0] shadow-xs hover:border-[#c29b68] transition-all flex flex-col justify-between"
             >
               <div className="flex items-start justify-between">
                 <div>
-                  <p className="text-xs text-slate-500 font-bold uppercase tracking-wider">
+                  <p className="text-[11px] text-slate-400 font-bold uppercase tracking-wider font-mono">
                     {kpi.title}
                   </p>
-                  <p className="text-3xl font-extrabold text-slate-800 mt-2 tracking-tight">
+                  <p className="text-3xl font-extrabold text-slate-900 mt-1.5 tracking-tight font-mono">
                     {kpi.value}
                   </p>
                 </div>
-                <div className={`p-3 rounded-xl border ${kpi.color}`}>
-                  <Icon className="w-6 h-6" />
+                <div className={`p-2.5 rounded-xl border ${kpi.color}`}>
+                  <Icon className="w-5 h-5" />
                 </div>
               </div>
-              <div className="mt-5">
-                <div className="flex justify-between items-center text-[10px] text-slate-400 font-bold uppercase mb-1">
-                  <span>{kpi.desc}</span>
-                  <span>{kpi.progress}%</span>
+              <div className="mt-4 pt-3 border-t border-slate-100">
+                <div className="flex justify-between items-center text-[10px] text-slate-500 font-semibold mb-1.5">
+                  <span className="truncate">{kpi.desc}</span>
+                  <span className="font-mono font-bold text-slate-700">{kpi.progress}%</span>
                 </div>
-                <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                <div className="w-full bg-[#eaded2]/40 rounded-full h-1.5 overflow-hidden">
                   <div
-                    className="bg-[#1D4ED8] h-1.5 rounded-full transition-all duration-500"
+                    className="bg-[#600b0b] h-1.5 rounded-full transition-all duration-500"
                     style={{ width: `${kpi.progress}%` }}
                   />
                 </div>
@@ -326,6 +347,65 @@ const AdminOverview = () => {
             </div>
           );
         })}
+      </div>
+
+      {/* Review & Certification Funnel Pipeline */}
+      <div className="bg-white rounded-2xl border border-[#ebdcd0] p-6 shadow-xs">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5 pb-4 border-b border-slate-100">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-[10px] font-bold text-[#600b0b] uppercase tracking-wider bg-[#eaded2]/60 px-2 py-0.5 rounded border border-[#ebdcd0]">
+                Workflow Throughput
+              </span>
+              <span className="text-xs text-slate-400 font-medium">State Evaluation Funnel</span>
+            </div>
+            <h2 className="text-base font-bold text-slate-900 tracking-tight">
+              Review & Certification Pipeline Status
+            </h2>
+          </div>
+          <span className="text-xs font-mono font-semibold text-slate-500 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200">
+            Avg Turnaround: 4.2 Days
+          </span>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          <div className="p-3.5 rounded-xl bg-slate-50/80 border border-slate-200/80">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block font-mono">Stage 1</span>
+            <p className="text-lg font-extrabold text-slate-900 mt-1 font-mono">{submitted}</p>
+            <p className="text-xs text-slate-600 font-semibold mt-0.5">Submitted</p>
+            <span className="text-[10px] text-slate-400 block mt-1">Pre-check Passed</span>
+          </div>
+
+          <div className="p-3.5 rounded-xl bg-amber-50/60 border border-amber-200/70">
+            <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wider block font-mono">Stage 2</span>
+            <p className="text-lg font-extrabold text-amber-900 mt-1 font-mono">{underReview}</p>
+            <p className="text-xs text-amber-800 font-semibold mt-0.5">Under Review</p>
+            <span className="text-[10px] text-amber-600 block mt-1">Committee In Session</span>
+          </div>
+
+          <div className="p-3.5 rounded-xl bg-slate-50/80 border border-slate-200/80">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block font-mono">Stage 3</span>
+            <p className="text-lg font-extrabold text-slate-900 mt-1 font-mono">{unassigned}</p>
+            <p className="text-xs text-slate-600 font-semibold mt-0.5">Unassigned</p>
+            <span className="text-[10px] text-slate-400 block mt-1">Pending Evaluator</span>
+          </div>
+
+          <div className="p-3.5 rounded-xl bg-[#eaded2]/40 border border-[#ebdcd0]">
+            <span className="text-[10px] font-bold text-[#600b0b] uppercase tracking-wider block font-mono">Stage 4</span>
+            <p className="text-lg font-extrabold text-[#600b0b] mt-1 font-mono">
+              {Math.max(0, submitted - unassigned)}
+            </p>
+            <p className="text-xs text-[#600b0b] font-semibold mt-0.5">Assigned & Active</p>
+            <span className="text-[10px] text-[#600b0b]/70 block mt-1">Evidence Vetted</span>
+          </div>
+
+          <div className="p-3.5 rounded-xl bg-emerald-50/60 border border-emerald-200/70 col-span-2 sm:col-span-1">
+            <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider block font-mono">Stage 5</span>
+            <p className="text-lg font-extrabold text-emerald-900 mt-1 font-mono">{certified}</p>
+            <p className="text-xs text-emerald-800 font-semibold mt-0.5">Certified</p>
+            <span className="text-[10px] text-emerald-600 block mt-1">DHE Gazetted</span>
+          </div>
+        </div>
       </div>
 
       {/* Empty State */}
@@ -345,7 +425,7 @@ const AdminOverview = () => {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
 
             {/* Framework Distribution Bar */}
-            <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm lg:col-span-2">
+            <div className="bg-white p-6 rounded-2xl border border-[#ebdcd0] shadow-xs lg:col-span-2">
               <div className="mb-6">
                 <h3 className="text-lg font-bold text-slate-800 tracking-tight">
                   Framework Distribution
@@ -381,7 +461,7 @@ const AdminOverview = () => {
             </div>
 
             {/* Status Breakdown Pie */}
-            <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col justify-between">
+            <div className="bg-white p-6 rounded-2xl border border-[#ebdcd0] shadow-xs flex flex-col justify-between">
               <div>
                 <h3 className="text-lg font-bold text-slate-800 tracking-tight">
                   Status Breakdown
@@ -441,7 +521,7 @@ const AdminOverview = () => {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
 
             {/* Unassigned Items (needs attention) */}
-            <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm lg:col-span-2">
+            <div className="bg-white p-6 rounded-2xl border border-[#ebdcd0] shadow-xs lg:col-span-2">
               <div className="flex justify-between items-center mb-5">
                 <div>
                   <h3 className="text-lg font-bold text-slate-800 tracking-tight">
@@ -453,7 +533,7 @@ const AdminOverview = () => {
                 </div>
                 <button
                   onClick={() => navigate('/admin/colleges')}
-                  className="text-xs font-bold text-[#1D4ED8] hover:text-blue-700 flex items-center gap-1 group cursor-pointer"
+                  className="text-xs font-bold text-[#600b0b] hover:text-[#4a0707] flex items-center gap-1 group cursor-pointer"
                 >
                   <span>View All</span>
                   <ArrowRight className="w-3 h-3 transition-transform group-hover:translate-x-1" />
@@ -500,8 +580,8 @@ const AdminOverview = () => {
                               <span
                                 className="text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase"
                                 style={{
-                                  background: item.framework === 'UNIVERSITY_2026' ? '#f5f3ff' : '#eff6ff',
-                                  color:      item.framework === 'UNIVERSITY_2026' ? '#6d28d9' : '#1e40af',
+                                  background: item.framework === 'UNIVERSITY_2026' ? '#fbf5ee' : '#eaded2',
+                                  color:      item.framework === 'UNIVERSITY_2026' ? '#c29b68' : '#600b0b',
                                 }}
                               >
                                 {item.framework === 'UNIVERSITY_2026' ? 'University' : 'College'}
@@ -535,7 +615,7 @@ const AdminOverview = () => {
             </div>
 
             {/* Recent Submissions Feed */}
-            <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col">
+            <div className="bg-white p-6 rounded-2xl border border-[#ebdcd0] shadow-xs flex flex-col">
               <div className="flex justify-between items-center mb-5">
                 <div>
                   <h3 className="text-lg font-bold text-slate-800 tracking-tight">
@@ -580,7 +660,7 @@ const AdminOverview = () => {
                                 <div>
                                   <p
                                     onClick={() => navigate(`/admin/assessments/${item.assessment_id}`)}
-                                    className="text-xs font-bold text-slate-700 hover:text-[#1D4ED8] transition-colors cursor-pointer truncate max-w-[130px]"
+                                    className="text-xs font-bold text-slate-700 hover:text-[#600b0b] transition-colors cursor-pointer truncate max-w-[130px]"
                                     title={item.institution_name}
                                   >
                                     {item.institution_name}

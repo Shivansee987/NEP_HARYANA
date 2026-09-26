@@ -88,19 +88,24 @@ export default function CheckerQueue() {
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
       {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-6 rounded-2xl border border-[#ebdcd0] shadow-sm">
         <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold tracking-wide uppercase bg-amber-50 text-amber-800 border border-amber-200/60">
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
+            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold tracking-wide uppercase bg-[#eaded2] text-[#600b0b] border border-[#ebdcd0] font-mono">
               Screening Committee
             </span>
             <span className="text-xs text-slate-400 font-medium">Statutory Cycle 2025–26</span>
+            <span className="text-slate-300">•</span>
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-red-700 bg-red-50 px-2 py-0.5 rounded-md border border-red-200">
+              <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+              48h SLA Urgency Protocol Active
+            </span>
           </div>
           <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
-            Institutional Review Queue
+            Institutional Audit & Verification Queue
           </h1>
-          <p className="text-xs text-slate-500 mt-1">
-            Evaluate, verify, and substantiate subcriterion-level evidence for submitted Higher Education Institutions.
+          <p className="text-xs text-slate-500 mt-1 max-w-2xl leading-relaxed">
+            Statutory dual-pane evidence scrutiny, criterion-level rubric scoring, and digital certification sign-off across Haryana HEIs.
           </p>
         </div>
 
@@ -109,7 +114,7 @@ export default function CheckerQueue() {
             type="button"
             onClick={loadQueue}
             disabled={loading}
-            className="inline-flex items-center gap-2 px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50"
+            className="inline-flex items-center gap-2 px-3.5 py-2 bg-[#fdfaf6] hover:bg-[#eaded2]/60 text-slate-700 border border-[#ebdcd0] rounded-xl text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50 shadow-xs"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
             <span>Refresh</span>
@@ -118,56 +123,84 @@ export default function CheckerQueue() {
       </div>
 
       {/* KPI Metric Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div className="bg-white p-4.5 rounded-xl border border-slate-200/80 shadow-2xs">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500">Total in Queue</span>
-            <ClipboardList className="w-4 h-4 text-blue-600" />
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Total in Queue */}
+        <div className="bg-white p-5 rounded-2xl border border-[#ebdcd0] shadow-sm hover:border-[#c29b68] transition-all flex flex-col justify-between">
+          <div className="flex items-start justify-between">
+            <div>
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider font-mono">Total in Queue</span>
+              <p className="text-3xl font-extrabold text-slate-900 mt-1.5 font-mono">{stats.total}</p>
+            </div>
+            <div className="w-10 h-10 rounded-xl bg-[#eaded2]/60 border border-[#ebdcd0] flex items-center justify-center text-[#600b0b] shrink-0">
+              <ClipboardList className="w-5 h-5 text-[#600b0b]" />
+            </div>
           </div>
-          <p className="text-2xl font-extrabold text-slate-900 mt-2">{stats.total}</p>
-          <p className="text-[11px] text-slate-400 mt-0.5">
-            {stats.universities} Universities · {stats.colleges} Colleges
-          </p>
+          <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center gap-1.5 text-xs text-slate-500">
+            <span className="font-semibold text-slate-700">{stats.universities}</span> Universities
+            <span className="text-slate-300">•</span>
+            <span className="font-semibold text-slate-700">{stats.colleges}</span> Colleges
+          </div>
         </div>
 
-        <div className="bg-white p-4.5 rounded-xl border border-slate-200/80 shadow-2xs">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500">Pending Review</span>
-            <Clock className="w-4 h-4 text-amber-600" />
+        {/* Pending Review */}
+        <div className="bg-white p-5 rounded-2xl border border-[#ebdcd0] shadow-sm hover:border-amber-300 transition-all flex flex-col justify-between">
+          <div className="flex items-start justify-between">
+            <div>
+              <span className="text-[11px] font-bold text-amber-700/80 uppercase tracking-wider font-mono">Pending Review</span>
+              <p className="text-3xl font-extrabold text-amber-700 mt-1.5 font-mono">{stats.submitted}</p>
+            </div>
+            <div className="w-10 h-10 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600 shrink-0">
+              <Clock className="w-5 h-5 text-amber-600" />
+            </div>
           </div>
-          <p className="text-2xl font-extrabold text-amber-700 mt-2">{stats.submitted}</p>
-          <p className="text-[11px] text-amber-700/80 mt-0.5">Awaiting first reviewer action</p>
+          <div className="mt-3 pt-2.5 border-t border-amber-50 text-xs text-amber-700/80 font-medium">
+            Awaiting first reviewer action
+          </div>
         </div>
 
-        <div className="bg-white p-4.5 rounded-xl border border-slate-200/80 shadow-2xs">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500">Under Active Review</span>
-            <AlertCircle className="w-4 h-4 text-purple-600" />
+        {/* Under Active Review */}
+        <div className="bg-white p-5 rounded-2xl border border-[#ebdcd0] shadow-sm hover:border-purple-300 transition-all flex flex-col justify-between">
+          <div className="flex items-start justify-between">
+            <div>
+              <span className="text-[11px] font-bold text-purple-700/80 uppercase tracking-wider font-mono">Under Active Review</span>
+              <p className="text-3xl font-extrabold text-purple-700 mt-1.5 font-mono">{stats.underReview}</p>
+            </div>
+            <div className="w-10 h-10 rounded-xl bg-purple-50 border border-purple-200 flex items-center justify-center text-purple-600 shrink-0">
+              <AlertCircle className="w-5 h-5 text-purple-600" />
+            </div>
           </div>
-          <p className="text-2xl font-extrabold text-purple-700 mt-2">{stats.underReview}</p>
-          <p className="text-[11px] text-purple-700/80 mt-0.5">Evaluation in progress</p>
+          <div className="mt-3 pt-2.5 border-t border-purple-50 text-xs text-purple-700/80 font-medium">
+            Evaluation in progress
+          </div>
         </div>
 
-        <div className="bg-white p-4.5 rounded-xl border border-slate-200/80 shadow-2xs">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500">Certified / Completed</span>
-            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+        {/* Certified / Completed */}
+        <div className="bg-white p-5 rounded-2xl border border-[#ebdcd0] shadow-sm hover:border-emerald-300 transition-all flex flex-col justify-between">
+          <div className="flex items-start justify-between">
+            <div>
+              <span className="text-[11px] font-bold text-emerald-700/80 uppercase tracking-wider font-mono">Certified / Completed</span>
+              <p className="text-3xl font-extrabold text-emerald-700 mt-1.5 font-mono">{stats.completed}</p>
+            </div>
+            <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600 shrink-0">
+              <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+            </div>
           </div>
-          <p className="text-2xl font-extrabold text-emerald-700 mt-2">{stats.completed}</p>
-          <p className="text-[11px] text-emerald-700/80 mt-0.5">Evaluation finalized</p>
+          <div className="mt-3 pt-2.5 border-t border-emerald-50 text-xs text-emerald-700/80 font-medium">
+            Evaluation finalized
+          </div>
         </div>
       </div>
 
       {/* Filter and Search Bar */}
-      <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-2xs flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
+      <div className="bg-white p-4 rounded-2xl border border-[#ebdcd0] shadow-sm flex flex-col lg:flex-row gap-3 items-stretch lg:items-center justify-between">
         {/* Framework Selector Tabs */}
-        <div className="flex items-center gap-1.5 p-1 bg-slate-100/80 rounded-lg text-xs font-semibold">
+        <div className="flex flex-wrap items-center gap-1.5 p-1 bg-[#fdfaf6] border border-[#ebdcd0] rounded-xl text-xs font-semibold">
           <button
             type="button"
             onClick={() => setFrameworkFilter("ALL")}
-            className={`px-3 py-1.5 rounded-md transition-all cursor-pointer ${
+            className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
               frameworkFilter === "ALL"
-                ? "bg-white text-slate-900 shadow-2xs font-bold"
+                ? "bg-[#600b0b] text-white shadow-xs font-bold"
                 : "text-slate-600 hover:text-slate-900"
             }`}
           >
@@ -176,25 +209,25 @@ export default function CheckerQueue() {
           <button
             type="button"
             onClick={() => setFrameworkFilter("UNIVERSITY_2026")}
-            className={`px-3 py-1.5 rounded-md transition-all flex items-center gap-1.5 cursor-pointer ${
+            className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
               frameworkFilter === "UNIVERSITY_2026"
-                ? "bg-white text-indigo-900 shadow-2xs font-bold"
+                ? "bg-[#fbf5ee] text-[#c29b68] border border-[#dfb987] shadow-xs font-bold"
                 : "text-slate-600 hover:text-slate-900"
             }`}
           >
-            <Building2 className="w-3.5 h-3.5 text-indigo-600" />
+            <Building2 className="w-3.5 h-3.5 text-[#c29b68]" />
             <span>Universities ({stats.universities})</span>
           </button>
           <button
             type="button"
             onClick={() => setFrameworkFilter("COLLEGE_2026")}
-            className={`px-3 py-1.5 rounded-md transition-all flex items-center gap-1.5 cursor-pointer ${
+            className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
               frameworkFilter === "COLLEGE_2026"
-                ? "bg-white text-amber-900 shadow-2xs font-bold"
+                ? "bg-[#eaded2] text-[#600b0b] border border-[#ebdcd0] shadow-xs font-bold"
                 : "text-slate-600 hover:text-slate-900"
             }`}
           >
-            <GraduationCap className="w-3.5 h-3.5 text-amber-600" />
+            <GraduationCap className="w-3.5 h-3.5 text-[#600b0b]" />
             <span>Colleges ({stats.colleges})</span>
           </button>
         </div>
@@ -207,7 +240,7 @@ export default function CheckerQueue() {
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="text-xs font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 outline-none focus:ring-2 focus:ring-amber-500/20 cursor-pointer w-full sm:w-auto"
+              className="text-xs font-semibold text-slate-700 bg-white border border-[#ebdcd0] rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-[#c29b68]/30 cursor-pointer w-full sm:w-auto shadow-xs"
             >
               <option value="">All Statuses</option>
               <option value="SUBMITTED">Submitted (Pending)</option>
@@ -225,7 +258,7 @@ export default function CheckerQueue() {
               placeholder="Search institution / AISHE..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full text-xs font-medium pl-8.5 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:bg-white focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition-all"
+              className="w-full text-xs font-medium pl-9 pr-3 py-2 bg-[#fdfaf6] border border-[#ebdcd0] rounded-xl outline-none focus:bg-white focus:border-[#c29b68] focus:ring-2 focus:ring-[#c29b68]/20 transition-all shadow-xs"
             />
           </div>
         </div>
@@ -257,11 +290,11 @@ export default function CheckerQueue() {
           }}
         />
       ) : (
-        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs overflow-hidden">
+        <div className="bg-white rounded-2xl border border-[#ebdcd0] shadow-xs overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="bg-slate-50/80 border-b border-slate-200/80 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                <tr className="bg-[#fdfaf6] border-b border-[#ebdcd0] text-[11px] font-bold text-slate-500 uppercase tracking-wider">
                   <th className="px-6 py-4">Institution Name & Scope</th>
                   <th className="px-6 py-4">AISHE Code</th>
                   <th className="px-6 py-4">Framework</th>
@@ -277,15 +310,15 @@ export default function CheckerQueue() {
                   return (
                     <tr
                       key={item.assessment_id}
-                      className="hover:bg-slate-50/60 transition-colors group cursor-pointer"
+                      className="hover:bg-[#fdfaf6] transition-colors group cursor-pointer"
                       onClick={() => navigate(`/checker/assessment/${item.assessment_id}`)}
                     >
                       <td className="px-6 py-4">
-                        <div className="font-bold text-slate-900 group-hover:text-amber-800 transition-colors flex items-center gap-2">
+                        <div className="font-bold text-slate-900 group-hover:text-[#600b0b] transition-colors flex items-center gap-2">
                           {isUniv ? (
-                            <Building2 className="w-4 h-4 text-indigo-600 shrink-0" />
+                            <Building2 className="w-4 h-4 text-[#c29b68] shrink-0" />
                           ) : (
-                            <GraduationCap className="w-4 h-4 text-amber-600 shrink-0" />
+                            <GraduationCap className="w-4 h-4 text-[#600b0b] shrink-0" />
                           )}
                           <span>{item.institution_name}</span>
                         </div>
@@ -302,8 +335,8 @@ export default function CheckerQueue() {
                         <span
                           className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold border ${
                             isUniv
-                              ? "bg-indigo-50 text-indigo-800 border-indigo-200"
-                              : "bg-amber-50 text-amber-800 border-amber-200"
+                              ? "bg-[#fbf5ee] text-[#c29b68] border-[#dfb987]"
+                              : "bg-[#eaded2] text-[#600b0b] border-[#ebdcd0]"
                           }`}
                         >
                           {isUniv ? "University" : "College"}
@@ -355,7 +388,7 @@ export default function CheckerQueue() {
                             e.stopPropagation();
                             navigate(`/checker/assessment/${item.assessment_id}`);
                           }}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#600b0b] hover:bg-[#4a0707] text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
                         >
                           <Eye className="w-3.5 h-3.5" />
                           <span>Open Review</span>

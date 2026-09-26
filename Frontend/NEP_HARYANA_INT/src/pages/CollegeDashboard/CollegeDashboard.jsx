@@ -262,7 +262,7 @@ export default function CollegeDashboard() {
   ];
 
   return (
-    <div className="min-h-screen bg-slate-50 flex font-sans antialiased text-slate-800">
+    <div className="min-h-screen bg-[#fdfaf6] flex font-sans antialiased text-slate-800">
       {/* Mobile Sidebar Overlay */}
       {sidebarOpen && (
         <div
@@ -271,24 +271,34 @@ export default function CollegeDashboard() {
         />
       )}
 
-      {/* Modern, Clean Institutional Sidebar */}
+      {/* Modern, Clean Institutional Sidebar with Hover-to-Expand Interaction */}
       <aside
-        className={`fixed lg:sticky top-0 inset-y-0 left-0 w-64 bg-white border-r border-slate-200/90 z-50 flex flex-col justify-between transition-transform duration-200 ease-in-out lg:translate-x-0 ${
-          sidebarOpen ? "translate-x-0 shadow-2xl" : "-translate-x-full lg:shadow-none"
+        className={`fixed top-0 inset-y-0 left-0 z-50 flex flex-col justify-between transition-all duration-300 ease-in-out group overflow-hidden bg-white border-r border-[#ebdcd0] ${
+          sidebarOpen
+            ? "translate-x-0 w-64 shadow-2xl"
+            : "-translate-x-full lg:translate-x-0 w-64 lg:w-20 lg:hover:w-64 lg:shadow-xs lg:hover:shadow-2xl"
         } h-screen`}
       >
         {/* Top: Branding & Logo */}
         <div className="flex-1 flex flex-col min-h-0">
-          <div className="h-16 px-4 border-b border-slate-100 flex items-center justify-between bg-white shrink-0">
-            <div className="flex items-center gap-2.5 min-w-0">
-              <div className="w-8 h-8 rounded-lg bg-slate-50 border border-slate-200/80 p-1 flex items-center justify-center shrink-0">
+          <div className="h-16 px-3.5 border-b border-slate-100 flex items-center justify-between bg-white shrink-0">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-10 h-10 rounded-xl bg-[#fdfaf6] border border-[#ebdcd0] p-1 flex items-center justify-center shrink-0 shadow-xs transition-transform duration-300 group-hover:scale-105">
                 <img src={hshecLogo} alt="HSHEC" className="w-full h-full object-contain" />
               </div>
-              <div className="min-w-0">
-                <h1 className="text-xs font-bold text-slate-900 leading-tight truncate">
+              <div className="min-w-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 whitespace-nowrap hidden lg:block">
+                <h1 className="text-xs font-bold text-slate-900 leading-tight">
                   NEP Excellence Awards
                 </h1>
-                <span className="text-[10px] font-bold text-blue-600 tracking-wider uppercase block">
+                <span className="text-[10px] font-bold text-[#600b0b] tracking-wider uppercase block">
+                  Principal Portal
+                </span>
+              </div>
+              <div className="min-w-0 block lg:hidden">
+                <h1 className="text-xs font-bold text-slate-900 leading-tight">
+                  NEP Excellence Awards
+                </h1>
+                <span className="text-[10px] font-bold text-[#600b0b] tracking-wider uppercase block">
                   Principal Portal
                 </span>
               </div>
@@ -303,26 +313,42 @@ export default function CollegeDashboard() {
           </div>
 
           {/* Logged Institution Profile Badge */}
-          <div className="p-3 mx-3 my-3 bg-slate-50/80 border border-slate-200/70 rounded-xl shrink-0">
-            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-1">
-              Affiliated Institution
-            </span>
-            <p className="text-xs font-bold text-slate-900 leading-snug line-clamp-2" title={collegeName}>
-              {collegeName}
-            </p>
-            <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-              <span className="text-[10px] font-mono font-bold bg-white px-2 py-0.5 rounded border border-slate-200 text-slate-700">
-                AISHE: {aisheCode}
+          <div className="p-2.5 mx-2.5 my-2.5 bg-[#eaded2]/40 border border-[#ebdcd0] rounded-xl shrink-0 transition-all duration-300">
+            {/* Collapsed Icon View on Desktop */}
+            <div className="hidden lg:flex lg:group-hover:hidden items-center justify-center py-1">
+              <div
+                className="w-8 h-8 rounded-lg bg-white border border-[#ebdcd0] flex items-center justify-center text-[#600b0b] font-bold text-xs shadow-2xs"
+                title={`${collegeName} (${aisheCode})`}
+              >
+                <Building2 size={16} />
+              </div>
+            </div>
+
+            {/* Expanded Detailed View */}
+            <div className="block lg:hidden lg:group-hover:block transition-opacity duration-300">
+              <span className="text-[9px] font-bold text-[#600b0b] uppercase tracking-widest block mb-0.5">
+                Affiliated Institution
               </span>
-              <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                COLLEGE_2026
-              </span>
+              <p className="text-xs font-bold text-slate-900 leading-snug line-clamp-2" title={collegeName}>
+                {collegeName}
+              </p>
+              <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                <span className="text-[10px] font-mono font-bold bg-white px-2 py-0.5 rounded border border-[#ebdcd0] text-slate-700">
+                  AISHE: {aisheCode}
+                </span>
+                <span className="text-[10px] font-bold text-[#600b0b] bg-[#eaded2] px-2 py-0.5 rounded border border-[#ebdcd0]">
+                  COLLEGE_2026
+                </span>
+              </div>
             </div>
           </div>
 
           {/* Navigation Links */}
-          <nav className="px-3 space-y-1 overflow-y-auto flex-1 py-1">
-            <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider px-3 py-1">
+          <nav className="px-2.5 space-y-1 overflow-y-auto flex-1 py-1">
+            <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider px-3 py-1 opacity-0 group-hover:opacity-100 transition-opacity duration-300 whitespace-nowrap hidden lg:block">
+              Assessment Modules
+            </div>
+            <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider px-3 py-1 block lg:hidden">
               Assessment Modules
             </div>
             {navItems.map((item) => {
@@ -335,26 +361,45 @@ export default function CollegeDashboard() {
                     setActiveSection(item.id);
                     setSidebarOpen(false);
                   }}
-                  className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold transition-all text-left cursor-pointer ${
+                  title={item.label}
+                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition-all text-left cursor-pointer group/item relative ${
                     isActive
-                      ? "bg-blue-600 text-white shadow-xs"
-                      : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                      ? "bg-[#600b0b] text-white shadow-xs border-l-4 border-[#c29b68]"
+                      : "text-slate-600 hover:bg-[#eaded2]/50 hover:text-slate-900"
                   }`}
                 >
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <Icon size={15} className={isActive ? "text-white" : "text-slate-400 shrink-0"} />
-                    <span className="truncate">{item.label}</span>
+                  <div className="flex items-center gap-3 min-w-0">
+                    <Icon size={18} className={`shrink-0 transition-transform duration-200 group-hover/item:scale-110 ${isActive ? "text-white" : "text-slate-500"}`} />
+                    <span className="truncate opacity-0 group-hover:opacity-100 transition-opacity duration-300 whitespace-nowrap hidden lg:inline">
+                      {item.label}
+                    </span>
+                    <span className="truncate inline lg:hidden">
+                      {item.label}
+                    </span>
                   </div>
                   {item.badge && (
-                    <span
-                      className={`text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0 ${
-                        isActive
-                          ? "bg-white/20 text-white"
-                          : "bg-slate-100 text-slate-600 border border-slate-200/60"
-                      }`}
-                    >
-                      {item.badge}
-                    </span>
+                    <>
+                      <span
+                        className={`text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 hidden lg:inline ${
+                          isActive
+                            ? "bg-white/20 text-white"
+                            : "bg-[#eaded2]/60 text-[#600b0b] border border-[#ebdcd0]"
+                        }`}
+                      >
+                        {item.badge}
+                      </span>
+                      <span
+                        className={`text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0 inline lg:hidden ${
+                          isActive
+                            ? "bg-white/20 text-white"
+                            : "bg-[#eaded2]/60 text-[#600b0b] border border-[#ebdcd0]"
+                        }`}
+                      >
+                        {item.badge}
+                      </span>
+                      {/* Collapsed dot indicator on desktop */}
+                      <span className="hidden lg:block lg:group-hover:hidden absolute top-2.5 right-2 w-1.5 h-1.5 rounded-full bg-[#c29b68]" />
+                    </>
                   )}
                 </button>
               );
@@ -363,12 +408,21 @@ export default function CollegeDashboard() {
         </div>
 
         {/* Bottom: Principal Profile & Sign Out */}
-        <div className="p-3 border-t border-slate-100 bg-slate-50/50 shrink-0">
-          <div className="flex items-center gap-2 p-2 rounded-lg bg-white border border-slate-200/70 mb-2">
-            <div className="w-7 h-7 rounded-md bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-700 shrink-0 font-bold text-xs">
-              <User size={14} />
+        <div className="p-2.5 border-t border-slate-100 bg-slate-50/50 shrink-0">
+          <div
+            className="flex items-center gap-2.5 p-2 rounded-xl bg-white border border-[#ebdcd0] mb-2"
+            title={user?.full_name || "College Principal"}
+          >
+            <div className="w-8 h-8 rounded-lg bg-[#eaded2] border border-[#ebdcd0] flex items-center justify-center text-[#600b0b] shrink-0 font-bold text-xs shadow-2xs">
+              <User size={15} />
             </div>
-            <div className="min-w-0 flex-1">
+            <div className="min-w-0 flex-1 opacity-0 group-hover:opacity-100 transition-opacity duration-300 whitespace-nowrap hidden lg:block">
+              <p className="text-xs font-bold text-slate-800 truncate">
+                {user?.full_name || "College Principal"}
+              </p>
+              <p className="text-[10px] text-slate-400 truncate">Principal Authority</p>
+            </div>
+            <div className="min-w-0 flex-1 block lg:hidden">
               <p className="text-xs font-bold text-slate-800 truncate">
                 {user?.full_name || "College Principal"}
               </p>
@@ -378,16 +432,18 @@ export default function CollegeDashboard() {
 
           <button
             onClick={handleLogout}
-            className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50 border border-transparent hover:border-red-100 rounded-lg transition-colors cursor-pointer"
+            title="Sign Out"
+            className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50 border border-transparent hover:border-red-100 rounded-xl transition-all cursor-pointer"
           >
-            <LogOut size={13} />
-            <span>Sign Out</span>
+            <LogOut size={15} className="shrink-0" />
+            <span className="opacity-0 group-hover:opacity-100 transition-opacity duration-300 whitespace-nowrap hidden lg:inline">Sign Out</span>
+            <span className="inline lg:hidden">Sign Out</span>
           </button>
         </div>
       </aside>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0 min-h-screen">
+      <div className="flex-1 flex flex-col min-w-0 min-h-screen lg:pl-20 transition-all duration-300">
         {/* Mobile Header Bar */}
         <div className="lg:hidden h-14 bg-white border-b border-slate-200 px-4 flex items-center justify-between sticky top-0 z-30 shadow-xs">
           <div className="flex items-center gap-3">
@@ -414,10 +470,10 @@ export default function CollegeDashboard() {
         {/* Inner Content Body */}
         <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-6xl w-full mx-auto space-y-6">
           {/* Top Page Summary Bar with Context Actions */}
-          <div className="bg-white rounded-xl border border-slate-200/90 p-5 sm:p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="bg-white rounded-xl border border-[#ebdcd0] p-5 sm:p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
               <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200 uppercase tracking-wider">
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#eaded2]/60 text-[#600b0b] border border-[#ebdcd0] uppercase tracking-wider">
                   College Principal Workspace
                 </span>
                 <span className="text-slate-300">•</span>
@@ -514,7 +570,7 @@ export default function CollegeDashboard() {
                       <button
                         onClick={handleCreateAssessment}
                         disabled={creating}
-                        className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-colors shadow-xs cursor-pointer"
+                        className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#600b0b] hover:bg-[#4a0707] text-white rounded-lg text-xs font-bold transition-colors shadow-xs cursor-pointer"
                       >
                         <PlusCircle size={14} />
                         <span>{creating ? "Initializing..." : "Start 2025-26 Assessment"}</span>
@@ -525,7 +581,7 @@ export default function CollegeDashboard() {
                   {/* 4 Summary Metrics */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                     {/* Status */}
-                    <div className="bg-white rounded-xl border border-slate-200/90 p-5 shadow-xs flex flex-col justify-between">
+                    <div className="bg-white rounded-xl border border-[#ebdcd0] p-5 shadow-xs flex flex-col justify-between">
                       <div>
                         <div className="flex items-center justify-between gap-2 mb-2">
                           <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
@@ -544,13 +600,13 @@ export default function CollegeDashboard() {
                     </div>
 
                     {/* Parameters */}
-                    <div className="bg-white rounded-xl border border-slate-200/90 p-5 shadow-xs flex flex-col justify-between">
+                    <div className="bg-white rounded-xl border border-[#ebdcd0] p-5 shadow-xs flex flex-col justify-between">
                       <div>
                         <div className="flex items-center justify-between gap-2 mb-2">
                           <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
                             Parameters Filled
                           </span>
-                          <span className="text-[11px] font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full">
+                          <span className="text-[11px] font-bold text-[#600b0b] bg-[#eaded2]/60 border border-[#ebdcd0] px-2 py-0.5 rounded-full">
                             {Math.round((completedParameters / totalParameters) * 100)}%
                           </span>
                         </div>
@@ -564,9 +620,9 @@ export default function CollegeDashboard() {
                         </div>
                       </div>
                       <div className="mt-3 pt-3 border-t border-slate-100">
-                        <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                        <div className="w-full h-1.5 bg-[#eaded2]/40 rounded-full overflow-hidden">
                           <div
-                            className="h-full bg-blue-600 rounded-full transition-all duration-300"
+                            className="h-full bg-[#600b0b] rounded-full transition-all duration-300"
                             style={{ width: `${(completedParameters / totalParameters) * 100}%` }}
                           />
                         </div>
@@ -574,7 +630,7 @@ export default function CollegeDashboard() {
                     </div>
 
                     {/* Evidence Coverage */}
-                    <div className="bg-white rounded-xl border border-slate-200/90 p-5 shadow-xs flex flex-col justify-between">
+                    <div className="bg-white rounded-xl border border-[#ebdcd0] p-5 shadow-xs flex flex-col justify-between">
                       <div>
                         <div className="flex items-center justify-between gap-2 mb-2">
                           <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
@@ -629,11 +685,11 @@ export default function CollegeDashboard() {
 
                   {/* Primary Attention & Next Action */}
                   {activeAssessment && (
-                    <div className="bg-white rounded-xl border border-slate-200/90 p-5 shadow-xs space-y-4">
+                    <div className="bg-white rounded-xl border border-[#ebdcd0] p-5 shadow-xs space-y-4">
                       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-100">
                         <div>
                           <div className="flex items-center gap-2 mb-1">
-                            <span className="text-[11px] font-bold text-blue-700 uppercase tracking-wider bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                            <span className="text-[11px] font-bold text-[#600b0b] uppercase tracking-wider bg-[#eaded2]/60 px-2 py-0.5 rounded border border-[#ebdcd0]">
                               Recommended Action
                             </span>
                             <span className="text-xs font-semibold text-slate-600">
@@ -659,7 +715,7 @@ export default function CollegeDashboard() {
                         <div className="flex items-center gap-3 shrink-0 flex-wrap">
                           <button
                             onClick={() => handleOpenAssessment()}
-                            className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
+                            className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-[#600b0b] hover:bg-[#4a0707] text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
                           >
                             <span>Continue Assessment (C1–C22)</span>
                             <ChevronRight size={13} />
@@ -687,13 +743,102 @@ export default function CollegeDashboard() {
                       </div>
 
                       {/* Unresolved Specifications Banner */}
-                      <div className="p-3.5 bg-purple-50/80 border border-purple-200 rounded-lg text-xs text-purple-900 flex items-start gap-3">
-                        <Ban size={16} className="text-purple-600 shrink-0 mt-0.5" />
+                      <div className="p-3.5 bg-amber-50/80 border border-amber-200 rounded-lg text-xs text-amber-900 flex items-start gap-3">
+                        <AlertCircle size={16} className="text-amber-600 shrink-0 mt-0.5" />
                         <div className="flex-1 min-w-0">
-                          <p className="font-bold text-purple-950 mb-0.5">Council Notice: Unresolved Specifications (C5, C7, C8, C16)</p>
-                          <p className="text-purple-800 leading-relaxed">
-                            Parameters C5 (IDP), C7 (NAAC), C8 (NCrF), and C16 (Gender Parity) are governed by pending council specifications and will not be evaluated until formally notified.
+                          <p className="font-bold text-amber-950 mb-0.5">Council Blocker Notice: Clarification Pending (C5, C7, C8, C16)</p>
+                          <p className="text-amber-800 leading-relaxed">
+                            Parameters C5 (Internship), C7 (Faculty Training), C8 (Credit Transfer), and C16 (Statutory Rule) have pending council clarifications. Review inputs carefully before final sign-off.
                           </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 4 NEP 2026 Core Institutional Pillars */}
+                  {activeAssessment && (
+                    <div className="bg-white rounded-xl border border-[#ebdcd0] p-5 shadow-xs">
+                      <div className="flex items-center justify-between gap-3 mb-4 pb-3 border-b border-slate-100">
+                        <div>
+                          <span className="text-[10px] font-bold text-[#600b0b] uppercase tracking-wider bg-[#eaded2]/60 px-2 py-0.5 rounded border border-[#ebdcd0]">
+                            NEP 2020 Dimensions
+                          </span>
+                          <h3 className="text-sm sm:text-base font-bold text-slate-900 mt-1">
+                            Institutional Core Pillars & Milestone Progress
+                          </h3>
+                        </div>
+                        <span className="text-xs font-mono font-semibold text-slate-500">
+                          Target: Tier 1 Autonomous
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        {/* Pillar 1: Multidisciplinary */}
+                        <div className="p-4 rounded-xl bg-slate-50/70 border border-[#ebdcd0] flex flex-col justify-between">
+                          <div>
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider font-mono">Pillar 1</span>
+                            <h4 className="text-xs font-bold text-slate-900 mt-1">Multidisciplinary & Holistic</h4>
+                            <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                              FYUP structure, minor subjects & IKS integration (C1–C4, C6, C7).
+                            </p>
+                          </div>
+                          <div className="mt-4 pt-3 border-t border-slate-200/60 flex items-center justify-between">
+                            <span className="text-[11px] font-semibold text-slate-600">Compliance</span>
+                            <span className="text-xs font-bold text-[#600b0b] font-mono">
+                              {Math.round((parameters.filter(p => ['C1','C2','C3','C4','C6','C7'].includes(p.parameter_code) && p.submitted_input).length / 6) * 100)}%
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Pillar 2: ABC & Mobility */}
+                        <div className="p-4 rounded-xl bg-slate-50/70 border border-slate-200/80 flex flex-col justify-between">
+                          <div>
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider font-mono">Pillar 2</span>
+                            <h4 className="text-xs font-bold text-slate-900 mt-1">ABC & Credit Mobility</h4>
+                            <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                              DigiLocker APAAR sync and multiple entry/exit pathways (C8, C9).
+                            </p>
+                          </div>
+                          <div className="mt-4 pt-3 border-t border-slate-200/60 flex items-center justify-between">
+                            <span className="text-[11px] font-semibold text-slate-600">Compliance</span>
+                            <span className="text-xs font-bold text-emerald-700 font-mono">
+                              {Math.round((parameters.filter(p => ['C8','C9'].includes(p.parameter_code) && p.submitted_input).length / 2) * 100)}%
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Pillar 3: Research & Innovation */}
+                        <div className="p-4 rounded-xl bg-slate-50/70 border border-slate-200/80 flex flex-col justify-between">
+                          <div>
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider font-mono">Pillar 3</span>
+                            <h4 className="text-xs font-bold text-slate-900 mt-1">Research & Incubation</h4>
+                            <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                              College seed funding, patent index, and student startups (C10, C11, C14).
+                            </p>
+                          </div>
+                          <div className="mt-4 pt-3 border-t border-slate-200/60 flex items-center justify-between">
+                            <span className="text-[11px] font-semibold text-slate-600">Compliance</span>
+                            <span className="text-xs font-bold text-purple-700 font-mono">
+                              {Math.round((parameters.filter(p => ['C10','C11','C14','C16'].includes(p.parameter_code) && p.submitted_input).length / 4) * 100)}%
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Pillar 4: Skill & HKRN */}
+                        <div className="p-4 rounded-xl bg-slate-50/70 border border-slate-200/80 flex flex-col justify-between">
+                          <div>
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider font-mono">Pillar 4</span>
+                            <h4 className="text-xs font-bold text-slate-900 mt-1">Skill & HKRN Internships</h4>
+                            <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                              60-hr mandatory apprenticeship & digital smart classrooms (C5, C12, C13, C15).
+                            </p>
+                          </div>
+                          <div className="mt-4 pt-3 border-t border-slate-200/60 flex items-center justify-between">
+                            <span className="text-[11px] font-semibold text-slate-600">Compliance</span>
+                            <span className="text-xs font-bold text-amber-700 font-mono">
+                              {Math.round((parameters.filter(p => ['C5','C12','C13','C15'].includes(p.parameter_code) && p.submitted_input).length / 4) * 100)}%
+                            </span>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -712,7 +857,7 @@ export default function CollegeDashboard() {
 
               {/* SECTION 2: PARAMETERS (C1–C22) */}
               {activeSection === "parameters" && (
-                <div className="bg-white rounded-xl border border-slate-200/90 shadow-xs overflow-hidden">
+                <div className="bg-white rounded-xl border border-[#ebdcd0] shadow-xs overflow-hidden">
                   <div className="p-4 sm:p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/60">
                     <div>
                       <h2 className="text-sm sm:text-base font-bold text-slate-900 tracking-tight">
@@ -727,17 +872,17 @@ export default function CollegeDashboard() {
                     <div className="flex items-center gap-2 flex-wrap">
                       <button
                         onClick={() => handleOpenAssessment()}
-                        className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer inline-flex items-center gap-1"
+                        className="px-3 py-1 bg-[#600b0b] hover:bg-[#4a0707] text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer inline-flex items-center gap-1"
                       >
                         <span>Open Assessment Form</span>
                         <ChevronRight size={13} />
                       </button>
 
-                      <div className="inline-flex rounded-lg border border-slate-200 bg-white p-1 text-xs font-semibold text-slate-600 shadow-2xs">
+                      <div className="inline-flex rounded-lg border border-[#ebdcd0] bg-white p-1 text-xs font-semibold text-slate-600 shadow-2xs">
                         <button
                           onClick={() => setParamFilter("ALL")}
                           className={`px-3 py-1 rounded-md transition-all cursor-pointer ${
-                            paramFilter === "ALL" ? "bg-slate-900 text-white shadow-xs" : "hover:text-slate-900"
+                            paramFilter === "ALL" ? "bg-[#600b0b] text-white shadow-xs" : "hover:text-slate-900"
                           }`}
                         >
                           All ({parameters.length})
@@ -789,7 +934,7 @@ export default function CollegeDashboard() {
 
                           return (
                             <tr key={param.parameter_code} className="hover:bg-slate-50/70 transition-colors">
-                              <td className="py-3.5 px-4 font-mono font-bold text-blue-700 whitespace-nowrap">
+                              <td className="py-3.5 px-4 font-mono font-bold text-[#600b0b] whitespace-nowrap">
                                 {param.parameter_code}
                               </td>
                               <td className="py-3.5 px-4 font-medium text-slate-900 max-w-sm">
@@ -836,7 +981,7 @@ export default function CollegeDashboard() {
                               <td className="py-3.5 px-4 text-center whitespace-nowrap">
                                 <button
                                   onClick={() => handleOpenAssessment(param.parameter_code)}
-                                  className="text-xs font-bold text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
+                                  className="text-xs font-bold text-[#600b0b] hover:text-[#4a0707] hover:underline cursor-pointer"
                                 >
                                   Open in Form
                                 </button>
@@ -887,7 +1032,7 @@ export default function CollegeDashboard() {
                       <div className="flex items-center gap-2.5 shrink-0">
                         <button
                           onClick={() => setSelectedAssessmentId(activeAssessment.assessment_id)}
-                          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                          className="px-4 py-2 bg-[#600b0b] hover:bg-[#4a0707] text-white rounded-lg text-xs font-bold transition-colors cursor-pointer"
                         >
                           Open Audit Inspector
                         </button>
@@ -906,10 +1051,10 @@ export default function CollegeDashboard() {
               {/* SECTION: NOMINATION FORMS DIRECT ACCESS */}
               {activeSection === "forms" && (
                 <div className="space-y-6">
-                  <div className="bg-white rounded-xl border border-slate-200/90 p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div className="bg-white rounded-xl border border-[#ebdcd0] p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div>
                       <div className="flex items-center gap-2 mb-1">
-                        <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 uppercase tracking-wider">
+                        <span className="text-[10px] font-bold text-[#600b0b] bg-[#eaded2]/60 px-2 py-0.5 rounded border border-[#ebdcd0] uppercase tracking-wider">
                           Nomination Workspace
                         </span>
                       </div>
@@ -927,7 +1072,7 @@ export default function CollegeDashboard() {
                           `/institution/${institutionName || "college"}/${institutionAisheCode || "aishe"}/dashboard/forms/nep-excellence-nomination-2025`
                         )
                       }
-                      className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-sm shadow-blue-500/20 transition-all shrink-0 cursor-pointer"
+                      className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#600b0b] hover:bg-[#4a0707] text-white rounded-xl text-xs font-bold shadow-xs transition-all shrink-0 cursor-pointer"
                     >
                       <FileText size={15} />
                       <span>Open Nomination Form</span>
@@ -954,7 +1099,7 @@ export default function CollegeDashboard() {
                               `/institution/${institutionName || "college"}/${institutionAisheCode || "aishe"}/dashboard/forms/nep-excellence-nomination-2025`
                             )
                           }
-                          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold inline-flex items-center gap-2 transition-colors cursor-pointer"
+                          className="px-4 py-2 bg-[#600b0b] hover:bg-[#4a0707] text-white rounded-lg text-xs font-bold inline-flex items-center gap-2 transition-colors cursor-pointer"
                         >
                           <PlusCircle size={14} />
                           <span>Start New Nomination</span>
@@ -991,7 +1136,7 @@ export default function CollegeDashboard() {
                                     `/institution/${institutionName || "college"}/${institutionAisheCode || "aishe"}/dashboard/forms/${sub.form_id}`
                                   )
                                 }
-                                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer inline-flex items-center gap-1.5"
+                                className="px-4 py-2 bg-[#600b0b] hover:bg-[#4a0707] text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer inline-flex items-center gap-1.5"
                               >
                                 <span>{sub.is_submitted ? "View Submitted Form" : "Open & Continue Form"}</span>
                                 <ChevronRight size={14} />
@@ -1057,7 +1202,7 @@ export default function CollegeDashboard() {
                                   `/institution/${institutionName || "college"}/${institutionAisheCode || "aishe"}/dashboard/forms/${sub.form_id}`
                                 )
                               }
-                              className="px-3.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                              className="px-3.5 py-1.5 bg-[#eaded2]/60 hover:bg-[#eaded2] text-[#600b0b] border border-[#ebdcd0] rounded-lg text-xs font-bold transition-colors cursor-pointer"
                             >
                               {sub.is_submitted ? "View Record" : "Continue Form"}
                             </button>
@@ -1073,10 +1218,10 @@ export default function CollegeDashboard() {
         </main>
 
         {/* Professional Clean White Institutional Footer */}
-        <footer className="mt-auto bg-white border-t border-slate-200/80 py-6 px-4 sm:px-6 lg:px-8">
+        <footer className="mt-auto bg-white border-t border-[#ebdcd0] py-6 px-4 sm:px-6 lg:px-8">
           <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-3 text-center md:text-left">
-              <div className="w-8 h-8 rounded-lg bg-slate-50 border border-slate-200 p-1 flex items-center justify-center shrink-0">
+              <div className="w-8 h-8 rounded-lg bg-[#fdfaf6] border border-[#ebdcd0] p-1 flex items-center justify-center shrink-0">
                 <img src={hshecLogo} alt="HSHEC" className="w-full h-full object-contain" />
               </div>
               <div>
