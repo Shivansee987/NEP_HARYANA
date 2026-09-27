@@ -20,6 +20,7 @@ import {
 import { fetchReviewQueue } from "../../api/checker";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { StatusBadge, DashboardSkeleton, EmptyState, ErrorState } from "../../components/common";
+import CheckerQueueAnalyticsSection from "../../components/Analytics/CheckerQueueAnalyticsSection";
 
 export default function CheckerQueue() {
   const navigate = useNavigate();
@@ -401,6 +402,14 @@ export default function CheckerQueue() {
             </table>
           </div>
         </div>
+      )}
+
+      {/* Analytics & Graphs Section */}
+      {!loading && !error && queueItems.length > 0 && (
+        <CheckerQueueAnalyticsSection
+          queueItems={queueItems}
+          totalCount={totalCount}
+        />
       )}
     </div>
   );
