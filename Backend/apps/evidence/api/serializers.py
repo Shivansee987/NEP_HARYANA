@@ -21,18 +21,80 @@ from apps.scoring.enums import FrameworkType
 
 class EvidenceAssociationSerializer(serializers.ModelSerializer):
     """Serializes an association between an evidence document and a subcriterion."""
+    id = serializers.IntegerField(read_only=True)
+    association_id = serializers.UUIDField(read_only=True)
+    evidence_document_id = serializers.UUIDField(source='evidence.document_id', read_only=True)
+    original_filename = serializers.CharField(source='evidence.original_filename', read_only=True)
+    file_checksum = serializers.CharField(source='evidence.file_checksum', read_only=True)
+    mime_type = serializers.CharField(source='evidence.mime_type', read_only=True)
+    file_size = serializers.IntegerField(source='evidence.file_size', read_only=True)
+    framework = serializers.CharField(source='evidence.framework', read_only=True)
+    institution_id = serializers.CharField(source='evidence.institution_id', read_only=True)
+    verification_status = serializers.CharField(read_only=True, allow_null=True)
+    latest_verification = serializers.SerializerMethodField()
+
     class Meta:
         model = EvidenceSubcriterionAssociation
         fields = [
+            'id',
             'association_id',
+            'evidence_document_id',
+            'original_filename',
+            'file_checksum',
+            'mime_type',
+            'file_size',
+            'framework',
+            'institution_id',
             'parameter_id',
             'subcriterion_id',
+            'subcriterion_evidence_type',
             'response_id',
             'academic_year',
+            'page_start',
+            'page_end',
+            'section_identifier',
+            'claim_description',
+            'verification_status',
+            'latest_verification',
             'associated_at',
             'is_active',
         ]
         read_only_fields = fields
+
+    def get_latest_verification(self, obj):
+        v = obj.latest_verification
+        if not v:
+            return None
+        return {
+            "verification_id": str(v.verification_id),
+            "decision": v.decision,
+            "verifier_id": v.verifier_id,
+            "verifier_email": getattr(v.verifier, 'email', str(v.verifier_id)),
+            "reason": v.reason,
+            "rejection_code": v.rejection_code,
+            "inspected_checksum": v.inspected_checksum,
+            "timestamp": v.timestamp.isoformat(),
+        }
+
+
+class EvidenceAssociationActionSerializer(serializers.Serializer):
+    """Validates action payload for verifying an association."""
+    reason = serializers.CharField(required=False, allow_blank=True, default="")
+    expected_checksum = serializers.CharField(max_length=64, required=False, allow_blank=True, default=None)
+    metadata = serializers.DictField(required=False, default=dict)
+
+
+class EvidenceAssociationRejectionActionSerializer(serializers.Serializer):
+    """Validates action payload for rejecting an association."""
+    reason = serializers.CharField(required=True, allow_blank=False)
+    rejection_code = serializers.CharField(
+        max_length=50,
+        required=False,
+        allow_blank=True,
+        default=RejectionReasonCode.OTHER
+    )
+    expected_checksum = serializers.CharField(max_length=64, required=False, allow_blank=True, default=None)
+    metadata = serializers.DictField(required=False, default=dict)
 
 
 class EvidenceCreateAssociationSerializer(serializers.Serializer):
@@ -41,6 +103,12 @@ class EvidenceCreateAssociationSerializer(serializers.Serializer):
     subcriterion_id = serializers.CharField(max_length=50, required=True)
     response_id = serializers.CharField(max_length=100, required=False, allow_blank=True, default="")
     academic_year = serializers.CharField(max_length=20, required=False, allow_blank=True, default="2025-26")
+    evidence_type = serializers.CharField(max_length=100, required=False, allow_blank=True, default=None)
+    subcriterion_evidence_type = serializers.CharField(max_length=100, required=False, allow_blank=True, default=None)
+    page_start = serializers.IntegerField(required=False, allow_null=True, min_value=1, default=None)
+    page_end = serializers.IntegerField(required=False, allow_null=True, min_value=1, default=None)
+    section_identifier = serializers.CharField(max_length=100, required=False, allow_blank=True, default="")
+    claim_description = serializers.CharField(required=False, allow_blank=True, default="")
 
 
 class EvidenceDocumentSerializer(serializers.ModelSerializer):
@@ -91,7 +159,7 @@ class EvidenceUploadSerializer(serializers.Serializer):
     )
     institution_id = serializers.CharField(max_length=100, required=False, allow_blank=True, default="")
     institution_type = serializers.CharField(max_length=50, required=False, allow_blank=True, default="COLLEGE")
-    evidence_type = serializers.CharField(max_length=100, required=False, default="EVID_GENERAL")
+    evidence_type = serializers.CharField(max_length=100, required=False, allow_blank=True, default=None)
     document_date = serializers.DateField(required=False, allow_null=True, default=None)
     academic_year = serializers.CharField(max_length=20, required=False, allow_blank=True, default="2025-26")
     parameter_id = serializers.CharField(max_length=50, required=False, allow_blank=True, default=None)
@@ -107,6 +175,37 @@ class EvidenceUploadSerializer(serializers.Serializer):
             except Exception as e:
                 raise serializers.ValidationError(str(e))
         return value
+
+    def validate(self, attrs):
+        # Security: strictly reject any attempt to inject score fields via evidence upload
+        from apps.college.api.serializers import FORBIDDEN_SCORE_FIELDS
+        for field in FORBIDDEN_SCORE_FIELDS:
+            if field in self.initial_data:
+                raise serializers.ValidationError({field: f"Score field '{field}' cannot be injected via evidence upload."})
+
+        # Taxonomy derivation and validation (DEF-01)
+        from apps.evidence.taxonomy import (
+            derive_or_validate_evidence_type,
+            EvidenceTaxonomyError,
+        )
+
+        framework = attrs.get('framework')
+        evidence_type = attrs.get('evidence_type')
+        parameter_id = attrs.get('parameter_id')
+        subcriterion_id = attrs.get('subcriterion_id')
+
+        try:
+            resolved_evidence_type = derive_or_validate_evidence_type(
+                framework=framework,
+                evidence_type=evidence_type,
+                parameter_id=parameter_id,
+                subcriterion_id=subcriterion_id,
+            )
+            attrs['evidence_type'] = resolved_evidence_type
+        except EvidenceTaxonomyError as e:
+            raise serializers.ValidationError({"evidence_type": str(e)})
+
+        return attrs
 
 
 class EvidenceWithdrawalSerializer(serializers.Serializer):

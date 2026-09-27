@@ -42,7 +42,7 @@ export function setRefreshToken(token) {
 
 export async function request(path, options = {}) {
   const headers = {
-    "Content-Type": "application/json",
+    ...(options.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
     ...(options.headers || {}),
   };
 
@@ -56,9 +56,10 @@ export async function request(path, options = {}) {
     headers,
   });
 
-  // If unauthorized/expired token (401 or 403) and not an auth flow endpoint, try to refresh
+  // Only refresh on 401 (token expired/missing). 403 is a permission denial
+  // and must surface to the UI immediately — do NOT enter the refresh loop.
   if (
-    (response.status === 401 || response.status === 403) &&
+    response.status === 401 &&
     path !== "/auth/refresh/" &&
     path !== "/auth/login/" &&
     path !== "/auth/signup/"
@@ -216,7 +217,7 @@ export function getDashboardPathForUser(user) {
   // Both committee members and the committee chair use the committee console.
   // The backend enforces chair-level authority (certification, assignment) separately.
   if (role === "committee" || role === "committee_chair") {
-    return "/committee";
+    return "/checker/queue";
   }
 
   // University roles: nodal officers and university admins use the university console.

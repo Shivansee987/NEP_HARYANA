@@ -103,7 +103,7 @@ class EvidenceAPITestBase(APITestCase):
             file_size=len(self.valid_pdf_bytes),
             file_checksum=checksum,
             uploader=uploader,
-            evidence_type="EVID_CERTIFICATE",
+            evidence_type="EVID_C1_APPROVED_IDP",
             document_date=document_date,
             academic_year="2025-26",
             status=status_val,
@@ -233,7 +233,7 @@ class TestUploadPipelineAPI(EvidenceAPITestBase):
             "assessment_id": "ASSESS-2026-UPLOAD-01",
             "framework": "COLLEGE_2026",
             "institution_id": "C-5001",
-            "evidence_type": "EVID_CERTIFICATE",
+            "evidence_type": "EVID_C1_APPROVED_IDP",
             "document_date": "2025-09-15",
             "parameter_id": "C1",
             "subcriterion_id": "C1.1",
@@ -442,7 +442,7 @@ class TestEndToEndAPIFlow(EvidenceAPITestBase):
             "assessment_id": "ASSESS-E2E-001",
             "framework": "COLLEGE_2026",
             "institution_id": self.college_a.aishe_code,
-            "evidence_type": "EVID_CERTIFICATE",
+            "evidence_type": "EVID_C1_APPROVED_IDP",
             "document_date": "2025-09-20",
         }
         resp_upload = self.client.post(upload_url, upload_data, format='multipart')

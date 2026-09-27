@@ -9,6 +9,7 @@ from django.utils.translation import gettext_lazy as _
 
 from .enums import (
     AssignmentStatus,
+    AssociationVerificationDecision,
     EvidenceAuditAction,
     EvidenceLifecycleState,
     RejectionReasonCode,
@@ -332,6 +333,34 @@ class EvidenceSubcriterionAssociation(models.Model):
         default=True,
         db_index=True
     )
+    subcriterion_evidence_type = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+        db_index=True,
+        help_text=_("The exact evidence type claimed for this subcriterion (e.g. EVID_U7_APPOINTMENT).")
+    )
+    page_start = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text=_("Starting page for composite document supporting this subcriterion.")
+    )
+    page_end = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text=_("Ending page for composite document supporting this subcriterion.")
+    )
+    section_identifier = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+        help_text=_("Specific section, table, or annexure identifier inside the document.")
+    )
+    claim_description = models.TextField(
+        blank=True,
+        default="",
+        help_text=_("Institution's claim or explanation of how this document region supports this subcriterion.")
+    )
 
     class Meta:
         verbose_name = _("Evidence Subcriterion Association")
@@ -348,6 +377,116 @@ class EvidenceSubcriterionAssociation(models.Model):
 
     def __str__(self):
         return f"Association({self.evidence.document_id} -> {self.parameter_id}:{self.subcriterion_id})"
+
+    @property
+    def latest_verification(self):
+        """
+        Return the latest EvidenceAssociationVerification for this association, if any.
+        """
+        return self.verifications.first()
+
+    @property
+    def verification_status(self):
+        """
+        Return the decision of the latest verification or None if unreviewed.
+        """
+        latest = self.latest_verification
+        return latest.decision if latest else None
+
+
+class EvidenceAssociationVerification(models.Model):
+    """
+    Append-only association-level verification record.
+    Each verification or rejection of an association creates a permanent, immutable record,
+    allowing independent review of multi-criteria composite documents without altering
+    the document's global physical state.
+    """
+    verification_id = models.UUIDField(
+        default=uuid.uuid4,
+        unique=True,
+        editable=False,
+        db_index=True,
+        help_text=_("Stable, immutable unique identifier for this association verification.")
+    )
+    association = models.ForeignKey(
+        EvidenceSubcriterionAssociation,
+        on_delete=models.CASCADE,
+        related_name='verifications',
+        help_text=_("Evidence subcriterion association being verified.")
+    )
+    verifier = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name='association_verifications',
+        help_text=_("Identity of reviewer who evaluated this association.")
+    )
+    decision = models.CharField(
+        max_length=20,
+        choices=VerificationDecision.choices,
+        default=VerificationDecision.PENDING,
+        help_text=_("Auditable verification decision: PENDING, VERIFIED, or REJECTED.")
+    )
+    reason = models.TextField(
+        blank=True,
+        default="",
+        help_text=_("Reviewer notes, remarks, or mandatory justification for rejections.")
+    )
+    timestamp = models.DateTimeField(
+        auto_now_add=True,
+        db_index=True,
+        help_text=_("Timestamp when this association verification record was created.")
+    )
+    inspected_checksum = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+        help_text=_("Cryptographic SHA-256 hash of the evidence document inspected by the reviewer.")
+    )
+    rejection_code = models.CharField(
+        max_length=50,
+        blank=True,
+        default="",
+        help_text=_("Structured, machine-readable rejection code (RejectionReasonCode) when rejected.")
+    )
+    metadata = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text=_("Extensible audit metadata.")
+    )
+
+    class Meta:
+        verbose_name = _("Evidence Association Verification")
+        verbose_name_plural = _("Evidence Association Verifications")
+        ordering = ['-timestamp']
+        indexes = [
+            models.Index(fields=['association', 'timestamp']),
+            models.Index(fields=['decision', 'verifier']),
+        ]
+
+    def __str__(self):
+        return f"AssociationVerification({self.verification_id}, {self.decision}, assoc={self.association_id}, by={self.verifier_id})"
+
+    def save(self, *args, **kwargs):
+        """
+        Enforce append-only immutability. Existing verification records cannot be modified.
+        Also automatically populates inspected_checksum from document if left blank.
+        """
+        if self.pk is not None:
+            raise ImmutableRecordError("EvidenceAssociationVerification records are append-only and cannot be modified.")
+        if not self.inspected_checksum and self.association_id:
+            try:
+                if hasattr(self, 'association') and self.association and hasattr(self.association, 'evidence') and self.association.evidence:
+                    self.inspected_checksum = self.association.evidence.file_checksum
+            except Exception:
+                pass
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        """
+        Enforce audit log retention. Verification records cannot be deleted.
+        """
+        raise ImmutableRecordError("EvidenceAssociationVerification records are audit logs and cannot be deleted.")
+
 
 
 class EvidenceAuditLog(models.Model):

@@ -26,6 +26,16 @@ class VerificationDecision(models.TextChoices):
     PENDING = "PENDING", "Pending Review"
 
 
+class AssociationVerificationDecision(models.TextChoices):
+    """
+    Association-level verification decisions for Step 4B.
+    """
+    PENDING = "PENDING", "Pending Review"
+    VERIFIED = "VERIFIED", "Verified"
+    REJECTED = "REJECTED", "Rejected"
+
+
+
 class EvidenceAuditAction(models.TextChoices):
     """
     Append-only evidence audit log actions.
@@ -93,8 +103,8 @@ LEGAL_EVIDENCE_TRANSITIONS = {
 
 class CoverageState(models.TextChoices):
     """
-    Subcriterion-level evidence coverage state for Phase 5D.
-    Distinguishes presence, review status, period validity, and scoring eligibility.
+    Subcriterion-level evidence coverage state for Phase 5D & Step 4E.
+    Distinguishes presence, review status, period validity, contract states, and scoring eligibility.
     """
     NO_EVIDENCE = "NO_EVIDENCE", "No Evidence Associated"
     EVIDENCE_PRESENT = "EVIDENCE_PRESENT", "Evidence Present / Unsubmitted"
@@ -102,6 +112,15 @@ class CoverageState(models.TextChoices):
     EVIDENCE_VERIFIED = "EVIDENCE_VERIFIED", "Evidence Verified & Eligible"
     EVIDENCE_REJECTED = "EVIDENCE_REJECTED", "Evidence Rejected"
     EVIDENCE_INVALID_PERIOD = "EVIDENCE_INVALID_PERIOD", "Evidence Out of Assessment Period"
+    SOURCE_SILENT = "SOURCE_SILENT", "Source Silent (No Documentary Requirement Specified)"
+    UNRESOLVED = "UNRESOLVED", "Unresolved Missing Evidence Requirement"
+
+
+# Semantic Aliases as mandated by Step 4E
+CoverageState.COVERED = CoverageState.EVIDENCE_VERIFIED
+CoverageState.MISSING = CoverageState.NO_EVIDENCE
+CoverageState.PENDING = CoverageState.EVIDENCE_PENDING
+CoverageState.REJECTED = CoverageState.EVIDENCE_REJECTED
 
 
 class CoverageDeficiencyCode(models.TextChoices):
@@ -118,4 +137,10 @@ class CoverageDeficiencyCode(models.TextChoices):
     INVALID_ASSOCIATION = "INVALID_ASSOCIATION", "Association references inactive or invalid evidence"
     DUPLICATE_EVIDENCE_DETECTED = "DUPLICATE_EVIDENCE_DETECTED", "Evidence document is associated with multiple subcriteria"
     UNVERIFIED_EVIDENCE = "UNVERIFIED_EVIDENCE", "Evidence is present but not yet verified"
+    QUARANTINED_EVIDENCE = "QUARANTINED_EVIDENCE", "Evidence uses quarantined/legacy coarse type"
+    EVIDENCE_TYPE_MISMATCH = "EVIDENCE_TYPE_MISMATCH", "Evidence type does not satisfy subcriterion contract"
+    INSTITUTION_MISMATCH = "INSTITUTION_MISMATCH", "Evidence belongs to a different institution"
+    CONTRACT_SOURCE_SILENT = "CONTRACT_SOURCE_SILENT", "Subcriterion has no documentary requirement in authoritative source"
+    CONTRACT_UNRESOLVED = "CONTRACT_UNRESOLVED", "Subcriterion evidence contract is unresolved in authoritative source"
+
 

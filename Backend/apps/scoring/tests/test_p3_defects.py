@@ -437,13 +437,16 @@ class P3_03_C20_1_NAACRepresentationTests(TestCase):
 
     def test_7_correct_resulting_c20_1_state_and_score(self):
         """Full C20 evaluation with verified documents and valid grade yields certified score."""
+        doc_nirf = EvidenceDocument(document_id="doc-c20-nirf", document_type="EVID_C20_NIRF_PROOF", status=EvidenceState.EVIDENCE_VERIFIED)
+        doc_aishe = EvidenceDocument(document_id="doc-c20-aishe", document_type="EVID_C20_AISHE_CERT", status=EvidenceState.EVIDENCE_VERIFIED)
+        doc_iqac = EvidenceDocument(document_id="doc-c20-iqac", document_type="EVID_C20_IQAC_MINUTES", status=EvidenceState.EVIDENCE_VERIFIED)
         p_in = ParameterInput(
             parameter_code="C20",
             subcriteria_inputs={
                 "C20.1": SubcriterionInput(subcriterion_code="C20.1", raw_inputs={"naac_grade": "A++"}, evidence_docs=[self.doc]),
-                "C20.2": SubcriterionInput(subcriterion_code="C20.2", raw_inputs={"verified": True}, evidence_docs=[self.doc]),
-                "C20.3": SubcriterionInput(subcriterion_code="C20.3", raw_inputs={"verified": True}, evidence_docs=[self.doc]),
-                "C20.4": SubcriterionInput(subcriterion_code="C20.4", raw_inputs={"verified": True}, evidence_docs=[self.doc]),
+                "C20.2": SubcriterionInput(subcriterion_code="C20.2", raw_inputs={"verified": True}, evidence_docs=[doc_nirf]),
+                "C20.3": SubcriterionInput(subcriterion_code="C20.3", raw_inputs={"verified": True}, evidence_docs=[doc_aishe]),
+                "C20.4": SubcriterionInput(subcriterion_code="C20.4", raw_inputs={"verified": True}, evidence_docs=[doc_iqac]),
             },
         )
         res = COLLEGE_EVALUATORS["C20"](p_in, self.context, self.validator)

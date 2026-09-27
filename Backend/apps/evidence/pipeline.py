@@ -46,7 +46,7 @@ class EvidenceUploadPipeline:
         institution_id: str,
         file_data: Union[bytes, UploadedFile],
         filename: Optional[str] = None,
-        evidence_type: str = "EVID_GENERAL",
+        evidence_type: Optional[str] = None,
         document_date: Optional[date] = None,
         academic_year: Optional[str] = None,
         parameter_id: Optional[str] = None,
@@ -55,6 +55,7 @@ class EvidenceUploadPipeline:
         auto_submit: bool = False,
         nomination=None,
         metadata: Optional[Dict[str, Any]] = None,
+        validate_taxonomy: bool = False,
     ) -> EvidenceDocument:
         """
         Executes the atomic upload intake pipeline.
@@ -85,6 +86,29 @@ class EvidenceUploadPipeline:
                     f"Framework isolation violation: Cannot associate University parameter '{parameter_id}' "
                     f"to College assessment '{assessment_id}'."
                 )
+
+        # Step 2b: Taxonomy validation & deterministic derivation (DEF-01)
+        from apps.evidence.taxonomy import derive_or_validate_evidence_type
+        if validate_taxonomy:
+            resolved_evidence_type = derive_or_validate_evidence_type(
+                framework=clean_framework,
+                evidence_type=evidence_type,
+                parameter_id=parameter_id,
+                subcriterion_id=subcriterion_id,
+            )
+        else:
+            if not evidence_type and parameter_id:
+                try:
+                    resolved_evidence_type = derive_or_validate_evidence_type(
+                        framework=clean_framework,
+                        evidence_type=evidence_type,
+                        parameter_id=parameter_id,
+                        subcriterion_id=subcriterion_id,
+                    )
+                except Exception:
+                    resolved_evidence_type = evidence_type or "EVID_GENERAL"
+            else:
+                resolved_evidence_type = evidence_type or "EVID_GENERAL"
 
         # Step 3: Extract bytes and filename
         if isinstance(file_data, bytes):
@@ -153,7 +177,7 @@ class EvidenceUploadPipeline:
                     file_size=file_size,
                     file_checksum=file_checksum,
                     uploader=uploader,
-                    evidence_type=evidence_type,
+                    evidence_type=resolved_evidence_type,
                     document_date=document_date,
                     academic_year=academic_year,
                     status=initial_status,
@@ -188,6 +212,7 @@ class EvidenceUploadPipeline:
                         subcriterion_id=subcriterion_id,
                         response_id=response_id,
                         academic_year=academic_year or "",
+                        subcriterion_evidence_type=resolved_evidence_type or "",
                         associated_by=uploader,
                         is_active=True,
                     )

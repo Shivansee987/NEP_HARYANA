@@ -534,10 +534,21 @@ class CollegeAssessmentReadinessView(APIView):
 
 class CollegeAssessmentEvaluateView(APIView):
     """
-    POST: Executes scoring exclusively via frozen NEP2026ScoringEngine.
+    GET/POST: Executes or retrieves scoring evaluation via frozen NEP2026ScoringEngine.
+    Returns complete parameter breakdown, max marks, live running total, and award classification.
     Protected from direct client score injection.
     """
     permission_classes = [IsAuthenticatedUser, IsCollegeAssessmentOwnerOrReviewer]
+
+    @handle_college_exceptions
+    def get(self, request, assessment_id):
+        assessment = get_college_assessment_object(assessment_id)
+        self.check_object_permissions(request, assessment)
+        evaluation = CollegeAssessmentService.get_assessment_scoring_evaluation(
+            assessment_id=assessment.assessment_id,
+            user=request.user,
+        )
+        return Response(evaluation, status=status.HTTP_200_OK)
 
     @handle_college_exceptions
     def post(self, request, assessment_id):
@@ -552,53 +563,77 @@ class CollegeAssessmentEvaluateView(APIView):
                     code="INVALID_PARAMETER_INPUT"
                 )
 
-        # Delegate exclusively to frozen scoring engine via service layer
-        result = CollegeAssessmentService.evaluate_assessment_scoring(
-            assessment_id=assessment.assessment_id
+        evaluation = CollegeAssessmentService.get_assessment_scoring_evaluation(
+            assessment_id=assessment.assessment_id,
+            user=request.user,
         )
+        return Response(evaluation, status=status.HTTP_200_OK)
 
-        # Format structured response
-        param_results_dict = {}
-        for p_code, p_res in result.parameter_results.items():
-            sub_dict = {}
-            for s_code, s_res in p_res.subcriteria_results.items():
-                sub_dict[s_code] = {
-                    "subcriterion_code": s_res.subcriterion_code,
-                    "raw_score": s_res.raw_score,
-                    "evidence_gated_score": s_res.evidence_gated_score,
-                    "final_score": s_res.final_score,
-                    "max_score": s_res.max_score,
-                    "resolution_status": s_res.resolution_status.value,
-                    "gating_status": s_res.gating_status.value,
-                    "trace": s_res.trace,
-                }
-            param_results_dict[p_code] = {
-                "parameter_code": p_res.parameter_code,
-                "max_marks": p_res.max_marks,
-                "raw_score": p_res.raw_score,
-                "evidence_gated_score": p_res.evidence_gated_score,
-                "final_score": p_res.final_score,
-                "resolution_status": p_res.resolution_status.value,
-                "subcriteria_results": sub_dict,
-                "trace": p_res.trace,
-            }
 
-        response_data = {
-            "framework": result.framework.value,
-            "assessment_id": result.assessment_id,
-            "institution_id": result.institution_id,
-            "calculation_id": result.calculation_id,
-            "raw_total": result.raw_total,
-            "evidence_gated_total": result.evidence_gated_total,
-            "final_certified_total": result.final_certified_total,
-            "max_marks": result.max_marks,
-            "certification_status": result.certification_status.value,
-            "blocking_reasons": result.blocking_reasons,
-            "parameter_results": param_results_dict,
-            "trace": result.trace,
-        }
+class CollegeAssessmentParameterAcceptScoreView(APIView):
+    """
+    POST: Committee reviewer accepts the calculated score for a specific College parameter.
+    Updates the running total and records an immutable audit trail.
+    """
+    permission_classes = [IsAuthenticatedUser, IsCommitteeReviewer]
 
-        return Response(response_data, status=status.HTTP_200_OK)
+    @handle_college_exceptions
+    def post(self, request, assessment_id, parameter_code):
+        assessment = get_college_assessment_object(assessment_id)
+        self.check_object_permissions(request, assessment)
+
+        comments = request.data.get("comments", "")
+        updated_evaluation = CollegeAssessmentService.accept_parameter_score(
+            assessment_id=assessment.assessment_id,
+            parameter_code=parameter_code,
+            reviewer=request.user,
+            comments=comments,
+        )
+        return Response({
+            "parameter_code": parameter_code,
+            "status": "APPROVED",
+            "evaluation": updated_evaluation,
+            "message": f"Calculated score for {parameter_code} approved successfully.",
+        }, status=status.HTTP_200_OK)
+
+
+class CollegeAssessmentParameterAdjustScoreView(APIView):
+    """
+    POST: Controlled Reviewer Override for a College subcriterion score.
+    Requires mandatory reason (min 10 chars) and respects authoritative bounds.
+    """
+    permission_classes = [IsAuthenticatedUser, IsCommitteeReviewer]
+
+    @handle_college_exceptions
+    def post(self, request, assessment_id, parameter_code):
+        assessment = get_college_assessment_object(assessment_id)
+        self.check_object_permissions(request, assessment)
+
+        subcriterion_code = request.data.get("subcriterion_code")
+        adjusted_score = request.data.get("adjusted_score")
+        reason = request.data.get("reason", "")
+
+        if not subcriterion_code:
+            raise CollegeValidationError("Field 'subcriterion_code' is required.", code="REQUIRED_FIELD")
+        if adjusted_score is None:
+            raise CollegeValidationError("Field 'adjusted_score' is required.", code="REQUIRED_FIELD")
+
+        updated_evaluation = CollegeAssessmentService.adjust_parameter_score(
+            assessment_id=assessment.assessment_id,
+            parameter_code=parameter_code,
+            subcriterion_code=subcriterion_code,
+            adjusted_score=adjusted_score,
+            reason=reason,
+            reviewer=request.user,
+        )
+        return Response({
+            "parameter_code": parameter_code,
+            "subcriterion_code": subcriterion_code,
+            "adjusted_score": float(adjusted_score),
+            "status": "ADJUSTED",
+            "evaluation": updated_evaluation,
+            "message": f"Score adjusted for {subcriterion_code}.",
+        }, status=status.HTTP_200_OK)
 
 
 # ==============================================================================
@@ -682,11 +717,21 @@ class CollegeAssessmentStartReviewView(APIView):
 
 class CollegeAssessmentReviewEvaluateView(APIView):
     """
-    POST: Executes committee scoring evaluation via the frozen NEP2026ScoringEngine.
+    GET/POST: Executes committee scoring evaluation via the frozen NEP2026ScoringEngine.
     Status remains UNDER_REVIEW; evaluation is captured in CollegeReviewRecord.
     Protected from direct client score injection.
     """
     permission_classes = [IsAuthenticatedUser, IsCommitteeReviewer]
+
+    @handle_college_exceptions
+    def get(self, request, assessment_id):
+        assessment = get_college_assessment_object(assessment_id)
+        self.check_object_permissions(request, assessment)
+        evaluation = CollegeAssessmentService.get_assessment_scoring_evaluation(
+            assessment_id=assessment.assessment_id,
+            user=request.user,
+        )
+        return Response(evaluation, status=status.HTTP_200_OK)
 
     @handle_college_exceptions
     def post(self, request, assessment_id):

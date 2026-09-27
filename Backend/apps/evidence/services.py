@@ -2,6 +2,7 @@
 NEP Excellence Awards 2026 - Evidence Domain Services & Scoring Contract Bridge
 """
 import hashlib
+import uuid
 from typing import Optional, Dict, Any, List, Tuple
 from django.db import transaction
 from django.utils import timezone
@@ -32,6 +33,7 @@ from .exceptions import (
     UnauthorizedEvidenceActionError,
 )
 from .models import (
+    EvidenceAssociationVerification,
     EvidenceAuditLog,
     EvidenceDocument,
     EvidenceReviewAssignment,
@@ -219,7 +221,8 @@ class EvidenceService:
             raise UnauthorizedEvidenceActionError("Authentication required to review evidence.")
 
         verifier_role = getattr(reviewer, 'role', '')
-        if verifier_role not in ('committee', 'admin') and not getattr(reviewer, 'is_staff', False):
+        is_admin = getattr(reviewer, 'is_superuser', False) or getattr(reviewer, 'is_staff', False) or verifier_role in ('admin', 'state_admin')
+        if not is_admin and verifier_role not in ('committee', 'committee_chair'):
             raise UnauthorizedEvidenceActionError("Only Screening Committee or Admin can review evidence.")
 
         # 1. Segregation of duties: Uploader cannot review their own evidence
@@ -238,24 +241,38 @@ class EvidenceService:
                     f"Conflict of interest: Reviewer is affiliated with institution '{doc.institution_id}'."
                 )
 
+        reviewer_uni = getattr(reviewer, 'university', None)
+        if reviewer_uni:
+            uni_aishe = getattr(reviewer_uni, 'aishe_code', '')
+            uni_id_str = str(reviewer_uni.pk)
+            if (uni_aishe and uni_aishe == doc.institution_id) or uni_id_str == doc.institution_id:
+                raise ReviewerConflictOfInterestError(
+                    f"Conflict of interest: Reviewer is affiliated with institution '{doc.institution_id}'."
+                )
+
         # 3. Assignment enforcement: If assigned to another reviewer, regular reviewer cannot act
         if doc.assigned_reviewer_id and doc.assigned_reviewer_id != reviewer.pk:
-            if verifier_role != 'admin' and not getattr(reviewer, 'is_staff', False):
+            if not is_admin:
                 raise UnauthorizedEvidenceActionError(
                     f"Evidence is assigned to another reviewer. Only the assigned reviewer or admin can act."
                 )
 
         # 4. Scope and Framework authorization
-        if verifier_role == 'admin' or getattr(reviewer, 'is_staff', False):
+        if is_admin:
             return True
 
         # For committee reviewers:
         user_auths = ReviewerAuthorization.objects.filter(user=reviewer, is_active=True)
 
         if user_auths.exists():
-            fw_matching = user_auths.filter(framework__in=[doc.framework, 'ALL'])
+            allowed_fw = [doc.framework, 'ALL']
+            if doc.framework in ('UNIVERSITY_2026', 'UNIVERSITY'):
+                allowed_fw.extend(['UNIVERSITY_2026', 'UNIVERSITY'])
+            elif doc.framework in ('COLLEGE_2026', 'COLLEGE'):
+                allowed_fw.extend(['COLLEGE_2026', 'COLLEGE'])
+            fw_matching = user_auths.filter(framework__in=allowed_fw)
             if not fw_matching.exists():
-                raise FrameworkMismatchError(
+                raise ReviewerNotAuthorizedError(
                     f"Reviewer is not authorized for framework '{doc.framework}'."
                 )
             inst_matching = fw_matching.filter(institution_id__in=["", doc.institution_id])
@@ -809,15 +826,22 @@ class EvidenceService:
         actor,
         response_id: str = "",
         academic_year: str = "",
+        evidence_type: Optional[str] = None,
+        subcriterion_evidence_type: Optional[str] = None,
+        page_start: Optional[int] = None,
+        page_end: Optional[int] = None,
+        section_identifier: str = "",
+        claim_description: str = "",
     ) -> EvidenceSubcriterionAssociation:
         """
         Explicitly associate an evidence document with a parameter / subcriterion.
-        Strictly enforces framework isolation.
+        Strictly enforces framework isolation, subcriterion evidence contracts, and metadata binding.
         """
         doc = EvidenceDocument.objects.get(pk=evidence_id)
 
         # Framework isolation check
         param_clean = parameter_id.strip().upper()
+        sub_clean = subcriterion_id.strip().upper() if subcriterion_id else ""
         if doc.framework == "UNIVERSITY_2026":
             if param_clean.startswith("C") and not param_clean.startswith("CR"):
                 raise FrameworkMismatchError(
@@ -831,21 +855,84 @@ class EvidenceService:
                     f"to College evidence (Assessment: {doc.assessment_id})."
                 )
 
+        from apps.evidence.taxonomy import (
+            derive_or_validate_evidence_type,
+            get_allowed_evidence_types,
+            validate_subcriterion_evidence_contract,
+            ALL_EVIDENCE_TYPES,
+            EvidenceTypeParameterMismatchError,
+            MULTI_SUBCRITERION_PARAMETERS,
+        )
+
+        candidate_type = (subcriterion_evidence_type or evidence_type or "").strip() or None
+
+        if candidate_type:
+            contract = validate_subcriterion_evidence_contract(
+                doc.framework,
+                param_clean,
+                sub_clean,
+                candidate_type,
+            )
+            canonical_type = contract.canonical_evidence_type or candidate_type
+            if doc.evidence_type == "EVID_GENERAL" or not doc.evidence_type:
+                doc.evidence_type = canonical_type
+                doc.save(update_fields=['evidence_type'])
+        else:
+            if doc.evidence_type and doc.evidence_type != "EVID_GENERAL":
+                contract = validate_subcriterion_evidence_contract(
+                    doc.framework,
+                    param_clean,
+                    sub_clean,
+                    doc.evidence_type,
+                )
+                canonical_type = contract.canonical_evidence_type or doc.evidence_type
+            else:
+                derived_type = derive_or_validate_evidence_type(
+                    doc.framework,
+                    parameter_id=param_clean,
+                    subcriterion_id=sub_clean,
+                )
+                contract = validate_subcriterion_evidence_contract(
+                    doc.framework,
+                    param_clean,
+                    sub_clean,
+                    derived_type,
+                )
+                canonical_type = derived_type
+                doc.evidence_type = derived_type
+                doc.save(update_fields=['evidence_type'])
+
         association, created = EvidenceSubcriterionAssociation.objects.get_or_create(
             evidence=doc,
-            parameter_id=parameter_id,
-            subcriterion_id=subcriterion_id,
+            parameter_id=param_clean,
+            subcriterion_id=sub_clean,
             defaults={
                 'response_id': response_id,
                 'academic_year': academic_year or (doc.academic_year or ""),
                 'associated_by': actor,
+                'subcriterion_evidence_type': canonical_type or "",
+                'page_start': page_start,
+                'page_end': page_end,
+                'section_identifier': section_identifier or "",
+                'claim_description': claim_description or "",
                 'is_active': True,
             }
         )
 
-        if not created and not association.is_active:
-            association.is_active = True
-            association.save(update_fields=['is_active'])
+        if not created:
+            if not association.is_active:
+                association.is_active = True
+            if canonical_type:
+                association.subcriterion_evidence_type = canonical_type
+            if page_start is not None:
+                association.page_start = page_start
+            if page_end is not None:
+                association.page_end = page_end
+            if section_identifier:
+                association.section_identifier = section_identifier
+            if claim_description:
+                association.claim_description = claim_description
+            association.save()
 
         EvidenceAuditLog.objects.create(
             evidence=doc,
@@ -854,37 +941,120 @@ class EvidenceService:
             action=EvidenceAuditAction.ASSOCIATED,
             previous_state=doc.status,
             new_state=doc.status,
-            reason=f"Associated to {parameter_id}:{subcriterion_id}",
-            payload={"subcriterion_id": subcriterion_id, "parameter_id": parameter_id},
+            reason=f"Associated to {param_clean}:{sub_clean} (evidence_type: {canonical_type})",
+            payload={
+                "subcriterion_id": sub_clean,
+                "parameter_id": param_clean,
+                "subcriterion_evidence_type": canonical_type,
+                "page_start": page_start,
+                "page_end": page_end,
+            },
         )
 
         return association
 
     @classmethod
-    def to_scoring_domain(cls, doc: EvidenceDocument) -> ScoringEvidenceDocument:
+    def to_scoring_domain(
+        cls,
+        doc_or_association: Any,
+        subcriterion_id: Optional[str] = None
+    ) -> ScoringEvidenceDocument:
         """
-        Contract bridge: Adapts an ORM EvidenceDocument into the scoring engine's
-        domain dataclass (apps.scoring.domain.EvidenceDocument).
+        Contract bridge: Adapts an ORM EvidenceDocument or EvidenceSubcriterionAssociation
+        into the scoring engine's domain dataclass (apps.scoring.domain.EvidenceDocument).
 
-        Crucial rule:
-        - Only EVIDENCE_VERIFIED maps to EvidenceState.EVIDENCE_VERIFIED (allowing earned marks).
-        - EVIDENCE_PRESENT, EVIDENCE_PENDING map to unverified states (0.0 marks earned).
-        - EVIDENCE_REJECTED maps to EvidenceState.EVIDENCE_REJECTED (0.0 marks earned).
-        - Inactive/superseded/withdrawn documents map to EVIDENCE_PRESENT with 0.0 marks.
+        Crucial rules:
+        - If an EvidenceSubcriterionAssociation is passed:
+            * Uses subcriterion_evidence_type as document_type.
+            * Prioritizes association-level verification decisions (from EvidenceAssociationVerification).
+        - If an EvidenceDocument is passed with subcriterion_id:
+            * Locates the active association for that subcriterion_id and derives association status.
+        - If an EvidenceDocument is passed without subcriterion_id:
+            * Maintains strict document-level verification mapping.
         """
-        # Determine latest verifier and rejection reason from append-only history
-        latest_verification = doc.verifications.first()  # ordered by -timestamp
+        from apps.evidence.taxonomy import MULTI_SUBCRITERION_PARAMETERS
+
+        if isinstance(doc_or_association, EvidenceSubcriterionAssociation):
+            association = doc_or_association
+            doc = association.evidence
+            doc_type = association.subcriterion_evidence_type or doc.evidence_type
+
+            # Check for association-level verification (Step 4B)
+            latest_v = association.verifications.first()
+            if latest_v:
+                verified_by = str(getattr(latest_v.verifier, 'email', latest_v.verifier_id))
+                rejection_reason = latest_v.reason if latest_v.decision == VerificationDecision.REJECTED else None
+                if latest_v.decision == VerificationDecision.VERIFIED:
+                    mapped_state = ScoringEvidenceState.EVIDENCE_VERIFIED
+                    assoc_verified = True
+                elif latest_v.decision == VerificationDecision.REJECTED:
+                    mapped_state = ScoringEvidenceState.EVIDENCE_REJECTED
+                    assoc_verified = False
+                else:
+                    mapped_state = ScoringEvidenceState.EVIDENCE_PENDING
+                    assoc_verified = None
+            else:
+                # If no association-level verification exists, check parameter type
+                assoc_verified = None
+                param_code = association.parameter_id.strip().upper()
+                if param_code in MULTI_SUBCRITERION_PARAMETERS:
+                    # Multi-subcriterion association without association verification remains PENDING!
+                    mapped_state = ScoringEvidenceState.EVIDENCE_PENDING
+                else:
+                    # Single-subcriterion parameter can inherit document status if no association verification
+                    if not doc.is_active or doc.status in (EvidenceLifecycleState.EVIDENCE_SUPERSEDED, EvidenceLifecycleState.EVIDENCE_WITHDRAWN):
+                        mapped_state = ScoringEvidenceState.EVIDENCE_PRESENT
+                    elif doc.status == EvidenceLifecycleState.EVIDENCE_VERIFIED:
+                        mapped_state = ScoringEvidenceState.EVIDENCE_VERIFIED
+                        assoc_verified = True
+                    elif doc.status == EvidenceLifecycleState.EVIDENCE_REJECTED:
+                        mapped_state = ScoringEvidenceState.EVIDENCE_REJECTED
+                        assoc_verified = False
+                    elif doc.status == EvidenceLifecycleState.EVIDENCE_PENDING:
+                        mapped_state = ScoringEvidenceState.EVIDENCE_PENDING
+                    else:
+                        mapped_state = ScoringEvidenceState.EVIDENCE_PRESENT
+
+                latest_doc_v = doc.verifications.first()
+                verified_by = str(getattr(latest_doc_v.verifier, 'email', latest_doc_v.verifier_id)) if latest_doc_v else None
+                rejection_reason = latest_doc_v.reason if (latest_doc_v and latest_doc_v.decision == VerificationDecision.REJECTED) else None
+
+            return ScoringEvidenceDocument(
+                document_id=str(doc.document_id),
+                document_type=doc_type,
+                status=mapped_state,
+                verified_by=verified_by,
+                rejection_reason=rejection_reason,
+                file_checksum=doc.file_checksum,
+                academic_year=association.academic_year or doc.academic_year,
+                framework=doc.framework,
+                parameter_id=association.parameter_id,
+                subcriterion_id=association.subcriterion_id,
+                association_verified=assoc_verified,
+            )
+
+        # Standard EvidenceDocument branch
+        doc = doc_or_association
+        if subcriterion_id:
+            assoc = doc.associations.filter(subcriterion_id=subcriterion_id.strip().upper(), is_active=True).first()
+            if assoc:
+                return cls.to_scoring_domain(assoc)
+
+        latest_verification = doc.verifications.first()
         verified_by = None
         rejection_reason = None
+        assoc_verified = None
 
         if latest_verification:
             verified_by = str(getattr(latest_verification.verifier, 'email', latest_verification.verifier_id))
             if latest_verification.decision == VerificationDecision.REJECTED:
                 rejection_reason = latest_verification.reason
+                assoc_verified = False
+            elif latest_verification.decision == VerificationDecision.VERIFIED:
+                assoc_verified = True
 
-        # Map state strictly
         if not doc.is_active or doc.status in (EvidenceLifecycleState.EVIDENCE_SUPERSEDED, EvidenceLifecycleState.EVIDENCE_WITHDRAWN):
-            mapped_state = ScoringEvidenceState.EVIDENCE_PRESENT  # effectively unverified/dead
+            mapped_state = ScoringEvidenceState.EVIDENCE_PRESENT
         elif doc.status == EvidenceLifecycleState.EVIDENCE_VERIFIED:
             mapped_state = ScoringEvidenceState.EVIDENCE_VERIFIED
         elif doc.status == EvidenceLifecycleState.EVIDENCE_REJECTED:
@@ -902,7 +1072,151 @@ class EvidenceService:
             rejection_reason=rejection_reason,
             file_checksum=doc.file_checksum,
             academic_year=doc.academic_year,
+            framework=doc.framework,
+            parameter_id=None,
+            subcriterion_id=None,
+            association_verified=assoc_verified,
         )
+
+
+    @classmethod
+    @transaction.atomic
+    def verify_association(
+        cls,
+        association_id,
+        verifier,
+        reason: str = "",
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> EvidenceAssociationVerification:
+        """
+        Verify a specific EvidenceSubcriterionAssociation independently.
+        Does not mutate the underlying EvidenceDocument global lifecycle.
+        """
+        if isinstance(association_id, EvidenceSubcriterionAssociation):
+            assoc = association_id
+        else:
+            try:
+                val = uuid.UUID(str(association_id))
+                assoc = EvidenceSubcriterionAssociation.objects.select_for_update().get(association_id=val)
+            except (ValueError, TypeError):
+                assoc = EvidenceSubcriterionAssociation.objects.select_for_update().get(pk=association_id)
+        doc = assoc.evidence
+        cls.validate_reviewer_authorization(verifier, doc)
+
+        verification = EvidenceAssociationVerification.objects.create(
+            association=assoc,
+            verifier=verifier,
+            decision=VerificationDecision.VERIFIED,
+            reason=reason or f"Association {assoc.parameter_id}:{assoc.subcriterion_id} verified",
+            metadata=metadata or {},
+        )
+
+        EvidenceAuditLog.objects.create(
+            evidence=doc,
+            assessment_id=doc.assessment_id,
+            actor=verifier,
+            action=EvidenceAuditAction.VERIFIED,
+            previous_state=doc.status,
+            new_state=doc.status,
+            reason=f"Association {assoc.subcriterion_id} verified: {reason}",
+            payload={"association_id": assoc.pk, "subcriterion_id": assoc.subcriterion_id},
+        )
+        return verification
+
+    @classmethod
+    @transaction.atomic
+    def reject_association(
+        cls,
+        association_id,
+        verifier,
+        reason: str,
+        rejection_code: str = "",
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> EvidenceAssociationVerification:
+        """
+        Reject a specific EvidenceSubcriterionAssociation independently.
+        Does not mutate the underlying EvidenceDocument global lifecycle.
+        """
+        if not reason or not reason.strip():
+            raise MandatoryRejectionReasonError("Mandatory rejection reason must be provided.")
+
+        if isinstance(association_id, EvidenceSubcriterionAssociation):
+            assoc = association_id
+        else:
+            try:
+                val = uuid.UUID(str(association_id))
+                assoc = EvidenceSubcriterionAssociation.objects.select_for_update().get(association_id=val)
+            except (ValueError, TypeError):
+                assoc = EvidenceSubcriterionAssociation.objects.select_for_update().get(pk=association_id)
+        doc = assoc.evidence
+        cls.validate_reviewer_authorization(verifier, doc)
+
+        verification = EvidenceAssociationVerification.objects.create(
+            association=assoc,
+            verifier=verifier,
+            decision=VerificationDecision.REJECTED,
+            reason=reason.strip(),
+            rejection_code=rejection_code or RejectionReasonCode.OTHER,
+            metadata=metadata or {},
+        )
+
+        EvidenceAuditLog.objects.create(
+            evidence=doc,
+            assessment_id=doc.assessment_id,
+            actor=verifier,
+            action=EvidenceAuditAction.REJECTED,
+            previous_state=doc.status,
+            new_state=doc.status,
+            reason=f"Association {assoc.subcriterion_id} rejected: {reason}",
+            payload={"association_id": assoc.pk, "subcriterion_id": assoc.subcriterion_id, "rejection_code": rejection_code},
+        )
+        return verification
+
+    @classmethod
+    def get_association_verification_history(cls, association_id, user=None) -> List[Dict[str, Any]]:
+        """
+        Retrieves the immutable, append-only verification history for an evidence subcriterion association.
+        Enforces tenant and reviewer authorization boundaries.
+        """
+        if isinstance(association_id, EvidenceSubcriterionAssociation):
+            assoc = association_id
+        else:
+            try:
+                val = uuid.UUID(str(association_id))
+                assoc = EvidenceSubcriterionAssociation.objects.get(association_id=val)
+            except (ValueError, TypeError):
+                assoc = EvidenceSubcriterionAssociation.objects.get(pk=association_id)
+
+        doc = assoc.evidence
+        if user and getattr(user, 'is_authenticated', False):
+            user_role = getattr(user, 'role', '')
+            is_admin = getattr(user, 'is_superuser', False) or getattr(user, 'is_staff', False) or user_role in ('admin', 'state_admin')
+            if not is_admin and user_role in ('principal', 'nodal_officer', 'faculty', 'university_admin'):
+                user_college = getattr(user, 'college', None)
+                user_uni = getattr(user, 'university', None)
+                college_code = getattr(user_college, 'aishe_code', None) or str(getattr(user_college, 'pk', ''))
+                uni_code = getattr(user_uni, 'aishe_code', None) or str(getattr(user_uni, 'pk', ''))
+                if doc.institution_id not in (college_code, uni_code) and doc.uploader_id != user.pk:
+                    raise UnauthorizedEvidenceActionError("Cannot view verification history for another institution.")
+            elif not is_admin and user_role in ('committee', 'committee_chair'):
+                cls.validate_reviewer_authorization(user, doc)
+
+        history = []
+        for v in assoc.verifications.all().order_by('-timestamp'):
+            history.append({
+                "verification_id": str(v.verification_id),
+                "decision": v.decision,
+                "verifier_id": v.verifier_id,
+                "verifier_email": getattr(v.verifier, 'email', str(v.verifier_id)),
+                "reason": v.reason,
+                "rejection_code": v.rejection_code,
+                "inspected_checksum": v.inspected_checksum or doc.file_checksum,
+                "timestamp": v.timestamp.isoformat(),
+                "metadata": v.metadata,
+                "parameter_id": assoc.parameter_id,
+                "subcriterion_id": assoc.subcriterion_id,
+            })
+        return history
 
     @classmethod
     def get_verification_history(cls, evidence_id, user=None) -> List[Dict[str, Any]]:
@@ -954,7 +1268,7 @@ class EvidenceService:
             is_active=True,
         ).select_related('evidence')
 
-        return [cls.to_scoring_domain(assoc.evidence) for assoc in associations]
+        return [cls.to_scoring_domain(assoc) for assoc in associations]
 
     @classmethod
     def evaluate_subcriterion_scoring_eligibility(
@@ -1043,6 +1357,30 @@ class EvidenceService:
             framework=framework,
             requesting_user=requesting_user,
             subcriterion_codes=subcriterion_codes,
+        )
+
+    @classmethod
+    def get_review_readiness(
+        cls,
+        assessment_id: Optional[str] = None,
+        nomination=None,
+        institution_id: Optional[str] = None,
+        framework: Optional[str] = None,
+        requesting_user=None,
+    ):
+        """
+        Returns the structured ReviewReadinessReport for the reviewer workflow gate.
+        Distinguishes MISSING/PENDING (hard blockers), REJECTED (correction required),
+        UNRESOLVED (governance issue), and SOURCE_SILENT (not a blocker).
+        Returns (is_complete_review_allowed, review_readiness, summary).
+        """
+        from .coverage import EvidenceCoverageEvaluator
+        return EvidenceCoverageEvaluator.get_review_readiness(
+            assessment_id=assessment_id,
+            nomination=nomination,
+            institution_id=institution_id,
+            framework=framework,
+            requesting_user=requesting_user,
         )
 
     @staticmethod
