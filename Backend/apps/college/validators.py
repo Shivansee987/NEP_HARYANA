@@ -18,10 +18,12 @@ from .registry import (
 
 class CollegeValidationError(Exception):
     """Base exception for College domain validation errors."""
-    def __init__(self, message: str, code: str = "INVALID_PARAMETER_INPUT"):
+    def __init__(self, message: str, code: str = "INVALID_PARAMETER_INPUT", details=None):
         super().__init__(message)
         self.message = message
         self.code = code
+        # Structured, per-field feedback (list of {parameter, subcriterion, field, code, message})
+        self.details = details
 
 
 class CollegeNotAuthorizedError(CollegeValidationError):

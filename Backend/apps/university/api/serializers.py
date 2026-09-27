@@ -206,9 +206,10 @@ class UniversityParameterInputSerializer(serializers.Serializer):
         Executes domain validation against the authoritative parameter specification.
         Checks percentages, counts, amounts, subcriteria membership, and temporal dates.
         """
+        from apps.scoring.orchestration import validate_parameter_payload
+        from apps.scoring.rules.definitions import UNIVERSITY_PARAMETERS
+
         param_clean = validate_parameter(parameter_code)
-        param_def = get_university_parameter(param_clean)
-        subcriteria_defs = param_def.get("subcriteria", {})
         raw_inputs = self.validated_data.get("raw_inputs", {})
         activity_date = self.validated_data.get("activity_date")
 
@@ -216,28 +217,19 @@ class UniversityParameterInputSerializer(serializers.Serializer):
         if activity_date:
             validate_temporal_activity_date(activity_date, param_clean)
 
-        # Inspect raw inputs for semantic constraints
-        for key, val in raw_inputs.items():
-            # Check if key is a subcriterion format (e.g. U1.1, U1.99, or in subcriteria_defs)
-            if "." in key or key.upper().startswith("U") or key in subcriteria_defs:
-                validate_subcriterion(param_clean, key)
-                # If subcriterion value is a dict, validate its internal keys
-                if isinstance(val, dict):
-                    for sub_k, sub_v in val.items():
-                        self._validate_primitive_field(sub_k, sub_v, param_clean)
-            else:
-                self._validate_primitive_field(key, val, param_clean)
+        # Explicit per-field schema validation (type, bounds, integer, options, period dates)
+        errors = validate_parameter_payload(
+            param_clean, UNIVERSITY_PARAMETERS, raw_inputs, self.validated_data.get("entities", [])
+        )
+        if errors:
+            raise UniversityValidationError(
+                f"Parameter {param_clean} input is invalid: " + "; ".join(
+                    f"{e.get('subcriterion') or ''} {e['field']}: {e['message']}".strip() for e in errors[:5]),
+                code="INVALID_SUBCRITERION" if any(e["code"] == "UNKNOWN_SUBCRITERION" for e in errors) else "INVALID_PARAMETER_INPUT",
+                details=errors,
+            )
 
         return self.validated_data
-
-    def _validate_primitive_field(self, field_name: str, value: Any, param_code: str):
-        low_name = field_name.lower()
-        if "percent" in low_name or "rate" in low_name:
-            validate_percentage(value, field_name=field_name)
-        elif "count" in low_name or "programmes" in low_name or "patents" in low_name or "activities" in low_name:
-            validate_count(value, field_name=field_name)
-        elif "amount" in low_name or "funding" in low_name or "rupees" in low_name:
-            validate_currency_amount(value, field_name=field_name)
 
 
 class UniversityParameterMetadataSerializer(serializers.Serializer):

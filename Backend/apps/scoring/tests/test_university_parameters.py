@@ -25,6 +25,8 @@ from apps.scoring.evaluators.double_counting import DoubleCountingValidator
 from apps.scoring.rules.definitions import UNIVERSITY_PARAMETERS
 from apps.scoring.rules.university import UNIVERSITY_EVALUATORS
 
+IN_PERIOD = date(2025, 10, 1)
+
 
 class UniversityParametersTests(TestCase):
 
@@ -195,14 +197,14 @@ class UniversityParametersTests(TestCase):
 
     def test_u4_multi_document_evidence_p2_03(self):
         """
-        P2-03 Regression Tests:
-        1. Only U4.1 evidence uploaded (verified) -> U4.1 scores, U4.2 = 0, final = U4.1 score
-        2. Only U4.2 evidence uploaded (verified) -> U4.2 scores, U4.1 = 0, final = U4.2 score
-        3. Both uploaded and verified -> full sum
-        4. Unrelated/incorrect-year document uploaded -> gated to 0
-        5. Missing evidence for one component does not zero out the other verified component
-        6. Multiple valid documents uploaded for the same component -> handled cleanly
-        7. Subcriteria identifiable by both canonical (U4.A/U4.B) and alias (U4.1/U4.2)
+        P2-03 Regression Tests (canonical codes only — U4.1/U4.2 aliases were removed; see repair #19):
+        1. Only U4.A evidence verified -> U4.A scores, U4.B = 0, final = U4.A score
+        2. Only U4.B evidence verified -> U4.B scores, U4.A = 0
+        3. Both verified -> full sum
+        4. Wrong-year / unrelated evidence -> gated to 0
+        5. Missing evidence for one component does not zero out the other
+        6. Multiple valid documents for the same component -> handled cleanly
+        7. Results expose exactly one entry per subcriterion (no alias duplicates)
         """
         eval_fn = UNIVERSITY_EVALUATORS["U4"]
         doc_2024 = self._make_verified_doc("EVID_U4_PROGRESS_REPORT", academic_year="2024-25")
@@ -210,139 +212,52 @@ class UniversityParametersTests(TestCase):
         doc_idp = self._make_verified_doc("EVID_U4_IDP")
         doc_unrelated = self._make_verified_doc("EVID_UNRELATED_DOC")
 
-        # 1. Only U4.1 / U4.A evidence uploaded (verified)
-        p_in_1 = ParameterInput(
-            parameter_code="U4",
-            subcriteria_inputs={
-                "U4.1": SubcriterionInput(
-                    subcriterion_code="U4.1",
-                    raw_inputs={"achieved_targets_2024_25": 95, "total_targets_2024_25": 100},
-                    evidence_docs=[doc_2024],
-                ),
-                "U4.2": SubcriterionInput(
-                    subcriterion_code="U4.2",
-                    raw_inputs={"achieved_targets_2025_26": 95, "total_targets_2025_26": 100},
-                    evidence_docs=[],  # Missing evidence
-                ),
-            }
-        )
-        res_1 = eval_fn(p_in_1, self.context, self.validator)
-        self.assertEqual(res_1.subcriteria_results["U4.1"].evidence_gated_score, 3.0)
+        def run(a_docs, b_docs, a_pct=95, b_pct=95):
+            p_in = ParameterInput(
+                parameter_code="U4",
+                subcriteria_inputs={
+                    "U4.A": SubcriterionInput(subcriterion_code="U4.A",
+                                              raw_inputs={"achieved_targets_2024_25": a_pct, "total_targets_2024_25": 100},
+                                              evidence_docs=a_docs),
+                    "U4.B": SubcriterionInput(subcriterion_code="U4.B",
+                                              raw_inputs={"achieved_targets_2025_26": b_pct, "total_targets_2025_26": 100},
+                                              evidence_docs=b_docs),
+                },
+            )
+            return eval_fn(p_in, self.context, DoubleCountingValidator())
+
+        res_1 = run([doc_2024], [])
         self.assertEqual(res_1.subcriteria_results["U4.A"].evidence_gated_score, 3.0)
-        self.assertEqual(res_1.subcriteria_results["U4.2"].evidence_gated_score, 0.0)
         self.assertEqual(res_1.subcriteria_results["U4.B"].evidence_gated_score, 0.0)
         self.assertEqual(res_1.evidence_gated_score, 3.0)
-        # Final score is preserved and equals U4.1 score!
-        self.assertEqual(res_1.final_score, 3.0)
-        self.assertEqual(res_1.trace["component_evidence_status"]["U4.1"], "PASSED_EVIDENCE_VERIFIED")
-        self.assertEqual(res_1.trace["component_evidence_status"]["U4.2"], "FAILED_EVIDENCE_ABSENT")
+        self.assertEqual(res_1.subcriteria_results["U4.A"].gating_status, GatingStatus.PASSED_EVIDENCE_VERIFIED)
+        self.assertEqual(res_1.subcriteria_results["U4.B"].gating_status, GatingStatus.FAILED_EVIDENCE_ABSENT)
 
-        # 2. Only U4.2 / U4.B evidence uploaded (verified)
-        p_in_2 = ParameterInput(
-            parameter_code="U4",
-            subcriteria_inputs={
-                "U4.A": SubcriterionInput(
-                    subcriterion_code="U4.A",
-                    raw_inputs={"achieved_targets_2024_25": 95, "total_targets_2024_25": 100},
-                    evidence_docs=[],
-                ),
-                "U4.B": SubcriterionInput(
-                    subcriterion_code="U4.B",
-                    raw_inputs={"achieved_targets_2025_26": 95, "total_targets_2025_26": 100},
-                    evidence_docs=[doc_2025],
-                ),
-            }
-        )
-        res_2 = eval_fn(p_in_2, self.context, self.validator)
+        res_2 = run([], [doc_2025])
         self.assertEqual(res_2.subcriteria_results["U4.A"].evidence_gated_score, 0.0)
         self.assertEqual(res_2.subcriteria_results["U4.B"].evidence_gated_score, 3.0)
         self.assertEqual(res_2.evidence_gated_score, 3.0)
-        self.assertEqual(res_2.final_score, 3.0)
 
-        # 3. Both uploaded and verified -> full sum (6.0)
-        p_in_3 = ParameterInput(
-            parameter_code="U4",
-            subcriteria_inputs={
-                "U4.1": SubcriterionInput(
-                    subcriterion_code="U4.1",
-                    raw_inputs={"achieved_targets_2024_25": 95, "total_targets_2024_25": 100},
-                    evidence_docs=[doc_2024],
-                ),
-                "U4.2": SubcriterionInput(
-                    subcriterion_code="U4.2",
-                    raw_inputs={"achieved_targets_2025_26": 95, "total_targets_2025_26": 100},
-                    evidence_docs=[doc_2025],
-                ),
-            }
-        )
-        res_3 = eval_fn(p_in_3, self.context, self.validator)
+        res_3 = run([doc_2024], [doc_2025])
         self.assertEqual(res_3.raw_score, 6.0)
         self.assertEqual(res_3.evidence_gated_score, 6.0)
         self.assertEqual(res_3.final_score, 6.0)
 
-        # 4. Unrelated/incorrect-year document uploaded -> gated to 0
-        doc_wrong_year = self._make_verified_doc("EVID_U4_PROGRESS_REPORT", academic_year="2025-26")
-        p_in_4 = ParameterInput(
-            parameter_code="U4",
-            subcriteria_inputs={
-                "U4.1": SubcriterionInput(
-                    subcriterion_code="U4.1",
-                    raw_inputs={"achieved_targets_2024_25": 95, "total_targets_2024_25": 100},
-                    evidence_docs=[doc_wrong_year],  # Wrong academic year for 2024-25!
-                ),
-                "U4.2": SubcriterionInput(
-                    subcriterion_code="U4.2",
-                    raw_inputs={"achieved_targets_2025_26": 95, "total_targets_2025_26": 100},
-                    evidence_docs=[doc_unrelated],  # Unrelated document type!
-                ),
-            }
-        )
-        res_4 = eval_fn(p_in_4, self.context, self.validator)
-        self.assertEqual(res_4.subcriteria_results["U4.1"].evidence_gated_score, 0.0)
-        self.assertEqual(res_4.subcriteria_results["U4.2"].evidence_gated_score, 0.0)
+        res_4 = run([doc_2025], [doc_unrelated])  # 2025-26 report cannot unlock the 2024-25 targets
+        self.assertEqual(res_4.subcriteria_results["U4.A"].evidence_gated_score, 0.0)
+        self.assertEqual(res_4.subcriteria_results["U4.B"].evidence_gated_score, 0.0)
         self.assertEqual(res_4.evidence_gated_score, 0.0)
-        self.assertEqual(res_4.final_score, 0.0)
+        self.assertIn("evidence_excluded_wrong_academic_year", res_4.subcriteria_results["U4.A"].trace)
 
-        # 5. Missing evidence for one component does not zero out the other verified component
-        # (Verified in test 1 and 2 above, but tested explicitly here)
-        p_in_5 = ParameterInput(
-            parameter_code="U4",
-            subcriteria_inputs={
-                "U4.A": SubcriterionInput(
-                    subcriterion_code="U4.A",
-                    raw_inputs={"achieved_targets_2024_25": 80, "total_targets_2024_25": 100},  # Tier 2: 2.0 marks
-                    evidence_docs=[doc_2024],
-                ),
-                "U4.B": SubcriterionInput(
-                    subcriterion_code="U4.B",
-                    raw_inputs={"achieved_targets_2025_26": 95, "total_targets_2025_26": 100},
-                    evidence_docs=[],  # Missing
-                ),
-            }
-        )
-        res_5 = eval_fn(p_in_5, self.context, self.validator)
+        res_5 = run([doc_2024], [], a_pct=80)
         self.assertEqual(res_5.subcriteria_results["U4.A"].evidence_gated_score, 2.0)
-        self.assertEqual(res_5.final_score, 2.0)
+        self.assertEqual(res_5.evidence_gated_score, 2.0)
 
-        # 6. Multiple valid documents uploaded for the same component -> handled cleanly
-        p_in_6 = ParameterInput(
-            parameter_code="U4",
-            subcriteria_inputs={
-                "U4.1": SubcriterionInput(
-                    subcriterion_code="U4.1",
-                    raw_inputs={"achieved_targets_2024_25": 95, "total_targets_2024_25": 100},
-                    evidence_docs=[doc_idp, doc_2024],  # Multiple valid docs!
-                ),
-                "U4.2": SubcriterionInput(
-                    subcriterion_code="U4.2",
-                    raw_inputs={"achieved_targets_2025_26": 95, "total_targets_2025_26": 100},
-                    evidence_docs=[doc_idp, doc_2025],
-                ),
-            }
-        )
-        res_6 = eval_fn(p_in_6, self.context, self.validator)
+        res_6 = run([doc_idp, doc_2024], [doc_idp, doc_2025])
         self.assertEqual(res_6.evidence_gated_score, 6.0)
         self.assertEqual(res_6.final_score, 6.0)
+
+        self.assertEqual(sorted(res_6.subcriteria_results), ["U4.A", "U4.B"])
 
     # -------------------------------------------------------------
     # U5: Percentage of Students Placed (Max: 4)
@@ -365,7 +280,7 @@ class UniversityParametersTests(TestCase):
                 ),
                 "U5.B": SubcriterionInput(
                     subcriterion_code="U5.B",
-                    raw_inputs={"placed_students": 64, "eligible_students": 80},  # 80% > 75% -> 2
+                    raw_inputs={"placed_students": 64},  # 64 / 80 eligible (U5.A) = 80% > 75% -> 2
                     evidence_docs=[doc]
                 ),
             }
@@ -376,6 +291,7 @@ class UniversityParametersTests(TestCase):
 
         # EXACT BOUNDARY VOID TEST: U5.A at exactly 50.0%
         p_in.subcriteria_inputs["U5.A"].raw_inputs = {"eligible_students": 50, "total_final_year_students": 100}
+        p_in.subcriteria_inputs["U5.B"].raw_inputs = {"placed_students": 40}
         res_void = eval_fn(p_in, self.context, self.validator)
         self.assertEqual(res_void.resolution_status, ResolutionStatus.BOUNDARY_UNRESOLVED)
         self.assertIsNone(res_void.final_score)
@@ -383,7 +299,7 @@ class UniversityParametersTests(TestCase):
 
     # -------------------------------------------------------------
     # U6: Academic Reforms (Max: 8)
-    # Decomposed: U6.A (ABC Ordinance, Max 4) + U6.B (APAAR Tools, Max 4)
+    # Decomposed: U6.A (Examination Ordinance amended, 4) + U6.B (interventions/tools, 1 each, max 4)
     # Mandatory evidence: EVID_U6_ORDINANCE_GAZETTE
     # -------------------------------------------------------------
     def test_u6_abc_and_apaar(self):
@@ -400,7 +316,7 @@ class UniversityParametersTests(TestCase):
                 "U6.B": SubcriterionInput(
                     subcriterion_code="U6.B",
                     raw_inputs={"tools_count": 4},
-                    evidence_docs=[doc]
+                    evidence_docs=[self._make_verified_doc("EVID_U6_PEDAGOGY_RECORDS")]
                 ),
             }
         )
@@ -447,7 +363,8 @@ class UniversityParametersTests(TestCase):
                 "U8.A": SubcriterionInput(
                     subcriterion_code="U8.A",
                     raw_inputs={"startups_count": 12},  # > 10 -> 4 marks
-                    evidence_docs=[doc]
+                    evidence_docs=[doc],
+                    activity_date=IN_PERIOD
                 ),
                 "U8.B": SubcriterionInput(
                     subcriterion_code="U8.B",
@@ -461,7 +378,7 @@ class UniversityParametersTests(TestCase):
 
     # -------------------------------------------------------------
     # U9: Academic / Research Collaboration with Foreign HEIs (Max: 6)
-    # Decomposed: U9.A (Active MoUs %, Max 1) + U9.B (Activities Count, Max 5)
+    # Decomposed: U9.A (% active collaborations > 75% -> 1) + U9.B (average activities per active collaboration)
     # Mandatory evidence: EVID_U9_MOU
     # -------------------------------------------------------------
     def test_u9_internationalization(self):
@@ -473,17 +390,27 @@ class UniversityParametersTests(TestCase):
                 "U9.A": SubcriterionInput(
                     subcriterion_code="U9.A",
                     raw_inputs={"active_mous": 8, "total_mous": 10},  # 80% > 75% -> 1 mark
-                    evidence_docs=[doc]
+                    evidence_docs=[doc],
+                    activity_date=IN_PERIOD,
                 ),
                 "U9.B": SubcriterionInput(
                     subcriterion_code="U9.B",
-                    raw_inputs={"activities_count": 5},  # >= 5 -> 5 marks
-                    evidence_docs=[doc]
+                    raw_inputs={"activities_count": 40},  # 40 / 8 active = 5.0 -> 5 marks
+                    evidence_docs=[doc],
+                    activity_date=IN_PERIOD,
                 ),
             }
         )
         res = eval_fn(p_in, self.context, self.validator)
         self.assertEqual(res.raw_score, 6.0)
+        # a total is not an average: 5 activities over 8 active collaborations is 0.625, not "5 or more"
+        for total, expected in [(32, 4.0), (24, 3.0), (16, 2.0), (8, 1.0), (0, 0.0)]:
+            p_in.subcriteria_inputs["U9.B"].raw_inputs = {"activities_count": total}
+            self.assertEqual(eval_fn(p_in, self.context, self.validator).subcriteria_results["U9.B"].raw_score, expected, total)
+        p_in.subcriteria_inputs["U9.B"].raw_inputs = {"activities_count": 28}  # 3.5 -> fractional tiering undefined
+        res_frac = eval_fn(p_in, self.context, self.validator)
+        self.assertEqual(res_frac.subcriteria_results["U9.B"].resolution_status, ResolutionStatus.POLICY_UNRESOLVED)
+        self.assertIsNone(res_frac.final_score)
 
     # -------------------------------------------------------------
     # U10: Functional Alumni Connect Cell (Max: 5)
@@ -499,8 +426,8 @@ class UniversityParametersTests(TestCase):
             subcriteria_inputs={
                 "U10.1": SubcriterionInput(subcriterion_code="U10.1", raw_inputs={"verified": True}, evidence_docs=[doc]),
                 "U10.2": SubcriterionInput(subcriterion_code="U10.2", raw_inputs={"verified": True}, evidence_docs=[doc]),
-                "U10.3": SubcriterionInput(subcriterion_code="U10.3", raw_inputs={"funding_amount": 15000000.0}, evidence_docs=[doc]), # 1.5 Cr > 1 Cr -> 2 marks
-                "U10.4": SubcriterionInput(subcriterion_code="U10.4", raw_inputs={"verified": True}, evidence_docs=[doc]),
+                "U10.3": SubcriterionInput(subcriterion_code="U10.3", raw_inputs={"funding_amount": 15000000.0}, evidence_docs=[doc], activity_date=IN_PERIOD), # 1.5 Cr > 1 Cr -> 2 marks
+                "U10.4": SubcriterionInput(subcriterion_code="U10.4", raw_inputs={"verified": True}, evidence_docs=[doc], activity_date=IN_PERIOD),
             }
         )
         res = eval_fn(p_in, self.context, self.validator)
@@ -546,7 +473,7 @@ class UniversityParametersTests(TestCase):
             subcriteria_inputs={
                 "U12.1": SubcriterionInput(subcriterion_code="U12.1", raw_inputs={"verified": True}, evidence_docs=[doc]),
                 "U12.2": SubcriterionInput(subcriterion_code="U12.2", raw_inputs={"verified": True}, evidence_docs=[doc]),
-                "U12.3": SubcriterionInput(subcriterion_code="U12.3", raw_inputs={"verified": True}, evidence_docs=[doc]),
+                "U12.3": SubcriterionInput(subcriterion_code="U12.3", raw_inputs={"verified": True}, evidence_docs=[doc], activity_date=IN_PERIOD),
                 "U12.4": SubcriterionInput(subcriterion_code="U12.4", raw_inputs={"verified": True}, evidence_docs=[doc]),
                 "U12.5": SubcriterionInput(subcriterion_code="U12.5", raw_inputs={"verified": True}, evidence_docs=[doc]),
             }
@@ -619,7 +546,7 @@ class UniversityParametersTests(TestCase):
 
     # -------------------------------------------------------------
     # U16: Research Outcome: Patents Filed and Granted (Max: 8)
-    # CRITICAL: U16.III Scopus index is UNRESOLVED in source rubric
+    # U16.III Scopus metric is undefined in the source: a CLAIMED value requires policy SCOPUS_METRIC
     # Mandatory evidence: EVID_U16_FILING
     # -------------------------------------------------------------
     def test_u16_patents_and_unresolved_scopus(self):
@@ -628,16 +555,16 @@ class UniversityParametersTests(TestCase):
         p_in = ParameterInput(
             parameter_code="U16",
             subcriteria_inputs={
-                "U16.I": SubcriterionInput(subcriterion_code="U16.I", raw_inputs={"patents_filed": 10}, evidence_docs=[doc]),  # 2 marks
-                "U16.II": SubcriterionInput(subcriterion_code="U16.II", raw_inputs={"patents_granted": 10}, evidence_docs=[doc]),  # 2 marks
-                "U16.III": SubcriterionInput(subcriterion_code="U16.III", raw_inputs={"scopus_publications": 50}, evidence_docs=[doc]),
+                "U16.I": SubcriterionInput(subcriterion_code="U16.I", raw_inputs={"patents_filed": 10}, evidence_docs=[doc], activity_date=IN_PERIOD),  # 2 marks
+                "U16.II": SubcriterionInput(subcriterion_code="U16.II", raw_inputs={"patents_granted": 10}, evidence_docs=[self._make_verified_doc("EVID_U16_GRANT")], activity_date=IN_PERIOD),  # 2 marks
+                "U16.III": SubcriterionInput(subcriterion_code="U16.III", raw_inputs={"scopus_index": 150}, evidence_docs=[], activity_date=IN_PERIOD),
             }
         )
         res = eval_fn(p_in, self.context, self.validator)
         self.assertEqual(res.raw_score, 4.0)
-        self.assertEqual(res.resolution_status, ResolutionStatus.UNRESOLVED_RULE)
+        self.assertEqual(res.resolution_status, ResolutionStatus.POLICY_UNRESOLVED)
         self.assertIsNone(res.final_score)
-        self.assertEqual(res.subcriteria_results["U16.III"].resolution_status, ResolutionStatus.UNRESOLVED_RULE)
+        self.assertEqual(res.subcriteria_results["U16.III"].resolution_status, ResolutionStatus.POLICY_UNRESOLVED)
 
     def test_u16_ii_patents_granted_exact_tiers(self):
         """
@@ -664,8 +591,8 @@ class UniversityParametersTests(TestCase):
                 p_in = ParameterInput(
                     parameter_code="U16",
                     subcriteria_inputs={
-                        "U16.I": SubcriterionInput(subcriterion_code="U16.I", raw_inputs={"patents_filed": 0}, evidence_docs=[doc_filing]),
-                        "U16.II": SubcriterionInput(subcriterion_code="U16.II", raw_inputs={"patents_granted": cnt}, evidence_docs=[doc_grant]),
+                        "U16.I": SubcriterionInput(subcriterion_code="U16.I", raw_inputs={"patents_filed": 0}, evidence_docs=[doc_filing], activity_date=IN_PERIOD),
+                        "U16.II": SubcriterionInput(subcriterion_code="U16.II", raw_inputs={"patents_granted": cnt}, evidence_docs=[doc_grant], activity_date=IN_PERIOD),
                         "U16.III": SubcriterionInput(subcriterion_code="U16.III", raw_inputs={}, evidence_docs=[]),
                     }
                 )
@@ -673,8 +600,8 @@ class UniversityParametersTests(TestCase):
                 u16_ii_res = res.subcriteria_results["U16.II"]
                 self.assertEqual(u16_ii_res.raw_score, expected_score)
                 self.assertEqual(u16_ii_res.evidence_gated_score, expected_score)
-                # Ensure U16 overall resolution_status remains UNRESOLVED_RULE due to U16.III
-                self.assertEqual(res.resolution_status, ResolutionStatus.UNRESOLVED_RULE)
+                # No Scopus value claimed -> U16 is calculable
+                self.assertEqual(res.resolution_status, ResolutionStatus.CALCULABLE)
 
     def test_u16_i_boundary_transitions_p2_01(self):
         """
@@ -704,8 +631,8 @@ class UniversityParametersTests(TestCase):
                 p_in = ParameterInput(
                     parameter_code="U16",
                     subcriteria_inputs={
-                        "U16.I": SubcriterionInput(subcriterion_code="U16.I", raw_inputs={"patents_filed": cnt}, evidence_docs=[doc]),
-                        "U16.II": SubcriterionInput(subcriterion_code="U16.II", raw_inputs={"patents_granted": 0}, evidence_docs=[doc]),
+                        "U16.I": SubcriterionInput(subcriterion_code="U16.I", raw_inputs={"patents_filed": cnt}, evidence_docs=[doc], activity_date=IN_PERIOD),
+                        "U16.II": SubcriterionInput(subcriterion_code="U16.II", raw_inputs={"patents_granted": 0}, evidence_docs=[doc], activity_date=IN_PERIOD),
                         "U16.III": SubcriterionInput(subcriterion_code="U16.III", raw_inputs={}, evidence_docs=[doc]),
                     }
                 )
@@ -713,7 +640,7 @@ class UniversityParametersTests(TestCase):
                 u16_i_res = res.subcriteria_results["U16.I"]
                 self.assertEqual(u16_i_res.raw_score, expected_score)
                 self.assertEqual(u16_i_res.evidence_gated_score, expected_score)
-                self.assertEqual(res.resolution_status, ResolutionStatus.UNRESOLVED_RULE)
+                self.assertEqual(res.resolution_status, ResolutionStatus.CALCULABLE)
 
     # -------------------------------------------------------------
     # U17: Registration and Performance in NIRF (Max: 2)
@@ -735,7 +662,7 @@ class UniversityParametersTests(TestCase):
 
     # -------------------------------------------------------------
     # U18: RPL Adoption and Implementation (Max: 4)
-    # Decomposed: U18.1 (1) + U18.2 (1) + U18.3 (2) = Max 4
+    # Decomposed: U18.1 RPL policy (1) + U18.2 awareness workshop (1) + U18.3 RPL format circulated (2) = Max 4
     # Mandatory evidence: EVID_U18_POLICY
     # -------------------------------------------------------------
     def test_u18_governance(self):
@@ -745,12 +672,17 @@ class UniversityParametersTests(TestCase):
             parameter_code="U18",
             subcriteria_inputs={
                 "U18.1": SubcriterionInput(subcriterion_code="U18.1", raw_inputs={"verified": True}, evidence_docs=[doc]),
-                "U18.2": SubcriterionInput(subcriterion_code="U18.2", raw_inputs={"verified": True}, evidence_docs=[doc]),
-                "U18.3": SubcriterionInput(subcriterion_code="U18.3", raw_inputs={"verified": True}, evidence_docs=[doc]),
+                "U18.2": SubcriterionInput(subcriterion_code="U18.2", raw_inputs={"verified": True},
+                                           evidence_docs=[self._make_verified_doc("EVID_U18_WORKSHOP_RECORDS")], activity_date=IN_PERIOD),
+                "U18.3": SubcriterionInput(subcriterion_code="U18.3", raw_inputs={"verified": True},
+                                           evidence_docs=[self._make_verified_doc("EVID_U18_RPL_FORMAT")]),
             }
         )
         res = eval_fn(p_in, self.context, self.validator)
         self.assertEqual(res.raw_score, 4.0)
+        # U18.3 (2 marks) is unlockable by its own evidence contract
+        self.assertEqual(res.subcriteria_results["U18.3"].evidence_gated_score, 2.0)
+        self.assertEqual(res.evidence_gated_score, 4.0)
 
     # -------------------------------------------------------------
     # U19: Adoption of Outcome-Based Education (OBE) (Max: 8)
@@ -776,7 +708,7 @@ class UniversityParametersTests(TestCase):
 
     # -------------------------------------------------------------
     # U20: Activities Aligned with SDGs (Declared Max: 4, Criteria Sum: 5)
-    # CRITICAL: U20 has known source internal arithmetic discrepancy
+    # Components total 5 against the stated maximum 4: capped at 4 (advisory policy U20_ITEMS_EXCEED_MAXIMUM)
     # U20.1 (Activities count >= 10: 2) + U20.2 (2) + U20.3 (1) = 5 marks!
     # Mandatory evidence: EVID_U20_ACTIVITY_REPORTS
     # -------------------------------------------------------------
@@ -786,14 +718,15 @@ class UniversityParametersTests(TestCase):
         p_in = ParameterInput(
             parameter_code="U20",
             subcriteria_inputs={
-                "U20.1": SubcriterionInput(subcriterion_code="U20.1", raw_inputs={"activities_count": 15}, evidence_docs=[doc]),  # 2 marks
+                "U20.1": SubcriterionInput(subcriterion_code="U20.1", raw_inputs={"activities_count": 15}, evidence_docs=[doc], activity_date=IN_PERIOD),  # 2 marks
                 "U20.2": SubcriterionInput(subcriterion_code="U20.2", raw_inputs={"verified": True}, evidence_docs=[doc]),  # 2 marks
                 "U20.3": SubcriterionInput(subcriterion_code="U20.3", raw_inputs={"verified": True}, evidence_docs=[doc]),  # 1 mark
             }
         )
         res = eval_fn(p_in, self.context, self.validator)
-        # Raw score must be capped at declared max 4.0, but resolution status must be SOURCE_INCONSISTENCY
-        # and final_score must be None!
         self.assertEqual(res.raw_score, 4.0)
-        self.assertEqual(res.resolution_status, ResolutionStatus.SOURCE_INCONSISTENCY)
-        self.assertIsNone(res.final_score)
+        self.assertEqual(res.trace["items_sum_raw"], 5.0)
+        self.assertEqual(res.resolution_status, ResolutionStatus.CALCULABLE)
+        self.assertEqual(res.final_score, 4.0)
+        notice = [n for n in res.trace["policy_notices"] if n["policy_id"] == "U20_ITEMS_EXCEED_MAXIMUM"][0]
+        self.assertTrue(notice["triggered"])

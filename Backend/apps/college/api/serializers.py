@@ -201,29 +201,31 @@ class CollegeParameterInputSerializer(serializers.Serializer):
         Executes domain validation against the authoritative parameter specification.
         Checks percentages, counts, amounts, subcriteria membership, and temporal dates.
         """
+        from apps.scoring.orchestration import validate_parameter_payload
+        from apps.scoring.rules.definitions import COLLEGE_PARAMETERS
+
         param_clean = validate_parameter(parameter_code)
-        param_def = get_college_parameter(param_clean)
-        subcriteria_defs = param_def.get("subcriteria", {})
         raw_inputs = self.validated_data.get("raw_inputs", {})
 
-        # Subcriteria keys validation
-        for sub_key, sub_val in raw_inputs.items():
-            sub_canonical = validate_subcriterion(sub_key, expected_parameter=param_clean)
+        for sub_val in raw_inputs.values():
             if isinstance(sub_val, dict):
-                for k, v in sub_val.items():
+                for k in sub_val:
                     if k in FORBIDDEN_SCORE_FIELDS:
                         raise serializers.ValidationError({
                             k: f"Client cannot supply score field '{k}' in subcriterion payload."
                         })
-                    if "pct" in k.lower() or "percentage" in k.lower() or "ratio" in k.lower():
-                        if isinstance(v, (int, float)):
-                            validate_percentage(v, label=k)
-                    elif "count" in k.lower() or "number" in k.lower() or "students" in k.lower() or "faculty" in k.lower():
-                        if isinstance(v, (int, float)):
-                            validate_count(v, label=k)
-                    elif "amount" in k.lower() or "inr" in k.lower() or "lakhs" in k.lower() or "budget" in k.lower():
-                        if isinstance(v, (int, float)):
-                            validate_currency_amount(v, label=k)
+
+        # Explicit per-field schema validation (type, bounds, integer, options, period dates)
+        errors = validate_parameter_payload(
+            param_clean, COLLEGE_PARAMETERS, raw_inputs, self.validated_data.get("entities", [])
+        )
+        if errors:
+            raise CollegeValidationError(
+                f"Parameter {param_clean} input is invalid: " + "; ".join(
+                    f"{e.get('subcriterion') or ''} {e['field']}: {e['message']}".strip() for e in errors[:5]),
+                code="INVALID_SUBCRITERION" if any(e["code"] == "UNKNOWN_SUBCRITERION" for e in errors) else "INVALID_PARAMETER_INPUT",
+                details=errors,
+            )
 
         # Validate activity date if present
         act_date = self.validated_data.get("activity_date")

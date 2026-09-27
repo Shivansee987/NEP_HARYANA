@@ -116,11 +116,16 @@ class DoubleCountingValidator:
         self,
         subcriterion_code: str,
         entities: List[AssetEntity],
-        rule: DoubleCountingRule
+        rule: DoubleCountingRule,
+        allow_sibling_reuse: bool = False,
     ) -> Tuple[List[AssetEntity], List[AssetEntity], Dict[str, Any]]:
         """
         Validates a list of real-world entities for a subcriterion.
-        
+
+        "No double counting" applies across parameters. A re-evaluation of the same subcriterion is
+        never a duplicate, and when `allow_sibling_reuse` is set (C19, U16: the same patent may be both
+        filed and granted in the period) a sibling subcriterion of the same parameter may reuse it.
+
         Returns:
             (valid_entities, duplicate_rejected_entities, trace)
         """
@@ -143,10 +148,12 @@ class DoubleCountingValidator:
             canonical_key = f"{entity.entity_type.upper()}::{entity.identifier_key.strip().upper()}"
             
             if rule == DoubleCountingRule.FORBIDDEN_REUSE:
-                if canonical_key in self._claimed_entities:
-                    first_claimer = self._claimed_entities[canonical_key]
-                    first_param = first_claimer.split(".")[0] if "." in first_claimer else first_claimer
-                    rej_param = subcriterion_code.split(".")[0] if "." in subcriterion_code else subcriterion_code
+                first_claimer = self._claimed_entities.get(canonical_key)
+                first_param = first_claimer.split(".")[0] if first_claimer and "." in first_claimer else first_claimer
+                rej_param = subcriterion_code.split(".")[0] if "." in subcriterion_code else subcriterion_code
+                same_claim = first_claimer == subcriterion_code
+                sibling_claim = allow_sibling_reuse and first_param == rej_param
+                if first_claimer is not None and not same_claim and not sibling_claim:
                     conflict_record = {
                         "entity_key": canonical_key,
                         "entity_id": entity.entity_id,
@@ -164,7 +171,8 @@ class DoubleCountingValidator:
                     continue
 
                 # Register first claim
-                self._claimed_entities[canonical_key] = subcriterion_code
+                if first_claimer is None:
+                    self._claimed_entities[canonical_key] = subcriterion_code
 
             valid_entities.append(entity)
 
@@ -177,7 +185,8 @@ class DoubleCountingValidator:
         subcriterion_code: str,
         sub_input: Optional[Any],
         rule: DoubleCountingRule,
-        default_entity_type: Optional[str] = None
+        default_entity_type: Optional[str] = None,
+        allow_sibling_reuse: bool = False,
     ) -> Tuple[List[AssetEntity], List[AssetEntity], Dict[str, Any]]:
         """
         Validates both structured AssetEntity objects and any raw scalar entity references
@@ -212,4 +221,4 @@ class DoubleCountingValidator:
         if not all_entities:
             return [], [], {"subcriterion_code": subcriterion_code, "total_entities_submitted": 0, "duplicates_detected": []}
 
-        return self.validate_entities(subcriterion_code, all_entities, rule)
+        return self.validate_entities(subcriterion_code, all_entities, rule, allow_sibling_reuse=allow_sibling_reuse)

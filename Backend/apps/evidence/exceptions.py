@@ -48,6 +48,12 @@ class ReviewerNotAuthorizedError(UnauthorizedEvidenceActionError):
     pass
 
 
+class ReviewerFrameworkMismatchError(ReviewerNotAuthorizedError, FrameworkMismatchError):
+    """Raised when a reviewer scoped to one framework acts on evidence of the other framework.
+    It is both an authorization failure and a framework-isolation violation."""
+    pass
+
+
 class ReviewerConflictOfInterestError(UnauthorizedEvidenceActionError):
     """Raised when a reviewer has an institutional or self-verification conflict of interest."""
     pass

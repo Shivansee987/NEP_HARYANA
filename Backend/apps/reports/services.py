@@ -9,6 +9,7 @@ Read-only projection service consuming authoritative data from:
 
 INVARIANT: Zero score calculations, zero synthetic mappings, zero data mutations.
 """
+import logging
 from typing import Any, Dict, List, Optional, Tuple
 from dataclasses import asdict
 from django.utils import timezone
@@ -19,7 +20,10 @@ from apps.college.models import CollegeAssessment
 from apps.evidence.services import EvidenceService
 from apps.scoring.rules.definitions import UNIVERSITY_PARAMETERS, COLLEGE_PARAMETERS
 from apps.scoring.engine import NEP2026ScoringEngine
+from apps.scoring.orchestration import SNAPSHOT_KEY
 from apps.reports.permissions import can_user_view_assessment, ReportPermissionDenied
+
+logger = logging.getLogger(__name__)
 
 
 class AssessmentNotFoundError(Exception):
@@ -73,6 +77,25 @@ class ReportingService:
             return (framework, col_assessment)
 
         raise AssessmentNotFoundError(f"Assessment '{clean_id}' not found.")
+
+    @staticmethod
+    def _read_only_scoring(framework: str, assessment: Any):
+        """
+        Runs the frozen engine WITHOUT persisting anything (reports are read-only).
+        Returns (FrameworkResult | None, structured error | None). Errors are surfaced, never swallowed.
+        """
+        if not (assessment.status in ("SUBMITTED", "UNDER_REVIEW", "CERTIFIED", "EVALUATED", "CERTIFICATION_PENDING")
+                or assessment.certified_score is not None):
+            return None, None
+        from apps.college.services import CollegeAssessmentService
+        from apps.university.services import UniversityAssessmentService
+
+        service = UniversityAssessmentService if framework == "UNIVERSITY_2026" else CollegeAssessmentService
+        try:
+            return service.evaluate_assessment_scoring(assessment.assessment_id, persist=False), None
+        except Exception as exc:
+            logger.error("Read-only scoring failed for %s: %s", assessment.assessment_id, exc, exc_info=True)
+            return None, {"code": "SCORING_FAILED", "message": f"Scoring engine failed: {type(exc).__name__}: {exc}"}
 
     @classmethod
     def get_assessment_report(cls, assessment_id: str, user: Any) -> Dict[str, Any]:
@@ -170,42 +193,61 @@ class ReportingService:
             }
             coverage_params_map = {}
 
-        # 5. Scoring Projection (Consumes frozen engine output without re-calculating)
-        scoring_result = None
-        has_evaluated_scores = False
+        # 5. Scoring Projection (read-only; never persists, never alters a certified record)
         raw_parameter_data = assessment.parameter_data or {}
+        scoring_result, scoring_error = cls._read_only_scoring(framework, assessment)
+        certified_snapshot = raw_parameter_data.get(SNAPSHOT_KEY) if assessment.status == "CERTIFIED" else None
 
-        if assessment.status in ("SUBMITTED", "UNDER_REVIEW", "CERTIFIED", "EVALUATED") or assessment.certified_score is not None:
-            try:
-                from apps.university.services import UniversityAssessmentService
-                from apps.college.services import CollegeAssessmentService
-
-                if framework == "UNIVERSITY_2026":
-                    scoring_result = UniversityAssessmentService.evaluate_assessment_scoring(assessment.assessment_id)
-                else:
-                    scoring_result = CollegeAssessmentService.evaluate_assessment_scoring(assessment.assessment_id)
-                has_evaluated_scores = True
-            except Exception:
-                scoring_result = None
-
-        if scoring_result:
-            scoring_status = (
-                "CERTIFIED" if assessment.status == "CERTIFIED"
-                else ("BLOCKED_BY_SPECIFICATION" if scoring_result.certification_status.value == "BLOCKED_BY_SPECIFICATION"
-                      else "EVALUATED")
-            )
+        if assessment.status == "CERTIFIED":
+            # Certified results are reported from the stored certification, not re-scored.
             scoring_data = {
-                "scoring_status": scoring_status,
+                "scoring_status": "CERTIFIED",
+                "score_source": "CERTIFIED_SNAPSHOT" if certified_snapshot else "CERTIFIED_STORED_SCORE",
+                "raw_total": (certified_snapshot or {}).get("raw_total", assessment.certified_score),
+                "evidence_gated_total": assessment.certified_score,
+                "final_certified_total": assessment.certified_score,
+                "max_marks": 100.0,
+                "certification_status": "CERTIFIED",
+                "is_blocked_by_specification": False,
+                "blocking_reasons": [],
+                "calculation_id": (certified_snapshot or {}).get("calculation_id"),
+                "calculation_timestamp": (certified_snapshot or {}).get("timestamp"),
+                "double_counting_conflicts": [],
+                "trace": {},
+            }
+        elif scoring_error is not None:
+            # Engine failure is surfaced explicitly; never a stale or zero score.
+            scoring_data = {
+                "scoring_status": "SCORING_FAILED",
+                "raw_total": None,
+                "evidence_gated_total": None,
+                "final_certified_total": None,
+                "max_marks": 100.0,
+                "certification_status": "SCORING_FAILED",
+                "is_blocked_by_specification": False,
+                "blocking_reasons": [scoring_error["message"]],
+                "scoring_error": scoring_error,
+                "calculation_id": None,
+                "calculation_timestamp": None,
+                "double_counting_conflicts": [],
+                "trace": {},
+            }
+        elif scoring_result:
+            cert_value = scoring_result.certification_status.value
+            scoring_data = {
+                "scoring_status": "BLOCKED_BY_SPECIFICATION" if cert_value == "BLOCKED_BY_SPECIFICATION" else "EVALUATED",
+                "score_source": "LIVE_ENGINE",
                 "raw_total": scoring_result.raw_total,
                 "evidence_gated_total": scoring_result.evidence_gated_total,
-                "final_certified_total": assessment.certified_score if assessment.status == "CERTIFIED" else scoring_result.final_certified_total,
+                "final_certified_total": scoring_result.final_certified_total,
                 "max_marks": scoring_result.max_marks,
-                "certification_status": scoring_result.certification_status.value,
-                "is_blocked_by_specification": scoring_result.certification_status.value == "BLOCKED_BY_SPECIFICATION",
+                "certification_status": cert_value,
+                "is_blocked_by_specification": cert_value == "BLOCKED_BY_SPECIFICATION",
                 "blocking_reasons": scoring_result.blocking_reasons,
                 "calculation_id": scoring_result.calculation_id,
                 "calculation_timestamp": scoring_result.timestamp,
                 "double_counting_conflicts": scoring_result.trace.get("double_counting_conflicts", []),
+                "policy_notices": scoring_result.trace.get("policy_notices", []),
                 "trace": scoring_result.trace,
             }
         else:
@@ -238,8 +280,15 @@ class ReportingService:
             input_val = raw_parameter_data.get(p_code)
             is_submitted = input_val is not None
 
-            # Get scoring output for this parameter from frozen engine
-            if scoring_result and p_code in scoring_result.parameter_results:
+            # Get scoring output for this parameter: certified snapshot, else the (read-only) engine result
+            snap_param = (certified_snapshot or {}).get("parameters", {}).get(p_code)
+            if snap_param:
+                raw_score = snap_param["raw_score"]
+                gated_score = snap_param["evidence_gated_score"]
+                final_score = snap_param["final_score"]
+                resolution_status = "CERTIFIED"
+                blocking_reasons_list = []
+            elif scoring_result and p_code in scoring_result.parameter_results:
                 p_res = scoring_result.parameter_results[p_code]
                 raw_score = p_res.raw_score
                 gated_score = p_res.evidence_gated_score
@@ -304,10 +353,15 @@ class ReportingService:
                 blocking_gates.append(f"Lifecycle state is '{assessment.status}', must be 'UNDER_REVIEW'.")
             if not evidence_data["is_ready_for_scoring"]:
                 blocking_gates.append("Evidence requirements are incomplete or unverified.")
-            if assessment.certified_score is None and (not scoring_result or scoring_result.evidence_gated_total is None):
+            if scoring_error is not None:
+                blocking_gates.append(scoring_error["message"])
+            elif not scoring_result:
                 blocking_gates.append("Scoring has not been evaluated by the frozen engine.")
-            elif scoring_data["is_blocked_by_specification"]:
-                blocking_gates.append("Certification blocked by unresolved statutory specifications.")
+            elif scoring_result.certification_status.value != "FINALIZABLE":
+                blocking_gates.append(
+                    f"Certification blocked by scoring engine ({scoring_result.certification_status.value}): "
+                    + "; ".join(scoring_result.blocking_reasons)
+                )
             is_eligible = len(blocking_gates) == 0
 
         certification_data = {
@@ -371,19 +425,8 @@ class ReportingService:
         framework, assessment = cls.resolve_assessment(assessment_id, user)
         full_report = cls.get_assessment_report(assessment_id, user)
 
-        # Run scoring to get subcriterion traces
-        scoring_result = None
-        if assessment.status in ("SUBMITTED", "UNDER_REVIEW", "CERTIFIED", "EVALUATED") or assessment.certified_score is not None:
-            try:
-                from apps.university.services import UniversityAssessmentService
-                from apps.college.services import CollegeAssessmentService
-
-                if framework == "UNIVERSITY_2026":
-                    scoring_result = UniversityAssessmentService.evaluate_assessment_scoring(assessment.assessment_id)
-                else:
-                    scoring_result = CollegeAssessmentService.evaluate_assessment_scoring(assessment.assessment_id)
-            except Exception:
-                scoring_result = None
+        # Run scoring (read-only) to get subcriterion traces
+        scoring_result, _scoring_error = cls._read_only_scoring(framework, assessment)
 
         definitions = UNIVERSITY_PARAMETERS if framework == "UNIVERSITY_2026" else COLLEGE_PARAMETERS
         param_prefix = "U" if framework == "UNIVERSITY_2026" else "C"

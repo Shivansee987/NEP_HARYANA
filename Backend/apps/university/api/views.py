@@ -145,10 +145,10 @@ def handle_university_exceptions(view_method):
                     {"error": "not_found", "code": "NOT_FOUND", "detail": exc.message},
                     status=status.HTTP_404_NOT_FOUND
                 )
-            return Response(
-                {"error": "bad_request", "code": exc.code, "detail": exc.message},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            body = {"error": "bad_request", "code": exc.code, "detail": exc.message}
+            if getattr(exc, "details", None):
+                body["errors"] = exc.details
+            return Response(body, status=status.HTTP_400_BAD_REQUEST)
         except serializers.ValidationError as exc:
             detail = exc.detail
             code = "INVALID_PARAMETER_INPUT"
@@ -404,6 +404,13 @@ class UniversityAssessmentParameterDetailView(APIView):
         assessment = get_university_assessment_object(assessment_id)
         self.check_object_permissions(request, assessment)
 
+        # Lifecycle lock is checked before payload validation: a locked assessment is a conflict (409)
+        # whatever the payload contains.
+        if assessment.status not in ("DRAFT", "RETURNED"):
+            raise InvalidStateTransitionError(
+                f"Assessment '{assessment_id}' is in '{assessment.status}' status and cannot be modified."
+            )
+
         serializer = UniversityParameterInputSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         validated_data = serializer.validate_with_parameter(param_clean)
@@ -513,9 +520,11 @@ class UniversityAssessmentEvaluateView(APIView):
                     code="INVALID_PARAMETER_INPUT"
                 )
 
+        # Explicit recalculation: persists the authoritative total (never for a CERTIFIED assessment)
         evaluation = UniversityAssessmentService.get_assessment_scoring_evaluation(
             assessment_id=assessment.assessment_id,
             user=request.user,
+            persist=True,
         )
         return Response(evaluation, status=status.HTTP_200_OK)
 

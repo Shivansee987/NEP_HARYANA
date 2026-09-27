@@ -7,6 +7,14 @@ from apps.scoring.domain import ParameterResult, SubcriterionResult
 from apps.scoring.enums import GatingStatus, ResolutionStatus, ThresholdOperator
 
 
+def _fmt(val: Any) -> str:
+    if val is None:
+        return ""
+    if isinstance(val, float) and val.is_integer():
+        return str(int(val))
+    return str(val)
+
+
 def format_subcriterion_scoring_basis(sub_res: SubcriterionResult) -> str:
     """
     Returns a concise, human-readable scoring basis for a subcriterion,
@@ -16,6 +24,12 @@ def format_subcriterion_scoring_basis(sub_res: SubcriterionResult) -> str:
         return "Maximum unresolved — source clarification required"
     if sub_res.resolution_status == ResolutionStatus.BOUNDARY_UNRESOLVED:
         return "Boundary void in rubric — unresolved"
+    if sub_res.resolution_status == ResolutionStatus.POLICY_UNRESOLVED:
+        return "Policy decision required before this value can be scored"
+    if sub_res.resolution_status == ResolutionStatus.INVALID_INPUT:
+        return "Invalid input — correction required"
+    if sub_res.trace.get("period_ineligible"):
+        return "Outside the assessment period — not eligible"
     if sub_res.gating_status == GatingStatus.FAILED_EVIDENCE_REJECTED:
         return "Evidence rejected — 0 marks awarded"
     if sub_res.gating_status == GatingStatus.FAILED_EVIDENCE_ABSENT:
@@ -33,13 +47,6 @@ def format_subcriterion_scoring_basis(sub_res: SubcriterionResult) -> str:
         min_v = matched_tier.get("min_val")
         max_v = matched_tier.get("max_val")
         target_v = matched_tier.get("target_val")
-
-        def _fmt(val):
-            if val is None:
-                return ""
-            if isinstance(val, float) and val.is_integer():
-                return str(int(val))
-            return str(val)
 
         if op in (ThresholdOperator.OP_GT, "OP_GT"):
             return f">{_fmt(min_v)}"
@@ -73,6 +80,8 @@ def format_parameter_scoring_basis(param_res: ParameterResult) -> str:
         return "Maximum unresolved — source clarification required"
     if param_res.resolution_status == ResolutionStatus.BOUNDARY_UNRESOLVED:
         return "Boundary void in rubric — unresolved"
+    if param_res.resolution_status == ResolutionStatus.POLICY_UNRESOLVED:
+        return "Policy decision required before this value can be scored"
 
     sub_bases = [
         format_subcriterion_scoring_basis(sub)
