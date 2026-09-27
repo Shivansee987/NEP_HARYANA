@@ -13,6 +13,7 @@ import {
   Award,
 } from "lucide-react";
 import { StatusBadge } from "../common";
+import AssessmentAnalyticsSection from "../Analytics/AssessmentAnalyticsSection";
 
 export default function AssessmentOverviewView({
   framework = "COLLEGE_2026",
@@ -285,6 +286,18 @@ export default function AssessmentOverviewView({
           })}
         </div>
       </div>
+
+      {/* Analytics & Graphs Section */}
+      <AssessmentAnalyticsSection
+        framework={framework}
+        assessment={assessment}
+        parameterCodes={parameterCodes}
+        parameterTitles={parameterTitles}
+        parameterStatusMap={parameterStatusMap}
+        evidenceAssociations={evidenceAssociations}
+        onNavigateToParam={onNavigateToParam}
+      />
     </div>
   );
 }
+

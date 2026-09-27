@@ -16,6 +16,7 @@ import {
   fetchCollegeAssessmentReadiness,
   submitCollegeAssessment,
 } from "../../api/college";
+import { fetchAssessmentEvidenceAssociations } from "../../api/evidence";
 import { fetchMySubmissions } from "../../api/nomination";
 import {
   fetchInstitutionReportingSummary,
@@ -23,6 +24,12 @@ import {
 } from "../../api/reports";
 import AssessmentReportModal from "../../components/Reports/AssessmentReportModal";
 import NominationWorkspace from "./NominationWorkspace";
+import AssessmentAnalyticsSection from "../../components/Analytics/AssessmentAnalyticsSection";
+import hshecLogo from "../../assets/hshec_logo.jpeg";
+import {
+  COLLEGE_PARAMETER_CODES,
+  COLLEGE_PARAMETER_TITLES,
+} from "../../utils/nepTaxonomy";
 import {
   Building2,
   ClipboardList,
@@ -48,7 +55,6 @@ import {
   AlertTriangle,
   User,
 } from "lucide-react";
-import hshecLogo from "../../assets/hshec_logo.jpeg";
 import {
   StatusBadge,
   AssessmentStepper,
@@ -86,6 +92,7 @@ export default function CollegeDashboard() {
   const [assessments, setAssessments] = useState([]);
   const [activeAssessment, setActiveAssessment] = useState(null);
   const [parameters, setParameters] = useState([]);
+  const [evidenceAssociations, setEvidenceAssociations] = useState([]);
   const [readiness, setReadiness] = useState(null);
   const [reportsSummary, setReportsSummary] = useState(null);
   const [selectedAssessmentId, setSelectedAssessmentId] = useState(null);
@@ -112,6 +119,7 @@ export default function CollegeDashboard() {
         setAssessments([]);
         setActiveAssessment(null);
         setParameters([]);
+        setEvidenceAssociations([]);
         setReadiness(null);
         return;
       }
@@ -126,19 +134,22 @@ export default function CollegeDashboard() {
         const latest = assessList[0];
         setActiveAssessment(latest);
 
-        // 3. Fetch parameter metadata and readiness for the active assessment
-        const [paramsData, readyData, reportsData] = await Promise.all([
+        // 3. Fetch parameter metadata, evidence associations, and readiness for the active assessment
+        const [paramsData, assocsData, readyData, reportsData] = await Promise.all([
           fetchCollegeAssessmentParameters(latest.assessment_id).catch(() => []),
+          fetchAssessmentEvidenceAssociations(latest.assessment_id).catch(() => []),
           fetchCollegeAssessmentReadiness(latest.assessment_id).catch(() => null),
           fetchInstitutionReportingSummary().catch(() => null),
         ]);
 
         setParameters(Array.isArray(paramsData) ? paramsData : []);
+        setEvidenceAssociations(Array.isArray(assocsData) ? assocsData : assocsData?.results || []);
         setReadiness(readyData);
         setReportsSummary(reportsData);
       } else {
         setActiveAssessment(null);
         setParameters([]);
+        setEvidenceAssociations([]);
         setReadiness(null);
       }
 
@@ -226,6 +237,22 @@ export default function CollegeDashboard() {
   const coveredSubcriteria = readiness?.evidence_readiness_summary?.covered_subcriteria ?? 0;
   const totalSubcriteria = readiness?.evidence_readiness_summary?.total_subcriteria ?? 45;
   const isReadyForScoring = readiness?.is_ready ?? false;
+
+  // Build parameterStatusMap for C1..C22
+  const parameterStatusMap = {};
+  COLLEGE_PARAMETER_CODES.forEach((code) => {
+    const p = parameters.find((item) => item.parameter_code === code);
+    if (!p || !p.submitted_input || Object.keys(p.submitted_input).length === 0) {
+      parameterStatusMap[code] = "NOT_STARTED";
+    } else {
+      const raw = p.submitted_input.raw_inputs || p.submitted_input;
+      const hasAny = raw && Object.keys(raw).some((subCode) => {
+        const vals = raw[subCode];
+        return vals && Object.values(vals).some((v) => v !== "" && v !== null && v !== undefined);
+      });
+      parameterStatusMap[code] = hasAny ? "COMPLETE" : "NOT_STARTED";
+    }
+  });
 
   const handleOpenAssessment = (parameterCode = null) => {
     if (!activeAssessment) return;
@@ -850,6 +877,20 @@ export default function CollegeDashboard() {
                       summary={readiness.evidence_readiness_summary}
                       isReady={readiness.is_ready}
                       onActionClick={() => setActiveSection("evidence")}
+                    />
+                  )}
+
+                  {/* Visual Analytics & Graphs Section */}
+                  {activeAssessment && (
+                    <AssessmentAnalyticsSection
+                      framework="COLLEGE_2026"
+                      assessment={activeAssessment}
+                      parameterCodes={COLLEGE_PARAMETER_CODES}
+                      parameterTitles={COLLEGE_PARAMETER_TITLES}
+                      parameterStatusMap={parameterStatusMap}
+                      evidenceAssociations={evidenceAssociations}
+                      readiness={readiness}
+                      onNavigateToParam={(code) => handleOpenAssessment(code)}
                     />
                   )}
                 </div>
