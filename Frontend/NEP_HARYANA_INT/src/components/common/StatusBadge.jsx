@@ -64,9 +64,9 @@ const STATUS_CONFIGS = {
     badgeClass: "bg-purple-50 text-purple-800 border-purple-200",
     iconColor: "text-purple-600",
   },
-  // Evidence lifecycle specific statuses
+  // Evidence and Gating Statuses (Authoritative Enums)
   EVIDENCE_PRESENT: {
-    label: "Evidence Uploaded",
+    label: "Evidence Available",
     icon: Clock,
     badgeClass: "bg-slate-100 text-slate-700 border-slate-200",
     iconColor: "text-slate-500",
@@ -78,7 +78,7 @@ const STATUS_CONFIGS = {
     iconColor: "text-amber-600",
   },
   EVIDENCE_VERIFIED: {
-    label: "Verified & Eligible",
+    label: "Evidence Verified",
     icon: CheckCircle2,
     badgeClass: "bg-emerald-50 text-emerald-800 border-emerald-200",
     iconColor: "text-emerald-600",
@@ -90,11 +90,90 @@ const STATUS_CONFIGS = {
     iconColor: "text-red-600",
   },
   NO_EVIDENCE: {
-    label: "Missing Evidence",
+    label: "Evidence Missing",
     icon: AlertCircle,
-    badgeClass: "bg-slate-50 text-slate-500 border-slate-200",
-    iconColor: "text-slate-400",
+    badgeClass: "bg-rose-50 text-rose-700 border-rose-200",
+    iconColor: "text-rose-500",
   },
+  PENDING_REVIEW: {
+    label: "Pending Review",
+    icon: Clock,
+    badgeClass: "bg-amber-50 text-amber-800 border-amber-200",
+    iconColor: "text-amber-600",
+  },
+  PASSED_EVIDENCE_VERIFIED: {
+    label: "Evidence Verified",
+    icon: CheckCircle2,
+    badgeClass: "bg-emerald-50 text-emerald-800 border-emerald-200",
+    iconColor: "text-emerald-600",
+  },
+  PROVISIONAL_PENDING_VERIFICATION: {
+    label: "Pending Verification",
+    icon: Clock,
+    badgeClass: "bg-amber-50 text-amber-800 border-amber-200",
+    iconColor: "text-amber-600",
+  },
+  FAILED_EVIDENCE_ABSENT: {
+    label: "Evidence Missing",
+    icon: AlertCircle,
+    badgeClass: "bg-rose-50 text-rose-700 border-rose-200",
+    iconColor: "text-rose-500",
+  },
+  FAILED_EVIDENCE_REJECTED: {
+    label: "Evidence Rejected",
+    icon: AlertCircle,
+    badgeClass: "bg-red-50 text-red-800 border-red-200",
+    iconColor: "text-red-600",
+  },
+  NO_EVIDENCE_REQUIRED: {
+    label: "Source Silent (No Evidence Required)",
+    icon: CheckCircle2,
+    badgeClass: "bg-slate-100 text-slate-700 border-slate-200",
+    iconColor: "text-slate-500",
+  },
+};
+
+export const formatGatingStatus = (status) => {
+  const norm = String(status || "").toUpperCase().trim();
+  const map = {
+    PASSED_EVIDENCE_VERIFIED: "Evidence Verified",
+    PROVISIONAL_PENDING_VERIFICATION: "Pending Verification",
+    FAILED_EVIDENCE_ABSENT: "Evidence Missing",
+    FAILED_EVIDENCE_REJECTED: "Evidence Rejected",
+    NO_EVIDENCE_REQUIRED: "No Evidence Required",
+    EVIDENCE_PRESENT: "Evidence Available",
+    EVIDENCE_VERIFIED: "Evidence Verified",
+    EVIDENCE_REJECTED: "Evidence Rejected",
+    EVIDENCE_PENDING: "Pending Review",
+    PENDING_REVIEW: "Pending Review",
+    NOT_UPLOADED: "Not Uploaded",
+  };
+  return map[norm] || norm.replace(/_/g, " ");
+};
+
+export const getGatingStatusExplanation = (status) => {
+  const norm = String(status || "").toUpperCase().trim();
+  switch (norm) {
+    case "PASSED_EVIDENCE_VERIFIED":
+    case "EVIDENCE_VERIFIED":
+      return "Supporting evidence has been verified by the screening committee.";
+    case "PROVISIONAL_PENDING_VERIFICATION":
+    case "EVIDENCE_PENDING":
+    case "PENDING_REVIEW":
+    case "EVIDENCE_PRESENT":
+      return "Supporting evidence uploaded and awaiting committee verification.";
+    case "FAILED_EVIDENCE_ABSENT":
+    case "NO_EVIDENCE":
+    case "NOT_UPLOADED":
+      return "Supporting evidence has not been uploaded for this subcriterion.";
+    case "FAILED_EVIDENCE_REJECTED":
+    case "EVIDENCE_REJECTED":
+      return "Uploaded supporting evidence was inspected and rejected by the reviewer.";
+    case "NO_EVIDENCE_REQUIRED":
+      return "This subcriterion does not require statutory documentary evidence.";
+    default:
+      return "";
+  }
 };
 
 export default function StatusBadge({

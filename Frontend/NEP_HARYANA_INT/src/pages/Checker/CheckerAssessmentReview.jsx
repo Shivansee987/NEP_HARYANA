@@ -31,6 +31,8 @@ import {
   Check,
   Edit3,
   AlertTriangle,
+  Eye,
+  FileSpreadsheet,
 } from "lucide-react";
 import {
   fetchAssessmentReviewDetail,
@@ -47,6 +49,8 @@ import {
 } from "../../api/checker";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { StatusBadge, DashboardSkeleton, EmptyState, ErrorState } from "../../components/common";
+import { formatGatingStatus, getGatingStatusExplanation } from "../../components/common/StatusBadge";
+import DocumentPreviewModal from "../../components/Institution/DocumentPreviewModal";
 import {
   getParameterTitle,
   getSubcriterionTitle,
@@ -115,6 +119,34 @@ export default function CheckerAssessmentReview() {
   const [showScoreTableModal, setShowScoreTableModal] = useState(false);
   const [showFinalAwardModal, setShowFinalAwardModal] = useState(false);
   const [certifyingAssessment, setCertifyingAssessment] = useState(false);
+
+  // Document Viewer Modal State
+  const [previewModal, setPreviewModal] = useState({
+    isOpen: false,
+    documentId: "",
+    associationId: "",
+    filename: "",
+    mimeType: "",
+  });
+
+  const handleOpenPreviewModal = (assoc) => {
+    if (!assoc) return;
+    const docId = assoc.evidence_id || assoc.evidence_document_id || assoc.document_id || "";
+    const assocId = assoc.association_id || assoc.id || "";
+    const name = assoc.original_filename || "Documentary Proof";
+    const mime = assoc.mime_type || "";
+    setPreviewModal({
+      isOpen: true,
+      documentId: docId ? String(docId) : "",
+      associationId: assocId ? String(assocId) : "",
+      filename: name,
+      mimeType: mime,
+    });
+  };
+
+  const handleClosePreviewModal = () => {
+    setPreviewModal((prev) => ({ ...prev, isOpen: false }));
+  };
 
   // Load Assessment Detail & Scoring Evaluation
   const loadAssessment = useCallback(async () => {
@@ -914,225 +946,303 @@ export default function CheckerAssessmentReview() {
                   </div>
                 )}
 
-                {activeAssoc ? (
-                  <>
-                    <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5">
-                      <div className="grid grid-cols-2 gap-3 mb-4 text-xs">
-                        <div>
-                          <span className="text-[9px] uppercase font-bold text-slate-400 block tracking-wider">Document</span>
-                          <p className="font-semibold text-slate-800 mt-0.5 break-all leading-snug">{activeAssoc.original_filename || "—"}</p>
-                        </div>
-                        <div>
-                          <span className="text-[9px] uppercase font-bold text-slate-400 block tracking-wider">Evidence Type</span>
-                          <p className="font-mono text-slate-700 mt-0.5 text-[11px] break-all">{activeAssoc.subcriterion_evidence_type || "—"}</p>
-                        </div>
-                        {activeAssoc.page_start && (
-                          <div>
-                            <span className="text-[9px] uppercase font-bold text-slate-400 block tracking-wider">Pages</span>
-                            <p className="font-semibold text-slate-700 mt-0.5">
-                              {activeAssoc.page_start}–{activeAssoc.page_end}{activeAssoc.section_identifier ? ` (${activeAssoc.section_identifier})` : ""}
-                            </p>
-                          </div>
-                        )}
-                        <div className="col-span-2">
-                          <span className="text-[9px] uppercase font-bold text-slate-400 block tracking-wider">Institution Claim</span>
-                          <p className="text-slate-700 mt-0.5 font-medium leading-relaxed">{activeAssoc.claim_description || "No claim text provided."}</p>
-                        </div>
-                      </div>
+                {/* Parameter Content Workspace */}
+                {(() => {
+                  const paramCode = activeParamScoring.code;
+                  const isCollege = assessment?.framework === "COLLEGE_2026";
+                  const fwData = isCollege ? COLLEGE_FRAMEWORK_DATA : UNIVERSITY_FRAMEWORK_DATA;
+                  const paramDef = fwData?.[paramCode];
+                  const subcriteriaDefs = paramDef?.subcriteria || activeParamScoring.subcriteriaGroups || [];
 
-                      <div className="flex items-center justify-between py-3 border-y border-slate-100 mb-4">
-                        <span className="text-xs text-slate-500 font-medium">Current Decision:</span>
-                        {activeAssoc.verification_status === "VERIFIED" ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> VERIFIED
-                          </span>
-                        ) : activeAssoc.verification_status === "REJECTED" ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-red-50 text-red-800 border border-red-200">
-                            <XCircle className="w-3.5 h-3.5 text-red-600" /> REJECTED
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200">
-                            <Clock className="w-3.5 h-3.5 text-amber-500" /> PENDING REVIEW
-                          </span>
-                        )}
-                      </div>
+                  // Submitted institutional parameter data from backend inspection
+                  const allSubmittedParamData = assessment?.parameter_data || {};
+                  const rawParamData = allSubmittedParamData[paramCode] || {};
+                  const rawInputs = rawParamData?.raw_inputs || rawParamData;
 
-                      {activeAssoc.verification_status === "REJECTED" && activeAssoc.latest_verification && (
-                        <div className="mb-4 p-3.5 rounded-xl bg-red-50 border border-red-200 text-xs">
-                          <div className="flex items-center gap-2 font-bold text-red-900 mb-1.5">
-                            <AlertCircle className="w-3.5 h-3.5 text-red-600 shrink-0" />
-                            <span>Rejection Feedback</span>
-                            {activeAssoc.latest_verification.rejection_code && (
-                              <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-red-100 text-red-800 border border-red-200">{activeAssoc.latest_verification.rejection_code}</span>
-                            )}
-                          </div>
-                          <p className="text-red-800 pl-5 leading-relaxed">"{activeAssoc.latest_verification.reason}"</p>
-                          <div className="text-[10px] text-red-600/70 pl-5 mt-1.5">
-                            Recorded by {activeAssoc.latest_verification.verifier_email} · {new Date(activeAssoc.latest_verification.timestamp).toLocaleString("en-IN")}
-                          </div>
-                        </div>
-                      )}
+                  const hasAnySubmittedData =
+                    rawInputs &&
+                    typeof rawInputs === "object" &&
+                    Object.keys(rawInputs).length > 0 &&
+                    Object.values(rawInputs).some((v) => {
+                      if (v === null || v === undefined || v === "") return false;
+                      if (typeof v === "object") {
+                        return Object.values(v).some(
+                          (fv) => fv !== null && fv !== undefined && fv !== ""
+                        );
+                      }
+                      return true;
+                    });
 
-                      {activeAssoc.verification_status === "REJECTED" && (
-                        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-800 flex items-center gap-2">
-                          <XCircle className="w-3.5 h-3.5 text-red-600 shrink-0" />
-                          <span>Rejected evidence locks this subcriterion at 0 marks. Click <strong>"Verify Evidence"</strong> below to overturn and unlock marks.</span>
-                        </div>
-                      )}
+                  return (
+                    <div className="space-y-6">
+                      {subcriteriaDefs.map((sub) => {
+                        const subCode = sub.code || sub.subcriterionId;
+                        const subTitle = sub.title || getSubcriterionTitle(subCode, activeParamScoring.title);
+                        const subFields = sub.fields || [];
+                        const subRawInputs = rawInputs?.[subCode] || {};
 
-                      <div className="flex items-center gap-2">
-                        <button type="button" onClick={handleVerify} disabled={actionLoading}
-                          className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs transition-all disabled:opacity-50 cursor-pointer">
-                          {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-                          <span>{activeAssoc.verification_status === "REJECTED" ? "Verify (Overturn Rejection)" : "Verify Evidence"}</span>
-                        </button>
-                        <button type="button" onClick={() => setShowRejectModal(true)} disabled={actionLoading}
-                          className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold shadow-xs transition-all disabled:opacity-50 cursor-pointer">
-                          <XCircle className="w-4 h-4" /><span>Reject with Feedback</span>
-                        </button>
-                        <button type="button" onClick={() => setShowHistory(prev => !prev)}
-                          className={`p-2.5 border rounded-xl text-xs cursor-pointer transition-colors ${showHistory ? "border-amber-300 bg-amber-50 text-amber-800" : "border-slate-200 hover:bg-slate-50 text-slate-600"}`}
-                          title="View verification history">
-                          <History className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
+                        // Check if this subcriterion has submitted institutional inputs
+                        const hasSubData =
+                          subRawInputs &&
+                          typeof subRawInputs === "object" &&
+                          Object.keys(subRawInputs).length > 0 &&
+                          Object.values(subRawInputs).some((val) => val !== null && val !== undefined && val !== "");
 
-                    {showHistory && (
-                      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5">
-                        <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
-                          <div className="flex items-center gap-2">
-                            <History className="w-4 h-4 text-amber-700" />
-                            <h4 className="text-sm font-bold text-slate-900">Verification History ({activeAssoc.subcriterion_id})</h4>
-                          </div>
-                          <span className="text-[10px] text-slate-400">Immutable Audit Log</span>
-                        </div>
-                        {historyLoading ? (
-                          <div className="p-4 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
-                            <Loader2 className="w-4 h-4 animate-spin text-amber-600" /> Loading audit trail...
-                          </div>
-                        ) : historyList.length === 0 ? (
-                          <p className="text-xs text-slate-400 italic text-center py-4">No previous decisions recorded.</p>
-                        ) : (
-                          <div className="space-y-2.5">
-                            {historyList.map((entry, idx) => (
-                              <div key={entry.verification_id || idx} className="p-3 rounded-xl border border-slate-100 bg-slate-50/50 text-xs">
-                                <div className="flex items-center justify-between mb-1">
-                                  <span className={`font-bold px-2 py-0.5 rounded text-[10px] ${entry.decision === "VERIFIED" ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-800"}`}>{entry.decision}</span>
-                                  <span className="text-slate-400 font-mono text-[10px]">{new Date(entry.timestamp).toLocaleString("en-IN")}</span>
-                                </div>
-                                <p className="font-medium text-slate-800">"{entry.reason}"</p>
-                                <div className="flex items-center justify-between text-[10px] text-slate-400 mt-1">
-                                  <span>{entry.verifier_email}</span>
-                                  {entry.rejection_code && <span className="font-mono font-bold text-red-700">{entry.rejection_code}</span>}
-                                </div>
+                        // Associations for this subcriterion
+                        const subAssocs = evidenceAssociations.filter(
+                          (a) =>
+                            (a.parameter_id || "").toUpperCase() === paramCode.toUpperCase() &&
+                            (a.subcriterion_id || "").toUpperCase() === subCode.toUpperCase()
+                        );
+
+                        // Gating status from scoring evaluation
+                        const subScoring = activeParamScoring.subcriteriaResults?.[subCode];
+                        const gatingStatus = subScoring?.gating_status || (subAssocs.length > 0 ? "PROVISIONAL_PENDING_VERIFICATION" : sub.isSourceSilent ? "NO_EVIDENCE_REQUIRED" : "FAILED_EVIDENCE_ABSENT");
+                        const statusExplanation = getGatingStatusExplanation(gatingStatus);
+                        const humanStatus = formatGatingStatus(gatingStatus);
+
+                        return (
+                          <div
+                            key={subCode}
+                            className="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden"
+                          >
+                            {/* Subcriterion Header */}
+                            <div className="p-4 sm:p-5 border-b border-slate-100 bg-slate-50/70 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <span className="font-mono font-bold text-xs bg-amber-100 text-amber-900 border border-amber-300 px-2 py-0.5 rounded shrink-0">
+                                  {subCode}
+                                </span>
+                                <h3 className="text-sm font-bold text-slate-900 tracking-tight leading-snug">
+                                  {subTitle}
+                                </h3>
                               </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-                      <div className="px-4 py-3 bg-slate-50/80 border-b border-slate-100 flex items-center justify-between">
-                        <div className="flex items-center gap-2 text-xs font-bold text-slate-800">
-                          <FileText className="w-4 h-4 text-amber-700" />
-                          <span className="truncate max-w-[250px]">{activeAssoc.original_filename}</span>
-                        </div>
-                        {docBlobUrl && (
-                          <div className="flex items-center gap-2">
-                            <button type="button" onClick={() => window.open(docBlobUrl, "_blank")}
-                              className="inline-flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-xs font-semibold cursor-pointer">
-                              <Maximize2 className="w-3 h-3" /> Open
-                            </button>
-                            <a href={docBlobUrl} download={activeAssoc.original_filename || "evidence.pdf"}
-                              className="inline-flex items-center gap-1 px-2.5 py-1 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-semibold cursor-pointer">
-                              <Download className="w-3 h-3" /> Download
-                            </a>
-                          </div>
-                        )}
-                      </div>
-                      <div className="h-[580px] w-full bg-slate-100/60 relative flex items-center justify-center">
-                        {docLoading ? (
-                          <div className="flex flex-col items-center gap-3 text-slate-500 text-xs">
-                            <Loader2 className="w-8 h-8 animate-spin text-amber-600" />
-                            <span className="font-semibold">Streaming document securely...</span>
-                          </div>
-                        ) : docError ? (
-                          <div className="p-6 text-center max-w-md">
-                            <AlertCircle className="w-8 h-8 text-red-500 mx-auto mb-2" />
-                            <h4 className="text-sm font-bold text-slate-800">Unable to Stream Document</h4>
-                            <p className="text-xs text-slate-500 mt-1">{docError}</p>
-                          </div>
-                        ) : docBlobUrl ? (
-                          <object data={docBlobUrl} type={activeAssoc.mime_type || "application/pdf"} className="w-full h-full border-0">
-                            <div className="p-8 text-center max-w-md">
-                              <FileCheck2 className="w-10 h-10 text-amber-600 mx-auto mb-3" />
-                              <h4 className="text-sm font-bold text-slate-800">Inline Preview Not Supported</h4>
-                              <p className="text-xs text-slate-500 mt-1 mb-4">Use the buttons above to open or download.</p>
-                              <a href={docBlobUrl} download={activeAssoc.original_filename || "evidence.pdf"}
-                                className="inline-flex items-center gap-2 px-4 py-2 bg-amber-600 text-white rounded-lg text-xs font-bold hover:bg-amber-700">
-                                <Download className="w-4 h-4" /> Download File
-                              </a>
-                            </div>
-                          </object>
-                        ) : (
-                          <p className="text-xs text-slate-400 italic">No document file available.</p>
-                        )}
-                      </div>
-                    </div>
-                  </>
-                ) : (
-                  <div className="bg-white rounded-2xl border-2 border-dashed border-slate-200 p-8 text-center space-y-4 shadow-xs">
-                    <div className="w-14 h-14 bg-amber-50 rounded-2xl border border-amber-200 flex items-center justify-center mx-auto">
-                      <FileText className="w-7 h-7 text-amber-600" />
-                    </div>
-                    <div className="max-w-md mx-auto">
-                      <h4 className="text-base font-bold text-slate-900">No Supporting Documents Uploaded for {activeParamScoring.code}</h4>
-                      <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
-                        The institution has not submitted any supporting evidence for this parameter. Evidence gating is{" "}
-                        <span className="font-mono font-bold text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">FAILED_EVIDENCE_ABSENT</span>{" "}
-                        and calculated score is restricted to 0.0.
-                      </p>
-                    </div>
-                    {activeParamScoring.subcriteriaGroups && activeParamScoring.subcriteriaGroups.length > 0 && (
-                      <div className="max-w-2xl mx-auto mt-4 text-left border border-slate-200 rounded-xl overflow-hidden bg-slate-50/50">
-                        <div className="p-3 bg-slate-100/80 border-b border-slate-200 text-[11px] font-bold uppercase tracking-wider text-slate-600 flex items-center justify-between">
-                          <span>Expected Evidence Under Framework</span>
-                          <span className="text-[10px] text-slate-400 font-normal">Statutory Contract</span>
-                        </div>
-                        <div className="divide-y divide-slate-100 text-xs">
-                          {activeParamScoring.subcriteriaGroups.map((sub) => (
-                            <div key={sub.subcriterionId} className="p-3 flex items-start justify-between gap-3">
-                              <div className="min-w-0 flex-1">
-                                <div className="flex items-center gap-1.5">
-                                  <span className="font-mono font-bold text-slate-800 text-[11px]">{sub.subcriterionId}</span>
-                                  <span className="text-slate-600 font-medium text-[11px] truncate">{sub.title}</span>
-                                </div>
-                                <div className="text-[11px] text-slate-500 mt-1">
-                                  <span className="font-medium text-slate-400">Requirement: </span>
-                                  {sub.documentaryRequirement || "Documentary verification record"}
-                                </div>
-                                {sub.canonicalEvidenceType && (
-                                  <span className="font-mono text-[10px] text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 mt-1 inline-block">{sub.canonicalEvidenceType}</span>
-                                )}
-                              </div>
-                              <div className="shrink-0 pt-0.5">
-                                {sub.isSourceSilent ? (
-                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">SOURCE SILENT</span>
-                                ) : (
-                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-800 border border-rose-200">
-                                    <AlertCircle className="w-3 h-3 text-rose-600" /> NOT UPLOADED
+                              <div className="flex items-center gap-2 shrink-0">
+                                <StatusBadge status={gatingStatus} size="sm" />
+                                {sub.maxScore !== undefined && sub.maxScore !== null && (
+                                  <span className="text-xs font-mono font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                                    Max: {sub.maxScore}
                                   </span>
                                 )}
                               </div>
                             </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
+
+                            <div className="p-5 sm:p-6 space-y-6">
+                              {/* 1. INSTITUTIONAL PARAMETER DATA SECTION */}
+                              <div>
+                                <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-100">
+                                  <div className="flex items-center gap-2">
+                                    <FileSpreadsheet className="w-4 h-4 text-amber-700" />
+                                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800">
+                                      Submitted by Institution
+                                    </h4>
+                                  </div>
+                                  <span className="text-[10px] text-slate-400 font-medium">Read-Only Institutional Record</span>
+                                </div>
+
+                                {hasSubData ? (
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 bg-slate-50/80 p-4 rounded-xl border border-slate-200/80">
+                                    {subFields.length > 0 ? (
+                                      subFields.map((f) => {
+                                        const rawVal = subRawInputs[f.key];
+                                        const displayVal =
+                                          f.type === "checkbox"
+                                            ? Boolean(rawVal)
+                                              ? "Yes / Formally Approved & Certified"
+                                              : "No / Not Certified"
+                                            : rawVal !== undefined && rawVal !== null && rawVal !== ""
+                                            ? String(rawVal)
+                                            : "—";
+
+                                        return (
+                                          <div key={f.key} className={f.type === "checkbox" ? "sm:col-span-2" : ""}>
+                                            <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">
+                                              {f.label}
+                                            </span>
+                                            <p className="text-xs font-bold text-slate-900 mt-1 font-mono bg-white px-3 py-2 rounded-lg border border-slate-200 shadow-2xs">
+                                              {displayVal}
+                                            </p>
+                                          </div>
+                                        );
+                                      })
+                                    ) : (
+                                      // Dynamic display for unstructured keys
+                                      Object.entries(subRawInputs).map(([k, v]) => (
+                                        <div key={k}>
+                                          <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">
+                                            {k.replace(/_/g, " ")}
+                                          </span>
+                                          <p className="text-xs font-bold text-slate-900 mt-1 font-mono bg-white px-3 py-2 rounded-lg border border-slate-200 shadow-2xs">
+                                            {typeof v === "boolean" ? (v ? "Yes" : "No") : String(v || "—")}
+                                          </p>
+                                        </div>
+                                      ))
+                                    )}
+                                  </div>
+                                ) : (
+                                  <div className="p-4 bg-slate-50 rounded-xl border border-dashed border-slate-200 text-center">
+                                    <p className="text-xs text-slate-500 font-medium italic">
+                                      No institutional data submitted for this subcriterion.
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* 2. SUPPORTING DOCUMENTARY EVIDENCE SECTION */}
+                              <div className="pt-4 border-t border-slate-100">
+                                <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-100">
+                                  <div className="flex items-center gap-2">
+                                    <FileText className="w-4 h-4 text-amber-700" />
+                                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800">
+                                      Supporting Evidence
+                                    </h4>
+                                  </div>
+                                  <span className="text-[10px] text-slate-500 font-medium">
+                                    Required: {sub.documentaryRequirement || sub.canonicalEvidenceType || "Documentary record"}
+                                  </span>
+                                </div>
+
+                                {subAssocs.length > 0 ? (
+                                  <div className="space-y-3">
+                                    {subAssocs.map((assoc) => {
+                                      const isVerified = assoc.verification_status === "VERIFIED";
+                                      const isRejected = assoc.verification_status === "REJECTED";
+                                      const lookupId = assoc.id || assoc.association_id;
+
+                                      return (
+                                        <div
+                                          key={lookupId}
+                                          className="p-4 rounded-xl border border-slate-200 bg-white shadow-2xs space-y-3"
+                                        >
+                                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                            <div className="flex items-center gap-2.5 min-w-0">
+                                              <FileText className="w-4 h-4 text-amber-600 shrink-0" />
+                                              <span className="text-xs font-bold text-slate-900 truncate max-w-sm">
+                                                {assoc.original_filename || "Documentary Evidence File"}
+                                              </span>
+                                            </div>
+                                            <div className="flex items-center gap-2 shrink-0">
+                                              <StatusBadge status={assoc.verification_status || "PENDING"} size="sm" />
+                                              <button
+                                                type="button"
+                                                onClick={() => handleOpenPreviewModal(assoc)}
+                                                className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 rounded-lg text-xs font-semibold cursor-pointer transition-colors shadow-2xs"
+                                              >
+                                                <Eye className="w-3 h-3 text-amber-700" /> View Document
+                                              </button>
+                                            </div>
+                                          </div>
+
+                                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] bg-slate-50 p-3 rounded-lg border border-slate-100 text-slate-600">
+                                            <div>
+                                              <span className="font-semibold text-slate-400">Evidence Type: </span>
+                                              <span className="font-mono text-slate-800">{assoc.subcriterion_evidence_type || "—"}</span>
+                                            </div>
+                                            {assoc.page_start && (
+                                              <div>
+                                                <span className="font-semibold text-slate-400">Pages: </span>
+                                                <span className="text-slate-800 font-medium">
+                                                  {assoc.page_start}–{assoc.page_end} {assoc.section_identifier ? `(${assoc.section_identifier})` : ""}
+                                                </span>
+                                              </div>
+                                            )}
+                                            {assoc.claim_description && (
+                                              <div className="sm:col-span-2">
+                                                <span className="font-semibold text-slate-400">Claim: </span>
+                                                <span className="text-slate-800">{assoc.claim_description}</span>
+                                              </div>
+                                            )}
+                                          </div>
+
+                                          {/* Rejection Details Banner if Rejected */}
+                                          {isRejected && assoc.latest_verification && (
+                                            <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-xs space-y-1">
+                                              <div className="flex items-center gap-1.5 font-bold text-red-900">
+                                                <AlertCircle className="w-3.5 h-3.5 text-red-600" />
+                                                <span>Rejection Reason ({assoc.latest_verification.rejection_code || "MISMATCHED_CRITERIA"})</span>
+                                              </div>
+                                              <p className="text-red-800 pl-5">"{assoc.latest_verification.reason}"</p>
+                                            </div>
+                                          )}
+
+                                          {/* Reviewer Actions */}
+                                          <div className="flex items-center gap-2 pt-1">
+                                            <button
+                                              type="button"
+                                              disabled={actionLoading}
+                                              onClick={async () => {
+                                                setActionLoading(true);
+                                                try {
+                                                  await verifyEvidenceAssociation(lookupId, {
+                                                    reason: `Subcriterion ${subCode} substantiated and approved.`,
+                                                  });
+                                                  setEvidenceAssociations((prev) =>
+                                                    prev.map((item) =>
+                                                      (item.id || item.association_id) === lookupId
+                                                        ? { ...item, verification_status: "VERIFIED" }
+                                                        : item
+                                                    )
+                                                  );
+                                                  await reloadScoring();
+                                                  setActionFeedback({
+                                                    type: "success",
+                                                    message: `Evidence for ${subCode} verified successfully.`,
+                                                  });
+                                                } catch (err) {
+                                                  setActionFeedback({ type: "error", message: err.message || "Failed to verify." });
+                                                } finally {
+                                                  setActionLoading(false);
+                                                }
+                                              }}
+                                              className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold cursor-pointer transition-colors shadow-2xs ${
+                                                isVerified
+                                                  ? "bg-emerald-100 text-emerald-900 border border-emerald-300"
+                                                  : "bg-emerald-600 hover:bg-emerald-700 text-white"
+                                              }`}
+                                            >
+                                              <CheckCircle2 className="w-3.5 h-3.5" />
+                                              <span>{isVerified ? "Verified (Re-Verify)" : isRejected ? "Verify (Overturn Rejection)" : "Verify Evidence"}</span>
+                                            </button>
+
+                                            <button
+                                              type="button"
+                                              disabled={actionLoading}
+                                              onClick={() => {
+                                                setSelectedAssocId(lookupId);
+                                                setShowRejectModal(true);
+                                              }}
+                                              className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold cursor-pointer transition-colors shadow-2xs"
+                                            >
+                                              <XCircle className="w-3.5 h-3.5" />
+                                              <span>Reject with Feedback</span>
+                                            </button>
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                ) : (
+                                  <div className="p-4 rounded-xl bg-slate-50 border border-dashed border-slate-200 text-center space-y-2">
+                                    <div className="flex items-center justify-center gap-2">
+                                      <StatusBadge status={gatingStatus} size="sm" />
+                                    </div>
+                                    <p className="text-xs text-slate-600 font-medium">
+                                      {statusExplanation || "Supporting evidence has not been uploaded for this subcriterion."}
+                                    </p>
+                                    {sub.canonicalEvidenceType && (
+                                      <span className="font-mono text-[10px] text-amber-900 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 inline-block mt-1">
+                                        Expected Contract: {sub.canonicalEvidenceType}
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
               </div>
             </>
           ) : (
@@ -1551,6 +1661,17 @@ export default function CheckerAssessmentReview() {
             </div>
           </div>
         </div>
+      )}
+
+      {previewModal.isOpen && (
+        <DocumentPreviewModal
+          isOpen={previewModal.isOpen}
+          onClose={handleClosePreviewModal}
+          documentId={previewModal.documentId}
+          associationId={previewModal.associationId}
+          filename={previewModal.filename}
+          mimeType={previewModal.mimeType}
+        />
       )}
     </div>
   );
