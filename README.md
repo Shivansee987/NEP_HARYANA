@@ -1,5 +1,4 @@
-The ChatGPT Link with latest phase and UI work for reference - https://chatgpt.com/share/6ab7cd81-895c-83ee-9114-93d458a872bf
-The ChatGPT Link with all the phases work for reference - https://chatgpt.com/share/6ab6b1b4-f8f0-83e8-b99e-07dde7fbff04
+The ChatGPT Link with all the work - https://chatgpt.com/share/6ab7cd81-895c-83ee-9114-93d458a872bf
 
 <div align="center">
 
