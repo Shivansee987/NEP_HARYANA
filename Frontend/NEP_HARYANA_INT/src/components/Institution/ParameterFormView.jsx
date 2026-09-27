@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import {
   Save,
   ChevronLeft,
@@ -37,6 +37,13 @@ export default function ParameterFormView({
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [saveError, setSaveError] = useState(null);
+  const [validationError, setValidationError] = useState(null);
+  const [touchedFields, setTouchedFields] = useState({});
+
+  const debounceTimerRef = useRef(null);
+  const latestFormDataRef = useRef({});
+  const onSaveDraftRef = useRef(onSaveDraft);
+  onSaveDraftRef.current = onSaveDraft;
 
   // Sync initial inputs from backend
   useEffect(() => {
@@ -44,16 +51,50 @@ export default function ParameterFormView({
       parameterDetail?.submitted_input?.raw_inputs ||
       parameterDetail?.submitted_input ||
       {};
-    setFormData(JSON.parse(JSON.stringify(raw)));
+    const parsed = JSON.parse(JSON.stringify(raw));
+    setFormData(parsed);
+    latestFormDataRef.current = parsed;
     setIsDirty(false);
     setSaveSuccess(false);
     setSaveError(null);
+    setValidationError(null);
+    setTouchedFields({});
+
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
   }, [parameterCode, parameterDetail]);
 
   const subcriteria = parameterDef?.subcriteria || [];
   const mandatoryEvidence = parameterDef?.mandatoryEvidence || [];
   const maxMarks = parameterDef?.maxMarks ?? parameterDetail?.max_marks ?? 0;
   const unresolvedNotice = UNRESOLVED_SPEC_NOTICES[parameterCode];
+
+  // Core save function
+  const performSave = useCallback(
+    async (dataToSave, showSuccessBanner = true) => {
+      if (isReadOnly) return;
+      setSaving(true);
+      setSaveError(null);
+      try {
+        await onSaveDraftRef.current(parameterCode, dataToSave);
+        setIsDirty(false);
+        if (showSuccessBanner) {
+          setSaveSuccess(true);
+          setTimeout(() => setSaveSuccess(false), 3000);
+        }
+      } catch (err) {
+        console.error("Draft save failed:", err);
+        setSaveError(err?.message || "Failed to save parameter draft.");
+        throw err;
+      } finally {
+        setSaving(false);
+      }
+    },
+    [parameterCode, isReadOnly]
+  );
 
   const handleInputChange = (subCode, fieldKey, value, type) => {
     let parsedVal = value;
@@ -62,32 +103,106 @@ export default function ParameterFormView({
     } else if (type === "checkbox") {
       parsedVal = Boolean(value);
     }
-    setFormData((prev) => ({
-      ...prev,
+
+    const updated = {
+      ...formData,
       [subCode]: {
-        ...(prev[subCode] || {}),
+        ...(formData[subCode] || {}),
         [fieldKey]: parsedVal,
       },
-    }));
+    };
+
+    setFormData(updated);
+    latestFormDataRef.current = updated;
     setIsDirty(true);
     setSaveSuccess(false);
     setSaveError(null);
+
+    // Clear validation error if all required fields are now filled
+    if (validationError) {
+      const invalid = findMissingFields(updated);
+      if (invalid.length === 0) {
+        setValidationError(null);
+      }
+    }
+
+    // Auto-save debounced (800ms)
+    if (!isReadOnly) {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+      debounceTimerRef.current = setTimeout(() => {
+        performSave(latestFormDataRef.current, false).catch(() => {});
+      }, 800);
+    }
   };
 
-  const handleSave = async () => {
-    setSaving(true);
-    setSaveError(null);
-    setSaveSuccess(false);
+  const handleManualSave = async () => {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+    await performSave(formData, true);
+  };
+
+  // Helper to find all missing required fields in current parameter
+  const findMissingFields = (data) => {
+    const missing = [];
+    subcriteria.forEach((sub) => {
+      const subVals = data[sub.code] || {};
+      const fields = sub.fields || [];
+      fields.forEach((f) => {
+        const val = subVals[f.key];
+        const isEmpty =
+          val === undefined ||
+          val === null ||
+          val === "" ||
+          (f.type === "checkbox" && val !== true);
+        if (isEmpty) {
+          missing.push({
+            subCode: sub.code,
+            subTitle: sub.title,
+            fieldKey: f.key,
+            fieldLabel: f.label,
+          });
+        }
+      });
+    });
+    return missing;
+  };
+
+  // Validate and handle Next navigation
+  const handleNextClick = async () => {
+    const missing = findMissingFields(formData);
+    if (missing.length > 0) {
+      const touched = {};
+      missing.forEach((m) => {
+        touched[`${m.subCode}_${m.fieldKey}`] = true;
+      });
+      setTouchedFields(touched);
+      setValidationError("Please complete all required fields before proceeding.");
+
+      // Scroll to first invalid field or top banner smoothly
+      const firstInvalidEl = document.querySelector(".border-red-500, [data-invalid='true']");
+      if (firstInvalidEl) {
+        firstInvalidEl.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+      return;
+    }
+
+    setValidationError(null);
+
+    // Auto-save before navigating
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+
     try {
-      await onSaveDraft(parameterCode, formData);
-      setIsDirty(false);
-      setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 3000);
-    } catch (err) {
-      console.error("Draft save failed:", err);
-      setSaveError(err?.message || "Failed to save parameter draft.");
-    } finally {
-      setSaving(false);
+      if (!isReadOnly) {
+        await performSave(formData, false);
+      }
+      onNextParam();
+    } catch {
+      // Error is set in performSave
     }
   };
 
@@ -100,9 +215,11 @@ export default function ParameterFormView({
       const fields = sub.fields || [];
       return (
         fields.length > 0 &&
-        fields.every(
-          (f) => subVals[f.key] !== undefined && subVals[f.key] !== "" && subVals[f.key] !== null
-        )
+        fields.every((f) => {
+          const v = subVals[f.key];
+          if (f.type === "checkbox") return v === true;
+          return v !== undefined && v !== "" && v !== null;
+        })
       );
     });
 
@@ -174,6 +291,14 @@ export default function ParameterFormView({
         )}
       </div>
 
+      {/* Validation alert banner */}
+      {validationError && (
+        <div className="p-3.5 bg-amber-50 border border-amber-300 rounded-lg text-xs text-amber-900 flex items-center gap-2.5 shadow-xs animate-in fade-in duration-200">
+          <AlertTriangle size={16} className="text-amber-600 shrink-0" />
+          <span className="font-semibold">{validationError}</span>
+        </div>
+      )}
+
       {/* Save feedback banner */}
       {saveSuccess && (
         <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-800 flex items-center gap-2">
@@ -235,11 +360,24 @@ export default function ParameterFormView({
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {(sub.fields || []).map((f) => {
                       const val = subVals[f.key] !== undefined ? subVals[f.key] : "";
+                      const isFieldMissing =
+                        val === undefined ||
+                        val === null ||
+                        val === "" ||
+                        (f.type === "checkbox" && val !== true);
+                      const isInvalid = touchedFields[`${sub.code}_${f.key}`] && isFieldMissing;
 
                       if (f.type === "checkbox") {
                         return (
                           <div key={f.key} className="sm:col-span-2">
-                            <label className="flex items-start gap-3 p-3 rounded-lg border border-slate-200 bg-slate-50/70 hover:bg-slate-50 cursor-pointer transition-colors">
+                            <label
+                              data-invalid={isInvalid}
+                              className={`flex items-start gap-3 p-3 rounded-lg border transition-colors cursor-pointer ${
+                                isInvalid
+                                  ? "border-red-400 bg-red-50/50 hover:bg-red-50"
+                                  : "border-slate-200 bg-slate-50/70 hover:bg-slate-50"
+                              }`}
+                            >
                               <input
                                 type="checkbox"
                                 checked={Boolean(val)}
@@ -247,11 +385,18 @@ export default function ParameterFormView({
                                 onChange={(e) =>
                                   handleInputChange(sub.code, f.key, e.target.checked, "checkbox")
                                 }
-                                className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 mt-0.5"
+                                className={`w-4 h-4 text-blue-600 rounded focus:ring-blue-500 mt-0.5 ${
+                                  isInvalid ? "border-red-400" : "border-slate-300"
+                                }`}
                               />
                               <div className="text-xs">
                                 <span className="font-semibold text-slate-800">{f.label}</span>
                                 <span className="text-red-500 font-bold ml-1">*</span>
+                                {isInvalid && (
+                                  <p className="text-[11px] text-red-600 mt-0.5 font-medium">
+                                    Required: must be checked to proceed.
+                                  </p>
+                                )}
                               </div>
                             </label>
                           </div>
@@ -270,11 +415,21 @@ export default function ParameterFormView({
                             placeholder={f.placeholder || ""}
                             value={val}
                             disabled={isReadOnly}
+                            data-invalid={isInvalid}
                             onChange={(e) =>
                               handleInputChange(sub.code, f.key, e.target.value, f.type)
                             }
-                            className="w-full px-3.5 py-2 border border-slate-200 rounded-lg text-xs font-medium text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-slate-50 disabled:text-slate-500 shadow-2xs"
+                            className={`w-full px-3.5 py-2 border rounded-lg text-xs font-medium text-slate-900 focus:outline-none disabled:bg-slate-50 disabled:text-slate-500 shadow-2xs transition-colors ${
+                              isInvalid
+                                ? "border-red-500 bg-red-50/40 focus:ring-1 focus:ring-red-500"
+                                : "border-slate-200 focus:ring-1 focus:ring-blue-500"
+                            }`}
                           />
+                          {isInvalid && (
+                            <p className="text-[11px] text-red-600 font-medium">
+                              This field is required.
+                            </p>
+                          )}
                         </div>
                       );
                     })}
@@ -413,7 +568,7 @@ export default function ParameterFormView({
           {!isReadOnly && (
             <button
               type="button"
-              onClick={handleSave}
+              onClick={handleManualSave}
               disabled={saving}
               className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs disabled:opacity-50 cursor-pointer"
             >
@@ -424,8 +579,9 @@ export default function ParameterFormView({
 
           <button
             type="button"
-            onClick={onNextParam}
-            className="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
+            onClick={handleNextClick}
+            disabled={saving}
+            className="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer disabled:opacity-75"
           >
             <span>{isLast ? "Review & Submit" : "Next Parameter"}</span>
             <ChevronRight size={14} />

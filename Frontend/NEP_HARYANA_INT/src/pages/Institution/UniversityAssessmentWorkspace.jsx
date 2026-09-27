@@ -73,7 +73,11 @@ export default function UniversityAssessmentWorkspace() {
       const fields = sub.fields || [];
       return (
         fields.length > 0 &&
-        fields.every((f) => vals[f.key] !== undefined && vals[f.key] !== "" && vals[f.key] !== null)
+        fields.every((f) => {
+          const v = vals[f.key];
+          if (f.type === "checkbox") return v === true;
+          return v !== undefined && v !== "" && v !== null;
+        })
       );
     });
 
