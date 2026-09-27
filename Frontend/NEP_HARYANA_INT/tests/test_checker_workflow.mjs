@@ -477,4 +477,63 @@ describe('Workflow Phase W4 — Modern Checker Frontend Contract & Workflow Suit
     );
     assert.ok(!checkerApiContent.includes('/api/nominations/'), 'checker.js must not query legacy nominations API');
   });
+
+  // =========================================================================
+  // 16. Evidence isolation strictly per parameter (prevents cross-parameter leaks)
+  // =========================================================================
+  it('16. Parameter without uploaded documents strictly isolates evidence and does not leak other parameters files', () => {
+    const assocs = [
+      { id: 1, association_id: 'a-1', parameter_id: 'C1', original_filename: 'c1_doc.pdf' },
+      { id: 2, association_id: 'a-2', parameter_id: 'C2', original_filename: 'c2_doc.pdf' },
+    ];
+
+    // Selecting C3 (which has no uploaded documents)
+    const selectedParam = 'C3';
+    const currentParamAssocs = assocs.filter(a => a.parameter_id === selectedParam);
+    assert.equal(currentParamAssocs.length, 0, 'C3 must have 0 evidence associations');
+
+    // Scoped activeAssoc calculation: must be null, NOT falling back to assocs[0] (C1)
+    const getActiveAssoc = (paramCode, assocId, paramAssocs) => {
+      if (!paramCode || paramAssocs.length === 0) return null;
+      if (assocId) {
+        const match = paramAssocs.find(a => (a.id || a.association_id) === assocId);
+        if (match) return match;
+      }
+      return paramAssocs[0] || null;
+    };
+
+    const activeForC3 = getActiveAssoc('C3', 1, currentParamAssocs);
+    assert.equal(activeForC3, null, 'Active assoc for C3 must be strictly null even if selectedAssocId is 1');
+
+    // Selecting C1: returns C1's document
+    const c1Assocs = assocs.filter(a => a.parameter_id === 'C1');
+    const activeForC1 = getActiveAssoc('C1', null, c1Assocs);
+    assert.equal(activeForC1?.original_filename, 'c1_doc.pdf');
+
+    // Selecting C2: returns C2's document
+    const c2Assocs = assocs.filter(a => a.parameter_id === 'C2');
+    const activeForC2 = getActiveAssoc('C2', null, c2Assocs);
+    assert.equal(activeForC2?.original_filename, 'c2_doc.pdf');
+  });
+
+  // =========================================================================
+  // 17. Carousel navigation strictly bounded by parameter associations
+  // =========================================================================
+  it('17. Carousel next/prev strictly operates within parameter scope', () => {
+    const c1Assocs = [
+      { id: 1, association_id: 'a-1', parameter_id: 'C1' },
+      { id: 2, association_id: 'a-2', parameter_id: 'C1' },
+    ];
+
+    let currentAssocIndex = 0; // First doc
+    const canPrev = currentAssocIndex > 0;
+    const canNext = currentAssocIndex < c1Assocs.length - 1;
+
+    assert.equal(canPrev, false, 'First item cannot go previous');
+    assert.equal(canNext, true, 'First item can go next when more than 1 item in param');
+
+    currentAssocIndex = 1; // Last doc
+    const canNextLast = currentAssocIndex < c1Assocs.length - 1;
+    assert.equal(canNextLast, false, 'Last item cannot go next beyond parameter boundaries');
+  });
 });

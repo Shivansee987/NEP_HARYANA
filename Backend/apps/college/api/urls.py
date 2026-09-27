@@ -11,6 +11,8 @@ from .views import (
     CollegeAssessmentDetailView,
     CollegeAssessmentEvaluateView,
     CollegeAssessmentListCreateView,
+    CollegeAssessmentParameterAcceptScoreView,
+    CollegeAssessmentParameterAdjustScoreView,
     CollegeAssessmentParameterDetailView,
     CollegeAssessmentParametersListView,
     CollegeAssessmentReadinessView,
@@ -51,6 +53,14 @@ urlpatterns = [
     path('college/assessments/<str:assessment_id>/parameters/<str:parameter_code>/', CollegeAssessmentParameterDetailView.as_view(), name='college-assessment-parameter-detail'),
     path('college-assessments/<str:assessment_id>/parameters/<str:parameter_code>/', CollegeAssessmentParameterDetailView.as_view(), name='college-assessment-parameter-detail-alias'),
     path('assessments/<str:assessment_id>/parameters/<str:parameter_code>/', CollegeAssessmentParameterDetailView.as_view(), name='college-assessment-parameter-detail-v1'),
+
+    path('college/assessments/<str:assessment_id>/parameters/<str:parameter_code>/accept-score/', CollegeAssessmentParameterAcceptScoreView.as_view(), name='college-assessment-parameter-accept-score'),
+    path('college-assessments/<str:assessment_id>/parameters/<str:parameter_code>/accept-score/', CollegeAssessmentParameterAcceptScoreView.as_view(), name='college-assessment-parameter-accept-score-alias'),
+    path('assessments/<str:assessment_id>/parameters/<str:parameter_code>/accept-score/', CollegeAssessmentParameterAcceptScoreView.as_view(), name='college-assessment-parameter-accept-score-v1'),
+
+    path('college/assessments/<str:assessment_id>/parameters/<str:parameter_code>/adjust-score/', CollegeAssessmentParameterAdjustScoreView.as_view(), name='college-assessment-parameter-adjust-score'),
+    path('college-assessments/<str:assessment_id>/parameters/<str:parameter_code>/adjust-score/', CollegeAssessmentParameterAdjustScoreView.as_view(), name='college-assessment-parameter-adjust-score-alias'),
+    path('assessments/<str:assessment_id>/parameters/<str:parameter_code>/adjust-score/', CollegeAssessmentParameterAdjustScoreView.as_view(), name='college-assessment-parameter-adjust-score-v1'),
 
     # Coverage, Readiness & Scoring Endpoints
     path('college/assessments/<str:assessment_id>/coverage/', CollegeAssessmentCoverageView.as_view(), name='college-assessment-coverage'),

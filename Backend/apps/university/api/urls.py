@@ -11,6 +11,8 @@ from .views import (
     UniversityAssessmentDetailView,
     UniversityAssessmentEvaluateView,
     UniversityAssessmentListCreateView,
+    UniversityAssessmentParameterAcceptScoreView,
+    UniversityAssessmentParameterAdjustScoreView,
     UniversityAssessmentParameterDetailView,
     UniversityAssessmentParametersListView,
     UniversityAssessmentReadinessView,
@@ -39,6 +41,10 @@ urlpatterns = [
     # Parameter Read/Write Endpoints
     path('university-assessments/<str:assessment_id>/parameters/', UniversityAssessmentParametersListView.as_view(), name='university-assessment-parameters-list'),
     path('university-assessments/<str:assessment_id>/parameters/<str:parameter_code>/', UniversityAssessmentParameterDetailView.as_view(), name='university-assessment-parameter-detail'),
+    path('university-assessments/<str:assessment_id>/parameters/<str:parameter_code>/accept-score/', UniversityAssessmentParameterAcceptScoreView.as_view(), name='university-assessment-parameter-accept-score'),
+    path('university-assessments/<str:assessment_id>/parameters/<str:parameter_code>/adjust-score/', UniversityAssessmentParameterAdjustScoreView.as_view(), name='university-assessment-parameter-adjust-score'),
+    path('assessments/<str:assessment_id>/parameters/<str:parameter_code>/accept-score/', UniversityAssessmentParameterAcceptScoreView.as_view(), name='api-v1-university-parameter-accept-score'),
+    path('assessments/<str:assessment_id>/parameters/<str:parameter_code>/adjust-score/', UniversityAssessmentParameterAdjustScoreView.as_view(), name='api-v1-university-parameter-adjust-score'),
 
     # Coverage, Readiness & Scoring Endpoints
     path('university-assessments/<str:assessment_id>/coverage/', UniversityAssessmentCoverageView.as_view(), name='university-assessment-coverage'),

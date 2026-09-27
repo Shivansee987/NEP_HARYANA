@@ -34,6 +34,7 @@ from apps.scoring.enums import (
     EvidenceState,
     FrameworkType,
     InstitutionType,
+    ResolutionStatus,
 )
 from .models import (
     University,
@@ -218,7 +219,9 @@ class UniversityAssessmentService:
         for param_code in UNIVERSITY_PARAMETER_CODES:
             param_conf = registered_params[param_code]
             stored_param = param_data.get(param_code, {})
-            stored_raw = stored_param.get("raw_inputs", {})
+            stored_raw = stored_param.get("raw_inputs")
+            if stored_raw is None:
+                stored_raw = {k: v for k, v in stored_param.items() if not k.startswith("_")}
             stored_entities = stored_param.get("entities", [])
             act_date = date.fromisoformat(stored_param["activity_date"]) if stored_param.get("activity_date") else None
 
@@ -266,6 +269,25 @@ class UniversityAssessmentService:
         Executes scoring exclusively via the frozen NEP2026ScoringEngine.
         Does NOT recalculate or synthesize scores in this service layer.
         """
+        # Collect persistent adjustments if not explicitly provided
+        if reviewer_adjustments is None:
+            try:
+                assessment_obj = UniversityAssessment.objects.get(assessment_id=assessment_id)
+                persisted_adjs = (assessment_obj.parameter_data or {}).get("_reviewer_adjustments", [])
+                if persisted_adjs:
+                    reviewer_adjustments = [
+                        ReviewerAdjustment(
+                            subcriterion_code=adj["subcriterion_code"],
+                            reviewer_id=adj["reviewer_id"],
+                            original_score=float(adj.get("original_score", 0.0)),
+                            adjusted_score=float(adj["adjusted_score"]),
+                            reason=adj["reason"],
+                        )
+                        for adj in persisted_adjs
+                    ]
+            except Exception:
+                pass
+
         assessment_input = cls.build_assessment_input(assessment_id)
         engine = NEP2026ScoringEngine()
         result = engine.score_assessment(
@@ -281,6 +303,370 @@ class UniversityAssessmentService:
         )
 
         return result
+
+    @classmethod
+    def get_assessment_scoring_evaluation(
+        cls,
+        assessment_id: str,
+        user: Any = None,
+    ) -> Dict[str, Any]:
+        """
+        Retrieves the complete server-authoritative scoring evaluation,
+        parameter maximums, reviewer acceptance state, live running total,
+        and award classification.
+        """
+        from apps.scoring.awards import get_authoritative_award_classification
+        from apps.scoring.formatters import format_parameter_scoring_basis, format_subcriterion_scoring_basis
+        from apps.scoring.rules.definitions import UNIVERSITY_PARAMETERS
+
+        try:
+            assessment = UniversityAssessment.objects.select_related("university").get(
+                assessment_id=assessment_id
+            )
+        except UniversityAssessment.DoesNotExist:
+            raise UniversityValidationError(f"Assessment '{assessment_id}' not found.", code="NOT_FOUND")
+
+        result = cls.evaluate_assessment_scoring(assessment_id)
+
+        param_data = assessment.parameter_data or {}
+        parameter_reviews = dict(param_data.get("_committee_reviews", {}))
+
+        # Calculate live running total strictly from approved parameters
+        approved_codes = [
+            code for code, rec in parameter_reviews.items()
+            if rec.get("status") == "APPROVED" and code in UNIVERSITY_PARAMETER_CODES
+        ]
+        running_total = min(
+            sum(float(parameter_reviews[code].get("awarded_score", 0.0)) for code in approved_codes),
+            100.00
+        )
+
+        award_classification = get_authoritative_award_classification(
+            score=running_total,
+            framework=UNIVERSITY_FRAMEWORK_CODE,
+        )
+
+        param_results_dict = {}
+        for p_code in UNIVERSITY_PARAMETER_CODES:
+            param_def = UNIVERSITY_PARAMETERS[p_code]
+            p_res = result.parameter_results.get(p_code)
+
+            review_info = parameter_reviews.get(p_code, {})
+            is_approved = review_info.get("status") == "APPROVED"
+            awarded_score = float(review_info["awarded_score"]) if is_approved else None
+
+            sub_dict = {}
+            if p_res and p_res.subcriteria_results:
+                for s_code, s_res in p_res.subcriteria_results.items():
+                    sub_def = param_def.get("subcriteria", {}).get(s_code, {})
+                    sub_dict[s_code] = {
+                        "subcriterion_code": s_res.subcriterion_code,
+                        "raw_score": s_res.raw_score,
+                        "evidence_gated_score": s_res.evidence_gated_score,
+                        "final_score": s_res.final_score,
+                        "max_score": sub_def.get("max_score", s_res.max_score),
+                        "resolution_status": s_res.resolution_status.value if hasattr(s_res.resolution_status, "value") else str(s_res.resolution_status),
+                        "gating_status": s_res.gating_status.value if hasattr(s_res.gating_status, "value") else str(s_res.gating_status),
+                        "scoring_basis": format_subcriterion_scoring_basis(s_res),
+                        "trace": s_res.trace,
+                    }
+
+            is_unresolved = p_res.resolution_status != ResolutionStatus.CALCULABLE if p_res else False
+            unresolved_msg = None
+            if is_unresolved:
+                unresolved_msg = param_def.get("unresolved_reason") or "Maximum unresolved — source clarification required"
+
+            param_results_dict[p_code] = {
+                "parameter_code": p_code,
+                "parameter_title": param_def.get("title", p_code),
+                "max_marks": float(param_def.get("max_marks", 0.0)),
+                "raw_score": p_res.raw_score if p_res else 0.0,
+                "evidence_gated_score": p_res.evidence_gated_score if p_res else 0.0,
+                "final_score": p_res.final_score if p_res else None,
+                "resolution_status": (p_res.resolution_status.value if hasattr(p_res.resolution_status, "value") else str(p_res.resolution_status)) if p_res else "CALCULABLE",
+                "is_unresolved": is_unresolved,
+                "unresolved_reason": unresolved_msg,
+                "review_status": "APPROVED" if is_approved else "PENDING",
+                "awarded_score": awarded_score,
+                "scoring_basis": format_parameter_scoring_basis(p_res) if p_res else "No submission",
+                "subcriteria_results": sub_dict,
+                "review_info": review_info,
+                "trace": p_res.trace if p_res else {},
+            }
+
+        return {
+            "framework": result.framework.value if hasattr(result.framework, "value") else str(result.framework),
+            "assessment_id": result.assessment_id,
+            "institution_id": result.institution_id,
+            "institution_name": assessment.university.name,
+            "calculation_id": result.calculation_id,
+            "raw_total": result.raw_total,
+            "evidence_gated_total": result.evidence_gated_total,
+            "final_certified_total": result.final_certified_total,
+            "running_total": running_total,
+            "expected_total_display": f"{int(running_total) if running_total.is_integer() else running_total} / {int(result.max_marks)}",
+            "current_awarded": running_total,
+            "max_available": float(result.max_marks),
+            "max_marks": float(result.max_marks),
+            "certification_status": result.certification_status.value if hasattr(result.certification_status, "value") else str(result.certification_status),
+            "blocking_reasons": result.blocking_reasons,
+            "parameters_reviewed_count": len(approved_codes),
+            "total_parameters_count": len(UNIVERSITY_PARAMETER_CODES),
+            "all_parameters_reviewed": len(approved_codes) == len(UNIVERSITY_PARAMETER_CODES),
+            "parameter_reviews": parameter_reviews,
+            "parameter_results": param_results_dict,
+            "award_classification": award_classification,
+            "trace": result.trace,
+        }
+
+    @classmethod
+    @transaction.atomic
+    def accept_parameter_score(
+        cls,
+        assessment_id: str,
+        parameter_code: str,
+        reviewer: Any,
+        comments: str = "",
+    ) -> Dict[str, Any]:
+        """
+        Committee action: Approves the server-calculated score for a specific parameter.
+        Updates the running score immediately and logs an immutable audit trail.
+        """
+        from apps.scoring.rules.definitions import UNIVERSITY_PARAMETERS
+
+        param_clean = validate_parameter(parameter_code)
+        try:
+            assessment = UniversityAssessment.objects.select_for_update().select_related("university").get(
+                assessment_id=assessment_id
+            )
+        except UniversityAssessment.DoesNotExist:
+            raise UniversityValidationError(f"Assessment '{assessment_id}' not found.", code="NOT_FOUND")
+
+        UniversityReviewService.validate_reviewer_authorization(reviewer, assessment)
+
+        if assessment.status in ("CERTIFIED", "BLOCKED"):
+            raise AssessmentLockedError(f"Assessment is {assessment.status} and cannot be modified.")
+
+        # Evaluate current server-authoritative scoring
+        result = cls.evaluate_assessment_scoring(assessment_id)
+        param_res = result.parameter_results.get(param_clean)
+        if not param_res:
+            raise UniversityValidationError(f"Parameter '{param_clean}' not found in framework.", code="NOT_FOUND")
+
+        # Block approval of unresolved contradictory parameters
+        param_def = UNIVERSITY_PARAMETERS[param_clean]
+        if param_res.resolution_status in (ResolutionStatus.UNRESOLVED_RULE, ResolutionStatus.SOURCE_INCONSISTENCY):
+            reason_msg = param_def.get("unresolved_reason") or "Maximum unresolved — source clarification required"
+            raise UniversityValidationError(
+                f"Parameter {param_clean} is blocked: {reason_msg}. Reviewer cannot accept an unresolved specification without State Council determination.",
+                code="UNRESOLVED_SPECIFICATION"
+            )
+
+        if param_res.resolution_status == ResolutionStatus.BOUNDARY_UNRESOLVED:
+            raise UniversityValidationError(
+                f"Parameter {param_clean} landed on an unresolved boundary void in the rubric.",
+                code="BOUNDARY_UNRESOLVED"
+            )
+
+        # Enforce server-side hard maximum cap
+        max_marks = float(param_def["max_marks"])
+        awarded_score = min(float(param_res.evidence_gated_score), max_marks)
+
+        # Save review record in assessment JSON data
+        data = dict(assessment.parameter_data or {})
+        reviews = dict(data.get("_committee_reviews", {}))
+        reviews[param_clean] = {
+            "status": "APPROVED",
+            "awarded_score": awarded_score,
+            "calculated_score": float(param_res.evidence_gated_score),
+            "max_marks": max_marks,
+            "reviewer_id": str(reviewer.pk),
+            "reviewer_email": getattr(reviewer, "email", "reviewer"),
+            "reviewed_at": timezone.now().isoformat(),
+            "comments": comments.strip(),
+            "override": False,
+            "override_reason": None,
+        }
+        data["_committee_reviews"] = reviews
+        assessment.parameter_data = data
+        assessment.save(update_fields=["parameter_data", "updated_at"])
+
+        # Create immutable review record
+        UniversityReviewRecord.objects.create(
+            assessment=assessment,
+            reviewer=reviewer,
+            action=UniversityReviewAction.EVALUATE,
+            status_before=assessment.status,
+            status_after=assessment.status,
+            comments=f"Accepted calculated score for {param_clean}: {awarded_score} / {max_marks}. {comments}".strip(),
+            scoring_snapshot={
+                "parameter_code": param_clean,
+                "awarded_score": awarded_score,
+                "calculated_score": float(param_res.evidence_gated_score),
+                "max_marks": max_marks,
+            },
+        )
+
+        UniversityAssessmentAuditLog.objects.create(
+            assessment=assessment,
+            actor=reviewer,
+            action="PARAMETER_SCORE_ACCEPTED",
+            previous_status=assessment.status,
+            new_status=assessment.status,
+            reason=f"Accepted score {awarded_score} / {max_marks} for {param_clean}",
+            payload={"parameter_code": param_clean, "awarded_score": awarded_score},
+        )
+
+        return cls.get_assessment_scoring_evaluation(assessment_id, user=reviewer)
+
+    @classmethod
+    @transaction.atomic
+    def adjust_parameter_score(
+        cls,
+        assessment_id: str,
+        parameter_code: str,
+        subcriterion_code: str,
+        adjusted_score: float,
+        reason: str,
+        reviewer: Any,
+    ) -> Dict[str, Any]:
+        """
+        Controlled Reviewer Override: Adjusts a subcriterion score with mandatory reason,
+        strict maximum bounds validation, evidence gating compliance, and full audit trail.
+        """
+        from apps.scoring.rules.definitions import UNIVERSITY_PARAMETERS
+        from apps.scoring.adjustments import ReviewerAdjustmentService
+
+        param_clean = validate_parameter(parameter_code)
+        try:
+            assessment = UniversityAssessment.objects.select_for_update().select_related("university").get(
+                assessment_id=assessment_id
+            )
+        except UniversityAssessment.DoesNotExist:
+            raise UniversityValidationError(f"Assessment '{assessment_id}' not found.", code="NOT_FOUND")
+
+        UniversityReviewService.validate_reviewer_authorization(reviewer, assessment)
+
+        if assessment.status in ("CERTIFIED", "BLOCKED"):
+            raise AssessmentLockedError(f"Assessment is {assessment.status} and cannot be modified.")
+
+        # Validate reason and bounds
+        if not reason or len(reason.strip()) < 10:
+            raise UniversityValidationError(
+                "A substantial justification (minimum 10 characters) is mandatory for score adjustment.",
+                code="REASON_REQUIRED"
+            )
+
+        try:
+            adj_score = float(adjusted_score)
+        except (ValueError, TypeError):
+            raise UniversityValidationError("Adjusted score must be a valid number.", code="INVALID_SCORE")
+
+        if adj_score < 0.0:
+            raise UniversityValidationError("Adjusted score cannot be negative.", code="INVALID_SCORE")
+
+        param_def = UNIVERSITY_PARAMETERS.get(param_clean)
+        if not param_def:
+            raise UniversityValidationError(f"Parameter '{param_clean}' not found in framework.", code="NOT_FOUND")
+
+        sub_def = param_def.get("subcriteria", {}).get(subcriterion_code)
+        if not sub_def:
+            raise UniversityValidationError(f"Subcriterion '{subcriterion_code}' not found under '{param_clean}'.", code="NOT_FOUND")
+
+        sub_max = float(sub_def.get("max_score", param_def["max_marks"]))
+        if adj_score > sub_max:
+            raise UniversityValidationError(
+                f"Adjusted score {adj_score} exceeds subcriterion maximum {sub_max} for {subcriterion_code}.",
+                code="SCORE_EXCEEDS_MAXIMUM"
+            )
+
+        # Validate and apply adjustment via server-authoritative engine
+        adjustment = ReviewerAdjustment(
+            subcriterion_code=subcriterion_code,
+            reviewer_id=str(reviewer.pk),
+            original_score=0.0,
+            adjusted_score=adj_score,
+            reason=reason.strip(),
+        )
+
+        # Pre-flight validation against current scoring state
+        curr_result = cls.evaluate_assessment_scoring(assessment_id)
+        valid, err_msg = ReviewerAdjustmentService.validate_and_apply_adjustment(curr_result, adjustment)
+        if not valid:
+            raise UniversityValidationError(f"Adjustment rejected: {err_msg}", code="ADJUSTMENT_REJECTED")
+
+        # Persist adjustment in assessment JSON data
+        data = dict(assessment.parameter_data or {})
+        adjs = list(data.get("_reviewer_adjustments", []))
+        # Replace existing adjustment for this subcriterion if present, else append
+        adjs = [a for a in adjs if a.get("subcriterion_code") != subcriterion_code]
+        adjs.append({
+            "subcriterion_code": subcriterion_code,
+            "reviewer_id": str(reviewer.pk),
+            "reviewer_email": getattr(reviewer, "email", "reviewer"),
+            "original_score": adjustment.original_score,
+            "adjusted_score": adj_score,
+            "reason": reason.strip(),
+            "timestamp": timezone.now().isoformat(),
+        })
+        data["_reviewer_adjustments"] = adjs
+
+        # Re-score assessment with updated adjustments
+        assessment.parameter_data = data
+        assessment.save(update_fields=["parameter_data", "updated_at"])
+
+        updated_result = cls.evaluate_assessment_scoring(assessment_id)
+        updated_param = updated_result.parameter_results[param_clean]
+
+        # Update approved parameter review with adjusted score
+        reviews = dict(data.get("_committee_reviews", {}))
+        reviews[param_clean] = {
+            "status": "APPROVED",
+            "awarded_score": min(float(updated_param.evidence_gated_score), float(param_def["max_marks"])),
+            "calculated_score": float(updated_param.raw_score),
+            "max_marks": float(param_def["max_marks"]),
+            "reviewer_id": str(reviewer.pk),
+            "reviewer_email": getattr(reviewer, "email", "reviewer"),
+            "reviewed_at": timezone.now().isoformat(),
+            "comments": reason.strip(),
+            "override": True,
+            "override_reason": reason.strip(),
+        }
+        data["_committee_reviews"] = reviews
+        assessment.parameter_data = data
+        assessment.save(update_fields=["parameter_data", "updated_at"])
+
+        # Immutable review and audit logs
+        UniversityReviewRecord.objects.create(
+            assessment=assessment,
+            reviewer=reviewer,
+            action=UniversityReviewAction.EVALUATE,
+            status_before=assessment.status,
+            status_after=assessment.status,
+            reason=reason.strip(),
+            comments=f"Adjusted score for {subcriterion_code} to {adj_score}. Reason: {reason}".strip(),
+            scoring_snapshot={
+                "parameter_code": param_clean,
+                "subcriterion_code": subcriterion_code,
+                "adjusted_score": adj_score,
+                "awarded_score": reviews[param_clean]["awarded_score"],
+                "max_marks": reviews[param_clean]["max_marks"],
+                "is_override": True,
+            },
+        )
+
+        UniversityAssessmentAuditLog.objects.create(
+            assessment=assessment,
+            actor=reviewer,
+            action="SCORE_ADJUSTED",
+            previous_status=assessment.status,
+            new_status=assessment.status,
+            reason=reason.strip(),
+            payload={"subcriterion_code": subcriterion_code, "adjusted_score": adj_score},
+        )
+
+        return cls.get_assessment_scoring_evaluation(assessment_id, user=reviewer)
+
 
     @classmethod
     def evaluate_assessment_coverage(

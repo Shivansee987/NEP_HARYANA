@@ -147,3 +147,65 @@ export function completeAssessmentReview(framework, assessmentId, remarks = "") 
     body: JSON.stringify({ remarks }),
   });
 }
+
+/**
+ * Fetches server-authoritative scoring evaluation, maximum marks,
+ * live running total, reviewer approvals, and award classification.
+ * GET /api/v1/(university|college)/(university|college)-assessments/<id>/evaluate/
+ */
+export function fetchAssessmentScoring(framework, assessmentId) {
+  const isCollege = String(framework).toUpperCase().includes("COLLEGE");
+  const path = isCollege
+    ? `/v1/college/college-assessments/${assessmentId}/evaluate/`
+    : `/v1/university/university-assessments/${assessmentId}/evaluate/`;
+  return request(path);
+}
+
+/**
+ * Committee action: Accepts calculated score for a specific parameter.
+ * POST /api/v1/(university|college)/(university|college)-assessments/<id>/parameters/<param>/accept-score/
+ */
+export function acceptParameterScore(framework, assessmentId, parameterCode, comments = "") {
+  const isCollege = String(framework).toUpperCase().includes("COLLEGE");
+  const path = isCollege
+    ? `/v1/college/college-assessments/${assessmentId}/parameters/${parameterCode}/accept-score/`
+    : `/v1/university/university-assessments/${assessmentId}/parameters/${parameterCode}/accept-score/`;
+  return request(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ comments }),
+  });
+}
+
+/**
+ * Controlled Reviewer Override: Adjusts subcriterion score with mandatory reason.
+ * POST /api/v1/(university|college)/(university|college)-assessments/<id>/parameters/<param>/adjust-score/
+ */
+export function adjustParameterScore(framework, assessmentId, parameterCode, { subcriterion_code, adjusted_score, reason }) {
+  const isCollege = String(framework).toUpperCase().includes("COLLEGE");
+  const path = isCollege
+    ? `/v1/college/college-assessments/${assessmentId}/parameters/${parameterCode}/adjust-score/`
+    : `/v1/university/university-assessments/${assessmentId}/parameters/${parameterCode}/adjust-score/`;
+  return request(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ subcriterion_code, adjusted_score, reason }),
+  });
+}
+
+/**
+ * Formal certification of an assessment by authorized chair/admin
+ * POST /api/v1/(university|college)/(university|college)-assessments/<id>/certify/
+ */
+export function certifyAssessment(framework, assessmentId, { remarks = "" } = {}) {
+  const isCollege = String(framework).toUpperCase().includes("COLLEGE");
+  const path = isCollege
+    ? `/v1/college/college-assessments/${assessmentId}/certify/`
+    : `/v1/university/university-assessments/${assessmentId}/certify/`;
+  return request(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ remarks }),
+  });
+}
+
