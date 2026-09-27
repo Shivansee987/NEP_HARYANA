@@ -14,9 +14,11 @@ import {
   ShieldCheck,
   Calendar,
   Layers,
+  Eye,
 } from "lucide-react";
 import { StatusBadge } from "../common";
 import { UNRESOLVED_SPEC_NOTICES } from "../../utils/nepTaxonomy.js";
+import DocumentPreviewModal from "./DocumentPreviewModal";
 
 export default function ParameterFormView({
   framework = "COLLEGE_2026",
@@ -39,6 +41,33 @@ export default function ParameterFormView({
   const [saveError, setSaveError] = useState(null);
   const [validationError, setValidationError] = useState(null);
   const [touchedFields, setTouchedFields] = useState({});
+  const [previewModal, setPreviewModal] = useState({
+    isOpen: false,
+    documentId: "",
+    associationId: "",
+    filename: "",
+    mimeType: "",
+  });
+
+  const handleOpenPreview = (assoc) => {
+    const doc = assoc.evidence || {};
+    const docId = assoc.evidence_document_id || doc.document_id || "";
+    const assocId = assoc.association_id || assoc.id || "";
+    const name = assoc.original_filename || doc.original_filename || "Documentary Proof";
+    const mime = assoc.mime_type || doc.mime_type || "";
+
+    setPreviewModal({
+      isOpen: true,
+      documentId: docId ? String(docId) : "",
+      associationId: assocId ? String(assocId) : "",
+      filename: name,
+      mimeType: mime,
+    });
+  };
+
+  const handleClosePreview = () => {
+    setPreviewModal((prev) => ({ ...prev, isOpen: false }));
+  };
 
   const debounceTimerRef = useRef(null);
   const latestFormDataRef = useRef({});
@@ -530,6 +559,17 @@ export default function ParameterFormView({
                             </div>
 
                             <div className="shrink-0 flex items-center gap-2">
+                              {(doc.document_id || assoc.evidence_document_id || assoc.association_id || assoc.id) && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenPreview(assoc)}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-purple-50 text-purple-700 hover:text-purple-800 border border-purple-200 hover:border-purple-300 rounded-md text-[11px] font-bold transition-colors cursor-pointer shadow-2xs"
+                                  title="Open Document Preview"
+                                >
+                                  <Eye size={12} />
+                                  <span>View Document</span>
+                                </button>
+                              )}
                               <StatusBadge status={doc.status || "PRESENT"} size="sm" />
                             </div>
                           </div>
@@ -588,6 +628,16 @@ export default function ParameterFormView({
           </button>
         </div>
       </div>
+
+      {/* Document Preview Modal */}
+      <DocumentPreviewModal
+        isOpen={previewModal.isOpen}
+        onClose={handleClosePreview}
+        documentId={previewModal.documentId}
+        associationId={previewModal.associationId}
+        filename={previewModal.filename}
+        mimeType={previewModal.mimeType}
+      />
     </div>
   );
 }
