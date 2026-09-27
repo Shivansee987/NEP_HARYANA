@@ -2861,9 +2861,19 @@ export const UNIVERSITY_FRAMEWORK_DATA = {
 
 /**
  * Returns authoritative parameter title
+ * Supports both getParameterTitle(paramCode) and getParameterTitle(framework, paramCode)
  */
-export function getParameterTitle(framework, parameterId) {
-  const cleanId = String(parameterId || "").trim().toUpperCase();
+export function getParameterTitle(frameworkOrParamId, maybeParamId) {
+  let framework = "";
+  let cleanId = "";
+
+  if (maybeParamId !== undefined) {
+    framework = String(frameworkOrParamId || "");
+    cleanId = String(maybeParamId || "").trim().toUpperCase();
+  } else {
+    cleanId = String(frameworkOrParamId || "").trim().toUpperCase();
+  }
+
   const isCollege = String(framework || "").toUpperCase().includes("COLLEGE") || cleanId.startsWith("C");
   if (isCollege) {
     return COLLEGE_PARAMETER_TITLES[cleanId] || `Parameter ${cleanId}`;

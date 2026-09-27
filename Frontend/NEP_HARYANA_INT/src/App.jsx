@@ -20,6 +20,7 @@ import AdminLayout from "./components/Admin/AdminLayout";
 import AdminOverview from "./pages/Admin/AdminOverview";
 import CollegeManagement from "./pages/Admin/CollegeManagement";
 import CollegeDetail from "./pages/Admin/CollegeDetail";
+import AdminAssessmentDetail from "./pages/Admin/AdminAssessmentDetail";
 import Reports from "./pages/Admin/Reports";
 import Settings from "./pages/Admin/Settings";
 import Scoring from "./pages/Admin/Scoring";
@@ -143,6 +144,7 @@ function App() {
           <Route path="/admin/colleges" element={<CollegeManagement />} />
           <Route path="/admin/colleges/:id" element={<CollegeDetail />} />
           <Route path="/admin/scoring" element={<Scoring />} />
+          <Route path="/admin/assessments/:assessmentId" element={<AdminAssessmentDetail />} />
           <Route path="/admin/reports" element={<Reports />} />
           <Route path="/admin/settings" element={<Settings />} />
         </Route>

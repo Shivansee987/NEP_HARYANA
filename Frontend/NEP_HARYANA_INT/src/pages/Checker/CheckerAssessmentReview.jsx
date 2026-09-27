@@ -158,12 +158,8 @@ export default function CheckerAssessmentReview() {
       const assocs = data.evidence_associations || [];
       setEvidenceAssociations(assocs);
 
-      // Set initial selectedParamCode if none is set yet
-      setSelectedParamCode((prev) => {
-        if (prev) return prev;
-        if (assocs.length > 0) return assocs[0].parameter_id;
-        return null;
-      });
+      const defaultCode = data.framework === "UNIVERSITY_2026" ? "U1" : "C1";
+      setSelectedParamCode((prev) => prev || (assocs.length > 0 ? assocs[0].parameter_id : defaultCode));
 
       // Load authoritative scoring evaluation from frozen backend engine
       try {
@@ -171,13 +167,13 @@ export default function CheckerAssessmentReview() {
         setScoringEvaluation(scoring);
         setSelectedParamCode((prev) => {
           if (prev) return prev;
-          if (scoring.parameter_results) {
+          if (scoring.parameter_results && Object.keys(scoring.parameter_results).length > 0) {
             return Object.keys(scoring.parameter_results)[0];
           }
           if (assocs.length > 0) {
             return assocs[0].parameter_id;
           }
-          return null;
+          return defaultCode;
         });
       } catch (sErr) {
         console.warn("Could not fetch initial scoring evaluation:", sErr);
