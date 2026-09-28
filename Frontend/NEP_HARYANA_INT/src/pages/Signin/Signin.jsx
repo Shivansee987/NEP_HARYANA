@@ -6,7 +6,7 @@ import hshecLogo from "../../assets/hshec_logo.jpeg";
 import styles from "../Signup/Signup.module.css";
 import devStyles from "./Signin.module.css";
 import {
-  GraduationCap,
+  School,
   Landmark,
   Building2,
   ShieldCheck,
@@ -19,24 +19,44 @@ import {
 
 const DEV_ACCOUNTS = [
   {
-    key: "principal",
-    role: "College Principal",
+    key: "demo_college",
+    role: "Dyal Singh College, Karnal",
     badge: "College",
-    description: "C1–C22 Institutional Forms & Nominations",
-    email: "principal@dev.local",
-    password: "DevPrincipal@123",
-    icon: GraduationCap,
+    description: "Full data · All 22 forms filled · READY",
+    email: "principal.karnal@demo.local",
+    password: "Demo@1234",
+    icon: School,
     themeClass: devStyles.themeAmber,
   },
   {
-    key: "nodal",
-    role: "University Nodal Officer",
+    key: "demo_university",
+    role: "GJU, Hisar",
     badge: "University",
-    description: "U1–U20 Forms & College Oversight",
+    description: "Full data · All 20 forms filled · READY",
+    email: "nodal.gju@demo.local",
+    password: "Demo@1234",
+    icon: Landmark,
+    themeClass: devStyles.themeIndigo,
+  },
+  {
+    key: "principal",
+    role: "Dev Test College",
+    badge: "College · Empty",
+    description: "Blank assessment · Show empty forms",
+    email: "principal@dev.local",
+    password: "DevPrincipal@123",
+    icon: School,
+    themeClass: devStyles.themeSlate,
+  },
+  {
+    key: "nodal",
+    role: "Dev Test University",
+    badge: "University · Empty",
+    description: "Blank assessment · Show empty forms",
     email: "nodal@dev.local",
     password: "DevNodal@123",
     icon: Landmark,
-    themeClass: devStyles.themeIndigo,
+    themeClass: devStyles.themeSlate,
   },
   {
     key: "univadmin",

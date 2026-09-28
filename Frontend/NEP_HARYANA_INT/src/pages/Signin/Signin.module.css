@@ -278,6 +278,37 @@
   color: #6b21a8;
 }
 
+/* Demo College - Teal */
+.themeTeal {
+  border-color: #99f6e4;
+}
+.themeTeal:hover:not(:disabled) {
+  border-color: #0d9488;
+}
+.themeTeal .iconWrapper {
+  background: #f0fdfa;
+  color: #0f766e;
+}
+.themeTeal .roleTag {
+  background: #ccfbf1;
+  color: #0f766e;
+}
+/* Empty Demo (Slate / Grey) */
+.themeSlate {
+  border-color: #cbd5e1;
+}
+.themeSlate:hover:not(:disabled) {
+  border-color: #64748b;
+}
+.themeSlate .iconWrapper {
+  background: #f8fafc;
+  color: #475569;
+}
+.themeSlate .roleTag {
+  background: #f1f5f9;
+  color: #475569;
+}
+
 @media (max-width: 560px) {
   .devGrid {
     grid-template-columns: 1fr;
