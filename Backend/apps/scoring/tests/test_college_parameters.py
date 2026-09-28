@@ -25,6 +25,8 @@ from apps.scoring.evaluators.double_counting import DoubleCountingValidator
 from apps.scoring.rules.college import COLLEGE_EVALUATORS
 from apps.scoring.rules.definitions import COLLEGE_PARAMETERS
 
+IN_PERIOD = date(2025, 10, 1)
+
 
 class CollegeParametersTests(TestCase):
 
@@ -129,21 +131,38 @@ class CollegeParametersTests(TestCase):
 
     # -------------------------------------------------------------
     # C4: Supporting Other Institutes and Schools (Max: 4)
-    # Decomposed: C4.A (Max 2, heis_mentored) + C4.B (Max 2, schools_mentored >= 5) = Max 4
+    # Source: Other Institutes - 0.5 mark per area (max 2); Schools - 0.5 mark per area,
+    # only if a minimum of 5 schools are covered (max 2).
     # Mandatory evidence: EVID_C4_INSTITUTE_CERTS
     # -------------------------------------------------------------
     def test_c4_school_mentoring(self):
         eval_fn = COLLEGE_EVALUATORS["C4"]
         doc = self._make_verified_doc("EVID_C4_INSTITUTE_CERTS")
-        p_in = ParameterInput(
-            parameter_code="C4",
-            subcriteria_inputs={
-                "C4.A": SubcriterionInput(subcriterion_code="C4.A", raw_inputs={"heis_mentored": 2}, evidence_docs=[doc]),
-                "C4.B": SubcriterionInput(subcriterion_code="C4.B", raw_inputs={"schools_mentored": 6}, evidence_docs=[doc]),
-            }
-        )
-        res = eval_fn(p_in, self.context, self.validator)
+        all_areas = ["ACADEMIC_DEVELOPMENT", "COMMUNITY_ENGAGEMENT_AND_SERVICE",
+                     "CONTRIBUTION_TO_FIELDS_OF_PRACTICE", "FACULTY_DEVELOPMENT"]
+
+        def run(a_raw, b_raw):
+            p_in = ParameterInput(
+                parameter_code="C4",
+                subcriteria_inputs={
+                    "C4.A": SubcriterionInput(subcriterion_code="C4.A", raw_inputs=a_raw, evidence_docs=[doc]),
+                    "C4.B": SubcriterionInput(subcriterion_code="C4.B", raw_inputs=b_raw, evidence_docs=[doc]),
+                }
+            )
+            return eval_fn(p_in, self.context, DoubleCountingValidator())
+
+        res = run({"support_areas": all_areas}, {"schools_covered": 6, "school_support_areas": all_areas})
         self.assertEqual(res.raw_score, 4.0)
+        # one area each -> 0.5 + 0.5
+        res = run({"support_areas": ["FACULTY_DEVELOPMENT"]}, {"schools_covered": 5, "school_support_areas": ["ACADEMIC_DEVELOPMENT"]})
+        self.assertEqual(res.subcriteria_results["C4.A"].raw_score, 0.5)
+        self.assertEqual(res.subcriteria_results["C4.B"].raw_score, 0.5)
+        # fewer than 5 schools -> school support not applicable
+        res = run({}, {"schools_covered": 4, "school_support_areas": all_areas})
+        self.assertEqual(res.subcriteria_results["C4.B"].raw_score, 0.0)
+        # "etc." areas listed under other areas also count (0.5 each), capped at 2
+        res = run({"support_areas": all_areas, "other_support_areas": ["Library resource sharing"]}, {})
+        self.assertEqual(res.subcriteria_results["C4.A"].raw_score, 2.0)
 
     # -------------------------------------------------------------
     # C5: Student Enrollment against Sanctioned Seats (Max: 2)
@@ -198,8 +217,8 @@ class CollegeParametersTests(TestCase):
         self.assertEqual(res.raw_score, 6.0)
 
     # -------------------------------------------------------------
-    # C7: Bridge Courses for SEDGs (Max: 6, but visible sum: 3)
-    # CRITICAL: C7 has unresolved 3-mark deficit contradiction
+    # C7: Bridge Courses for SEDGs (Stated max 6; source tiers: 100% -> 3, >=75% -> 2, >=50% -> 1, <50% -> 0)
+    # Stated-max vs tier contradiction is policy item C7_MAXIMUM: scored literally, surfaced as an advisory.
     # Mandatory evidence: EVID_C7_OFFICE_ORDERS
     # -------------------------------------------------------------
     def test_c7_unresolved_deficit_contradiction(self):
@@ -210,19 +229,22 @@ class CollegeParametersTests(TestCase):
             subcriteria_inputs={
                 "C7.1": SubcriterionInput(
                     subcriterion_code="C7.1",
-                    raw_inputs={"sedg_bridge_students": 95, "total_sedg_students": 100},  # 95% > 90% -> 3 marks
+                    raw_inputs={"sedg_bridge_students": 95, "total_sedg_students": 100},  # 95% is "75% and above" -> 2
                     evidence_docs=[doc]
                 )
             }
         )
         res = eval_fn(p_in, self.context, self.validator)
-        self.assertEqual(res.raw_score, 3.0)
-        self.assertEqual(res.resolution_status, ResolutionStatus.UNRESOLVED_RULE)
-        self.assertIsNone(res.final_score)
+        self.assertEqual(res.raw_score, 2.0)
+        self.assertEqual(res.resolution_status, ResolutionStatus.CALCULABLE)
+        self.assertEqual(res.final_score, 2.0)
+        self.assertIn("C7_MAXIMUM", [n["policy_id"] for n in res.trace["policy_notices"]])
+        for pct, expected in [(100, 3.0), (75, 2.0), (74, 1.0), (50, 1.0), (49, 0.0)]:
+            p_in.subcriteria_inputs["C7.1"].raw_inputs = {"sedg_bridge_students": pct, "total_sedg_students": 100}
+            self.assertEqual(eval_fn(p_in, self.context, self.validator).raw_score, expected, pct)
 
     # -------------------------------------------------------------
-    # C8: Nomination of NEP-SARTHI (Declared Max: 2)
-    # CRITICAL: C8 has unresolved single unquantified textual line in source
+    # C8: Nomination of NEP-SARTHI (Max: 2) - binary: nominated + verified office order -> 2
     # Mandatory evidence: EVID_C8_OFFICE_ORDERS
     # -------------------------------------------------------------
     def test_c8_unresolved_single_line(self):
@@ -235,8 +257,10 @@ class CollegeParametersTests(TestCase):
             }
         )
         res = eval_fn(p_in, self.context, self.validator)
-        self.assertEqual(res.resolution_status, ResolutionStatus.UNRESOLVED_RULE)
-        self.assertIsNone(res.final_score)
+        self.assertEqual(res.resolution_status, ResolutionStatus.CALCULABLE)
+        self.assertEqual(res.final_score, 2.0)
+        p_in.subcriteria_inputs["C8.1"].raw_inputs = {"verified": False}
+        self.assertEqual(eval_fn(p_in, self.context, self.validator).raw_score, 0.0)
 
     # -------------------------------------------------------------
     # C9: Student Career Orientation and Placements (Max: 6)
@@ -279,7 +303,8 @@ class CollegeParametersTests(TestCase):
                 "C10.1": SubcriterionInput(
                     subcriterion_code="C10.1",
                     raw_inputs={"active_mous_count": 5},
-                    evidence_docs=[doc]
+                    evidence_docs=[doc],
+                    activity_date=IN_PERIOD,
                 )
             }
         )
@@ -297,7 +322,7 @@ class CollegeParametersTests(TestCase):
         p_in = ParameterInput(
             parameter_code="C11",
             subcriteria_inputs={
-                "C11.I": SubcriterionInput(subcriterion_code="C11.I", raw_inputs={"ventures_count": 12}, evidence_docs=[doc]),  # 3 marks
+                "C11.I": SubcriterionInput(subcriterion_code="C11.I", raw_inputs={"ventures_count": 12}, evidence_docs=[doc], activity_date=IN_PERIOD),  # 3 marks
                 "C11.II.a": SubcriterionInput(subcriterion_code="C11.II.a", raw_inputs={"cell_functional": True}, evidence_docs=[doc]),  # 1 mark
                 "C11.II.b": SubcriterionInput(subcriterion_code="C11.II.b", raw_inputs={"monetized_count": 8}, evidence_docs=[doc]),  # 8/12 = 66% >= 50% -> 1 mark
             }
@@ -317,7 +342,7 @@ class CollegeParametersTests(TestCase):
             parameter_code="C12",
             subcriteria_inputs={
                 "C12.1": SubcriterionInput(subcriterion_code="C12.1", raw_inputs={"verified": True}, evidence_docs=[doc]),
-                "C12.2": SubcriterionInput(subcriterion_code="C12.2", raw_inputs={"verified": True}, evidence_docs=[doc]),
+                "C12.2": SubcriterionInput(subcriterion_code="C12.2", raw_inputs={"verified": True}, evidence_docs=[doc], activity_date=IN_PERIOD),
                 "C12.3": SubcriterionInput(subcriterion_code="C12.3", raw_inputs={"verified": True}, evidence_docs=[doc]),
                 "C12.4": SubcriterionInput(subcriterion_code="C12.4", raw_inputs={"verified": True}, evidence_docs=[doc]),
                 "C12.5": SubcriterionInput(subcriterion_code="C12.5", raw_inputs={"verified": True}, evidence_docs=[doc]),
@@ -388,8 +413,8 @@ class CollegeParametersTests(TestCase):
         self.assertEqual(res.raw_score, 6.0)
 
     # -------------------------------------------------------------
-    # C16: Gender Parity, Safety and Inclusion (Declared Max: 4, Visible Items: 5)
-    # CRITICAL: C16 has unresolved 1-mark excess contradiction
+    # C16: Gender Parity, Safety and Inclusion (Stated Max: 4, five 1-mark items)
+    # Items score as written; the total is capped at the stated maximum (advisory policy C16_ITEMS_EXCEED_MAXIMUM)
     # Mandatory evidence: EVID_C16_ICC_ORDERS
     # -------------------------------------------------------------
     def test_c16_unresolved_excess_items(self):
@@ -406,8 +431,12 @@ class CollegeParametersTests(TestCase):
             }
         )
         res = eval_fn(p_in, self.context, self.validator)
-        self.assertEqual(res.resolution_status, ResolutionStatus.UNRESOLVED_RULE)
-        self.assertIsNone(res.final_score)
+        self.assertEqual(res.resolution_status, ResolutionStatus.CALCULABLE)
+        self.assertEqual(res.raw_score, 4.0)
+        self.assertEqual(res.final_score, 4.0)
+        notice = [n for n in res.trace["policy_notices"] if n["policy_id"] == "C16_ITEMS_EXCEED_MAXIMUM"][0]
+        self.assertTrue(notice["triggered"])
+        self.assertFalse(notice["blocks_certification"])
 
     # -------------------------------------------------------------
     # C17: Outreach, Community Engagement (Max: 5)
@@ -452,7 +481,7 @@ class CollegeParametersTests(TestCase):
 
     # -------------------------------------------------------------
     # C19: Research, Innovation and Patents (Max: 6)
-    # CRITICAL: C19.III Scopus index is UNRESOLVED in source rubric
+    # C19.III Scopus metric is undefined in the source: a CLAIMED value requires policy SCOPUS_METRIC
     # Mandatory evidence: EVID_C19_FILING_CERTS
     # -------------------------------------------------------------
     def test_c19_patents_and_unresolved_scopus(self):
@@ -461,15 +490,20 @@ class CollegeParametersTests(TestCase):
         p_in = ParameterInput(
             parameter_code="C19",
             subcriteria_inputs={
-                "C19.I": SubcriterionInput(subcriterion_code="C19.I", raw_inputs={"patents_filed": 10}, evidence_docs=[doc]),  # 2 marks
-                "C19.II": SubcriterionInput(subcriterion_code="C19.II", raw_inputs={"patents_granted": 10}, evidence_docs=[doc]),  # 2 marks
-                "C19.III": SubcriterionInput(subcriterion_code="C19.III", raw_inputs={"scopus_publications": 50}, evidence_docs=[doc]),
+                "C19.I": SubcriterionInput(subcriterion_code="C19.I", raw_inputs={"patents_filed": 10}, evidence_docs=[doc], activity_date=IN_PERIOD),  # 2 marks
+                "C19.II": SubcriterionInput(subcriterion_code="C19.II", raw_inputs={"patents_granted": 10}, evidence_docs=[self._make_verified_doc("EVID_C19_GRANT_CERTS")], activity_date=IN_PERIOD),  # 2 marks
+                "C19.III": SubcriterionInput(subcriterion_code="C19.III", raw_inputs={"scopus_index": 50}, evidence_docs=[], activity_date=IN_PERIOD),
             }
         )
         res = eval_fn(p_in, self.context, self.validator)
         self.assertEqual(res.raw_score, 4.0)
-        self.assertEqual(res.resolution_status, ResolutionStatus.UNRESOLVED_RULE)
+        self.assertEqual(res.resolution_status, ResolutionStatus.POLICY_UNRESOLVED)
         self.assertIsNone(res.final_score)
+        # Not claiming a Scopus value leaves the parameter fully calculable
+        p_in.subcriteria_inputs["C19.III"].raw_inputs = {}
+        res = eval_fn(p_in, self.context, DoubleCountingValidator())
+        self.assertEqual(res.resolution_status, ResolutionStatus.CALCULABLE)
+        self.assertEqual(res.evidence_gated_score, 4.0)
 
     def test_c19_ii_patents_granted_exact_tiers(self):
         """
@@ -496,8 +530,8 @@ class CollegeParametersTests(TestCase):
                 p_in = ParameterInput(
                     parameter_code="C19",
                     subcriteria_inputs={
-                        "C19.I": SubcriterionInput(subcriterion_code="C19.I", raw_inputs={"patents_filed": 0}, evidence_docs=[doc_filing]),
-                        "C19.II": SubcriterionInput(subcriterion_code="C19.II", raw_inputs={"patents_granted": cnt}, evidence_docs=[doc_grant]),
+                        "C19.I": SubcriterionInput(subcriterion_code="C19.I", raw_inputs={"patents_filed": 0}, evidence_docs=[doc_filing], activity_date=IN_PERIOD),
+                        "C19.II": SubcriterionInput(subcriterion_code="C19.II", raw_inputs={"patents_granted": cnt}, evidence_docs=[doc_grant], activity_date=IN_PERIOD),
                         "C19.III": SubcriterionInput(subcriterion_code="C19.III", raw_inputs={}, evidence_docs=[]),
                     }
                 )
@@ -505,8 +539,8 @@ class CollegeParametersTests(TestCase):
                 c19_ii_res = res.subcriteria_results["C19.II"]
                 self.assertEqual(c19_ii_res.raw_score, expected_score)
                 self.assertEqual(c19_ii_res.evidence_gated_score, expected_score)
-                # Ensure C19 overall resolution_status remains UNRESOLVED_RULE due to C19.III
-                self.assertEqual(res.resolution_status, ResolutionStatus.UNRESOLVED_RULE)
+                # No Scopus value claimed -> C19 is calculable
+                self.assertEqual(res.resolution_status, ResolutionStatus.CALCULABLE)
 
     def test_c19_i_boundary_transitions_p2_02(self):
         """
@@ -534,8 +568,8 @@ class CollegeParametersTests(TestCase):
                 p_in = ParameterInput(
                     parameter_code="C19",
                     subcriteria_inputs={
-                        "C19.I": SubcriterionInput(subcriterion_code="C19.I", raw_inputs={"patents_filed": cnt}, evidence_docs=[doc]),
-                        "C19.II": SubcriterionInput(subcriterion_code="C19.II", raw_inputs={"patents_granted": 0}, evidence_docs=[doc]),
+                        "C19.I": SubcriterionInput(subcriterion_code="C19.I", raw_inputs={"patents_filed": cnt}, evidence_docs=[doc], activity_date=IN_PERIOD),
+                        "C19.II": SubcriterionInput(subcriterion_code="C19.II", raw_inputs={"patents_granted": 0}, evidence_docs=[doc], activity_date=IN_PERIOD),
                         "C19.III": SubcriterionInput(subcriterion_code="C19.III", raw_inputs={}, evidence_docs=[doc]),
                     }
                 )
@@ -543,11 +577,11 @@ class CollegeParametersTests(TestCase):
                 c19_i_res = res.subcriteria_results["C19.I"]
                 self.assertEqual(c19_i_res.raw_score, expected_score)
                 self.assertEqual(c19_i_res.evidence_gated_score, expected_score)
-                self.assertEqual(res.resolution_status, ResolutionStatus.UNRESOLVED_RULE)
+                self.assertEqual(res.resolution_status, ResolutionStatus.CALCULABLE)
 
     # -------------------------------------------------------------
     # C20: Quality Assurance, NAAC/NIRF/AISHE (Max: 5)
-    # Decomposed: C20.1 (Max 2, A/A+/A++/B++: 2, B/B+: 1) + C20.2 (1) + C20.3 (1) + C20.4 (1)
+    # Decomposed: C20.1 (Max 2, A++/A+/A: 2, B++/B+/B: 1) + C20.2 (1) + C20.3 (1) + C20.4 (1)
     # Mandatory evidence: EVID_C20_NAAC_CERT
     # -------------------------------------------------------------
     def test_c20_naac_quality(self):
@@ -566,8 +600,9 @@ class CollegeParametersTests(TestCase):
         self.assertEqual(res.raw_score, 5.0)
 
     # -------------------------------------------------------------
-    # C21: Cultural Activities, Constitutional Values (Declared Max: 4, Criteria Sum: 3)
-    # CRITICAL: C21 has source arithmetic deficit (C21.1: 2, C21.2: 1 = 3 vs Max 4)
+    # C21: Cultural Activities, Constitutional Values (Stated Max: 4, achievable 3)
+    # Source: five or more activities -> 2; two to four -> 1; no activity -> 0; integration -> 1.
+    # Stated-max vs achievable is advisory policy C21_MAXIMUM (scored literally).
     # Mandatory evidence: EVID_C21_ACTIVITY_REPORTS
     # -------------------------------------------------------------
     def test_c21_arithmetic_deficit(self):
@@ -576,16 +611,21 @@ class CollegeParametersTests(TestCase):
         p_in = ParameterInput(
             parameter_code="C21",
             subcriteria_inputs={
-                "C21.1": SubcriterionInput(subcriterion_code="C21.1", raw_inputs={"activities_count": 15}, evidence_docs=[doc]),  # 2 marks
+                "C21.1": SubcriterionInput(subcriterion_code="C21.1", raw_inputs={"activities_count": 15}, evidence_docs=[doc], activity_date=IN_PERIOD),  # 2 marks
                 "C21.2": SubcriterionInput(subcriterion_code="C21.2", raw_inputs={"verified": True}, evidence_docs=[doc]),  # 1 mark
             }
         )
         res = eval_fn(p_in, self.context, self.validator)
-        # Raw score is 3.0, but resolution status must be SOURCE_INCONSISTENCY
-        # and final_score must be None!
         self.assertEqual(res.raw_score, 3.0)
-        self.assertEqual(res.resolution_status, ResolutionStatus.SOURCE_INCONSISTENCY)
-        self.assertIsNone(res.final_score)
+        self.assertEqual(res.resolution_status, ResolutionStatus.CALCULABLE)
+        self.assertEqual(res.final_score, 3.0)
+        self.assertIn("C21_MAXIMUM", [n["policy_id"] for n in res.trace["policy_notices"]])
+        for n, expected in [(5, 2.0), (4, 1.0), (2, 1.0), (0, 0.0)]:
+            p_in.subcriteria_inputs["C21.1"].raw_inputs = {"activities_count": n}
+            self.assertEqual(eval_fn(p_in, self.context, self.validator).subcriteria_results["C21.1"].raw_score, expected, n)
+        # exactly one activity is not covered by the source -> boundary policy
+        p_in.subcriteria_inputs["C21.1"].raw_inputs = {"activities_count": 1}
+        self.assertEqual(eval_fn(p_in, self.context, self.validator).resolution_status, ResolutionStatus.BOUNDARY_UNRESOLVED)
 
     # -------------------------------------------------------------
     # C22: Governance, Student Feedback (Max: 2)

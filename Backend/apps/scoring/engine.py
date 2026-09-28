@@ -102,11 +102,32 @@ class NEP2026ScoringEngine:
                 param_in = ParameterInput(parameter_code=param_code)
 
             # Execute Step 6 (Period), Step 7 (Raw), Step 8 (Gating), Step 9 (Double Counting), Step 10 & 11 (Aggregation)
-            param_res = evaluator_fn(param_in, ctx, validator)
+            try:
+                param_res = evaluator_fn(param_in, ctx, validator)
+            except Exception as exc:  # safety net: one bad parameter must never abort the whole assessment
+                param_res = ParameterResult(
+                    parameter_code=param_code,
+                    max_marks=float(param_def["max_marks"]),
+                    raw_score=0.0,
+                    evidence_gated_score=0.0,
+                    review_adjusted_score=None,
+                    final_score=None,
+                    resolution_status=ResolutionStatus.INVALID_INPUT,
+                    aggregation_strategy=param_def["aggregation_strategy"],
+                    subcriteria_results={},
+                    trace={"validation_errors": [{"field": param_code, "code": "EVALUATION_ERROR",
+                                                  "message": f"{type(exc).__name__}: {exc}"}]},
+                )
             parameter_results[param_code] = param_res
 
             # Check for blocking conditions
-            if param_res.resolution_status == ResolutionStatus.UNRESOLVED_RULE:
+            if param_res.resolution_status == ResolutionStatus.POLICY_UNRESOLVED:
+                ids = sorted({n["policy_id"] for n in param_res.trace.get("policy_notices", []) if n.get("blocks_certification")})
+                blocking_reasons.append(
+                    f"Parameter {param_code} is BLOCKED_BY_POLICY: input requires policy decision(s) {', '.join(ids)} "
+                    f"to be configured by the rubric owner (POLICY_CONFIGURATION_REQUIRED)."
+                )
+            elif param_res.resolution_status == ResolutionStatus.UNRESOLVED_RULE:
                 blocking_reasons.append(
                     f"Parameter {param_code} is BLOCKED: Source specification is contradictory or underspecified."
                 )
@@ -119,8 +140,13 @@ class NEP2026ScoringEngine:
                     f"Parameter {param_code} is BLOCKED: Source rubric items sum contradicts declared maximum."
                 )
             elif param_res.resolution_status == ResolutionStatus.INVALID_INPUT:
+                details = "; ".join(
+                    f"{e.get('subcriterion', e.get('field'))}: {e.get('message')}"
+                    for e in param_res.trace.get("validation_errors", [])[:3]
+                )
                 blocking_reasons.append(
                     f"Parameter {param_code} is BLOCKED: Input data is invalid, contradictory, or malformed."
+                    + (f" ({details})" if details else "")
                 )
 
         # Record any cross-parameter double-counting conflicts detected
@@ -176,6 +202,10 @@ class NEP2026ScoringEngine:
             "raw_total_after_cap": raw_total,
             "evidence_gated_total_before_cap": gated_sum,
             "evidence_gated_total_after_cap": evidence_gated_total,
+            "max_marks_by_parameter": {code: float(target_definitions[code]["max_marks"]) for code in expected_param_keys},
+            "policy_notices": [
+                n for p in parameter_results.values() for n in p.trace.get("policy_notices", [])
+            ],
         }
 
         # -------------------------------------------------------------
@@ -219,6 +249,8 @@ class NEP2026ScoringEngine:
         final_certified_total: Optional[float] = None
         if any("BLOCKED: Source specification" in r or "contradicts declared maximum" in r for r in blocking_reasons):
             cert_status = CertificationStatus.BLOCKED_BY_SPECIFICATION
+        elif any("BLOCKED_BY_POLICY" in r for r in blocking_reasons):
+            cert_status = CertificationStatus.BLOCKED_BY_POLICY
         elif any("BLOCKED: Input landed on an unresolved boundary" in r for r in blocking_reasons):
             cert_status = CertificationStatus.BLOCKED_BY_BOUNDARY
         elif has_pending_evidence:

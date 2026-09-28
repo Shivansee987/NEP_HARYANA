@@ -164,25 +164,17 @@ def evaluate_subcriterion_contract_evidence(
     # 1. Resolve exact subcriterion contract from Step 4C taxonomy
     contract = get_subcriterion_contract(clean_fw, param_clean, sub_clean)
 
-    # 2. Check SOURCE_SILENT contract
+    # 2. SOURCE_SILENT contract: the source defines no documentary requirement for this subcriterion
+    #    (College C5, C9 — the College PDF has no general evidence clause). Evidence upload is not permitted
+    #    for these, so requiring it would make the marks unreachable. The reviewer still reviews the
+    #    submitted value; the score is not evidence-gated.
     if (contract and contract.status == ContractStatus.SOURCE_SILENT) or param_clean in SOURCE_SILENT_PARAMETERS:
         trace["contract_status"] = "SOURCE_SILENT"
-        if not uploaded_docs:
-            trace["gating_decision"] = f"Subcriterion {sub_clean} is SOURCE_SILENT. No documentary evidence provided; score blocked."
-            return GatingStatus.FAILED_EVIDENCE_ABSENT, 0.0, trace
-
-        # Existing source-silent handling: verify if legacy proof is passed and verified
-        legacy_mandatory = param_def.get("mandatory_evidence", []) if param_def else []
-        if legacy_mandatory:
-            # Check if any matching legacy document is verified/rejected/pending
-            # Note: invented evidence types (not in legacy_mandatory) cannot satisfy!
-            status, mult, sub_trace = evaluate_evidence(legacy_mandatory, uploaded_docs)
-            trace["legacy_evaluation"] = sub_trace
-            trace["gating_decision"] = f"Source-silent evaluated against legacy specification proof: {status.value}"
-            return status, mult, trace
-
-        trace["gating_decision"] = f"Subcriterion {sub_clean} is SOURCE_SILENT with no defined evidence. Score blocked."
-        return GatingStatus.FAILED_EVIDENCE_ABSENT, 0.0, trace
+        trace["gating_decision"] = (
+            f"Subcriterion {sub_clean} is SOURCE_SILENT: the source defines no documentary requirement; "
+            f"score follows the submitted value subject to committee review."
+        )
+        return GatingStatus.NO_EVIDENCE_REQUIRED, 1.0, trace
 
     # 3. Check UNRESOLVED_MISSING contract
     if contract and contract.status == ContractStatus.UNRESOLVED_MISSING:
@@ -307,13 +299,9 @@ def evaluate_subcriterion_contract_evidence(
             else:
                 has_any_pending = True
 
-    # 7. Make Gating Decision
-    # Priority 1: Exact subcriterion association rejected
-    if has_any_rejection:
-        trace["gating_decision"] = f"Exact subcriterion evidence for {sub_clean} was rejected."
-        return GatingStatus.FAILED_EVIDENCE_REJECTED, 0.0, trace
-
-    # Priority 2: No valid candidates for required types
+    # 7. Make Gating Decision (same semantics as evaluate_evidence: a rejected document only fails the
+    #    subcriterion when no verified document satisfies it)
+    # Priority 1: No valid candidates for required types
     if not valid_candidates:
         trace["gating_decision"] = f"Missing mandatory documentary proof for {sub_clean}."
         return GatingStatus.FAILED_EVIDENCE_ABSENT, 0.0, trace
@@ -322,15 +310,22 @@ def evaluate_subcriterion_contract_evidence(
     if contract is None and is_single and len(allowed_types) > 1:
         return evaluate_evidence(allowed_types, valid_candidates)
 
-    # Priority 3: Candidates pending verification
-    if not has_any_verified and has_any_pending:
-        trace["gating_decision"] = f"Evidence for {sub_clean} is pending verification."
-        return GatingStatus.PROVISIONAL_PENDING_VERIFICATION, 0.0, trace
-
-    # Priority 4: Verified
+    # Priority 2: Verified evidence satisfies the contract (sibling rejections do not override it)
     if has_any_verified:
         trace["gating_decision"] = f"Subcriterion {sub_clean} evidence contract verified."
+        if has_any_rejection:
+            trace["rejected_documents_ignored"] = True
         return GatingStatus.PASSED_EVIDENCE_VERIFIED, 1.0, trace
+
+    # Priority 3: Only rejected (possibly with pending) evidence
+    if has_any_rejection:
+        trace["gating_decision"] = f"Exact subcriterion evidence for {sub_clean} was rejected and no verified evidence exists."
+        return GatingStatus.FAILED_EVIDENCE_REJECTED, 0.0, trace
+
+    # Priority 4: Candidates pending verification
+    if has_any_pending:
+        trace["gating_decision"] = f"Evidence for {sub_clean} is pending verification."
+        return GatingStatus.PROVISIONAL_PENDING_VERIFICATION, 0.0, trace
 
     trace["gating_decision"] = f"Evidence requirements unfulfilled for {sub_clean}."
     return GatingStatus.FAILED_EVIDENCE_ABSENT, 0.0, trace

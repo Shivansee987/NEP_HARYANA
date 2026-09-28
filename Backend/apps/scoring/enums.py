@@ -62,6 +62,8 @@ class ResolutionStatus(str, Enum):
     BOUNDARY_UNRESOLVED = "BOUNDARY_UNRESOLVED"
     INVALID_INPUT = "INVALID_INPUT"
     SOURCE_INCONSISTENCY = "SOURCE_INCONSISTENCY"
+    # Input triggered a source gap that only the rubric owner can close (apps.scoring.policy)
+    POLICY_UNRESOLVED = "POLICY_UNRESOLVED"
 
 
 class CertificationStatus(str, Enum):
@@ -71,6 +73,8 @@ class CertificationStatus(str, Enum):
     BLOCKED_BY_EVIDENCE = "BLOCKED_BY_EVIDENCE"
     BLOCKED_BY_BOUNDARY = "BLOCKED_BY_BOUNDARY"
     BLOCKED_BY_VALIDATION = "BLOCKED_BY_VALIDATION"
+    # A policy decision (apps.scoring.policy) must be configured before this result can be certified
+    BLOCKED_BY_POLICY = "BLOCKED_BY_POLICY"
 
 
 class PeriodRule(str, Enum):

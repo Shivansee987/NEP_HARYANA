@@ -129,8 +129,9 @@ MULTI_SUBCRITERION_PARAMETERS: Set[str] = {
     "C4", "C5", "C9", "C10", "C11", "C14", "C15", "C16", "C18", "C19", "C20", "C21", "C22",
 }
 
-# Source-silent parameters where authoritative source specifies no documentary evidence
-SOURCE_SILENT_PARAMETERS: Set[str] = {"U6", "C5", "C9"}
+# Source-silent parameters where the authoritative source specifies no documentary evidence.
+# U6 is NOT source-silent: the University PDF's general instructions require documentary evidence for all marks.
+SOURCE_SILENT_PARAMETERS: Set[str] = {"C5", "C9"}
 
 # Legacy coarse evidence types that must be quarantined from unlocking multi-subcriterion requirements
 LEGACY_COARSE_EVIDENCE_TYPES: Set[str] = {
@@ -189,12 +190,17 @@ ADDITIONAL_UNIVERSITY_EVIDENCE_TYPES: Set[str] = {
     "EVID_U16_GRANT",
     "EVID_U17_NIRF_2025_RANK",
     "EVID_U18_LEARNER_CERTS",
+    "EVID_U18_WORKSHOP_RECORDS",
+    "EVID_U18_RPL_FORMAT",
+    "EVID_U6_PEDAGOGY_RECORDS",
+    "EVID_U16_SCOPUS_REPORT",
     "EVID_U20_CURRICULUM_MAP",
     "EVID_U20_SUSTAINABILITY_REPORT",
 }
 
 ADDITIONAL_COLLEGE_EVIDENCE_TYPES: Set[str] = {
     "EVID_C19_GRANT_CERTS",
+    "EVID_C19_SCOPUS_REPORT",
     "EVID_C20_NIRF_PROOF",
     "EVID_C20_AISHE_CERT",
     "EVID_C20_IQAC_MINUTES",
@@ -285,8 +291,8 @@ _register_contract(
     allowed_evidence_types=("EVID_U3_SYLLABUS",),
 )
 
-# U4 (4 subcriteria)
-for sub_id, alias in [("U4.A", "U4.1"), ("U4.B", "U4.2"), ("U4.1", "U4.A"), ("U4.2", "U4.B")]:
+# U4 (2 subcriteria: U4.A = 2024-25 targets, U4.B = 2025-26 targets; one canonical code each)
+for sub_id in ("U4.A", "U4.B"):
     _register_contract(
         framework="UNIVERSITY_2026",
         parameter_id="U4",
@@ -295,7 +301,6 @@ for sub_id, alias in [("U4.A", "U4.1"), ("U4.B", "U4.2"), ("U4.1", "U4.A"), ("U4
         canonical_evidence_type="EVID_U4_PROGRESS_REPORT",
         score_unlock_requirement="Verified approved progress report or IDP target sheet",
         allowed_evidence_types=("EVID_U4_PROGRESS_REPORT", "EVID_U4_IDP", "EVID_U4_TARGET_SHEET"),
-        aliases=(alias,),
     )
 
 # U5 (2 subcriteria)
@@ -311,21 +316,28 @@ for sub_id, alias in [("U5.A", "U5.1"), ("U5.B", "U5.2")]:
         aliases=(alias,),
     )
 
-# U6 (2 subcriteria: SOURCE_SILENT)
-for sub_id, alias in [("U6.A", "U6.1"), ("U6.B", "U6.2")]:
-    _register_contract(
-        framework="UNIVERSITY_2026",
-        parameter_id="U6",
-        subcriterion_id=sub_id,
-        source_documentary_requirement=None,
-        canonical_evidence_type=None,
-        score_unlock_requirement="SOURCE_SILENT_UNRESOLVED_NO_UNLOCK",
-        status=ContractStatus.SOURCE_SILENT,
-        allowed_evidence_types=(),
-        is_source_silent=True,
-        notes="Authoritative NEP 2026 specification has no documentary evidence clause for U6. Fails closed.",
-        aliases=(alias,),
-    )
+# U6 (2 subcriteria). The U6 row has no evidence line, but the University PDF's general instructions
+# require documentary evidence for all marks, so evidence must be uploadable and verified.
+_register_contract(
+    framework="UNIVERSITY_2026",
+    parameter_id="U6",
+    subcriterion_id="U6.A",
+    source_documentary_requirement="Amended Examination Ordinance for assessing learning outcomes (general instruction: documentary evidence required)",
+    canonical_evidence_type="EVID_U6_ORDINANCE_GAZETTE",
+    score_unlock_requirement="Verified amended examination ordinance",
+    allowed_evidence_types=("EVID_U6_ORDINANCE_GAZETTE",),
+    aliases=("U6.1",),
+)
+_register_contract(
+    framework="UNIVERSITY_2026",
+    parameter_id="U6",
+    subcriterion_id="U6.B",
+    source_documentary_requirement="Records of experiential-learning / problem-solving interventions implemented (general instruction: documentary evidence required)",
+    canonical_evidence_type="EVID_U6_PEDAGOGY_RECORDS",
+    score_unlock_requirement="Verified records of implemented pedagogical interventions",
+    allowed_evidence_types=("EVID_U6_PEDAGOGY_RECORDS",),
+    aliases=("U6.2",),
+)
 
 # U7 (4 subcriteria: Independent, no sibling leakage)
 _register_contract(
@@ -586,23 +598,20 @@ _register_contract(
     framework="UNIVERSITY_2026",
     parameter_id="U18",
     subcriterion_id="U18.2",
-    source_documentary_requirement="Certificates issued to learners under RPL",
-    canonical_evidence_type="EVID_U18_LEARNER_CERTS",
-    score_unlock_requirement="Verified RPL learner certificates",
-    allowed_evidence_types=("EVID_U18_LEARNER_CERTS",),
+    source_documentary_requirement="Approval records and report of the RPL awareness workshop for faculty/staff/students",
+    canonical_evidence_type="EVID_U18_WORKSHOP_RECORDS",
+    score_unlock_requirement="Verified RPL awareness workshop records",
+    allowed_evidence_types=("EVID_U18_WORKSHOP_RECORDS",),
 )
 
 _register_contract(
     framework="UNIVERSITY_2026",
     parameter_id="U18",
     subcriterion_id="U18.3",
-    source_documentary_requirement=None,
-    canonical_evidence_type=None,
-    score_unlock_requirement="UNRESOLVED_MISSING_NO_UNLOCK",
-    status=ContractStatus.UNRESOLVED_MISSING,
-    allowed_evidence_types=(),
-    is_unresolved=True,
-    notes="Source specifies workshop organized under RPL, but documentary evidence section does not define required documentation. Fails closed.",
+    source_documentary_requirement="RPL format for students circulated with guidelines (approval records; applications assessed / credits awarded)",
+    canonical_evidence_type="EVID_U18_RPL_FORMAT",
+    score_unlock_requirement="Verified circulated RPL format and guidelines",
+    allowed_evidence_types=("EVID_U18_RPL_FORMAT", "EVID_U18_LEARNER_CERTS"),
 )
 
 # U19 (2 subcriteria: U19.A, U19.B)
@@ -992,6 +1001,60 @@ for sub_id, alias in [("C22.1", "C22.I"), ("C22.2", "C22.II")]:
     )
 
 
+# -----------------------------------------------------------------------------
+# Documentary requirement text is taken from the source PDFs' evidence lines
+# (apps.scoring.field_schema), replacing earlier paraphrases that added requirements
+# not present in the source (e.g. "QS top 500", "minimum 40 hours", "Societies Act").
+# U6 and U18 keep their subcriterion-specific wording defined above.
+# -----------------------------------------------------------------------------
+def _align_documentary_text_with_source() -> None:
+    from dataclasses import replace
+    from apps.scoring.field_schema import COLLEGE_FIELD_SCHEMA, UNIVERSITY_FIELD_SCHEMA
+
+    for key, contract in list(SUBCRITERION_EVIDENCE_CONTRACTS.items()):
+        if contract.status != ContractStatus.ACTIVE or contract.parameter_id in ("U6", "U18"):
+            continue
+        schema = (UNIVERSITY_FIELD_SCHEMA if contract.framework == "UNIVERSITY_2026" else COLLEGE_FIELD_SCHEMA).get(contract.parameter_id)
+        if schema and schema.get("evidence_text"):
+            SUBCRITERION_EVIDENCE_CONTRACTS[key] = replace(contract, source_documentary_requirement=schema["evidence_text"])
+
+
+_align_documentary_text_with_source()
+
+# Scopus subcriteria: evidence can only be accepted once the rubric owner defines the metric
+# (policy SCOPUS_METRIC). Until then the static UNRESOLVED_MISSING contract applies.
+_SCOPUS_SUBCRITERIA = {
+    ("COLLEGE_2026", "C19", "C19.III"): "EVID_C19_SCOPUS_REPORT",
+    ("UNIVERSITY_2026", "U16", "U16.III"): "EVID_U16_SCOPUS_REPORT",
+}
+
+
+def _policy_scopus_contract(contract: SubcriterionEvidenceContract) -> SubcriterionEvidenceContract:
+    key = (contract.framework, contract.parameter_id, contract.subcriterion_id)
+    if key not in _SCOPUS_SUBCRITERIA:
+        return contract
+    from apps.scoring.policy import scopus_metric_resolution
+
+    resolution = scopus_metric_resolution()
+    if not resolution:
+        return contract
+    ev_type = resolution.get("evidence_type")
+    if ev_type not in ALL_EVIDENCE_TYPES:
+        ev_type = _SCOPUS_SUBCRITERIA[key]
+    return SubcriterionEvidenceContract(
+        framework=contract.framework,
+        parameter_id=contract.parameter_id,
+        subcriterion_id=contract.subcriterion_id,
+        source_documentary_requirement=resolution.get(
+            "documentary_requirement", f"Proof of the configured Scopus metric: {resolution.get('metric_label', 'Scopus index')}"),
+        canonical_evidence_type=ev_type,
+        score_unlock_requirement="Verified proof of the configured Scopus metric",
+        status=ContractStatus.ACTIVE,
+        allowed_evidence_types=(ev_type,),
+        notes="Activated by policy SCOPUS_METRIC.",
+    )
+
+
 def normalize_framework(framework: str) -> str:
     """Normalizes and validates framework identifier."""
     if not framework:
@@ -1026,12 +1089,12 @@ def get_subcriterion_contract(
     # Direct lookup
     contract = SUBCRITERION_EVIDENCE_CONTRACTS.get((clean_fw, param_clean, sub_clean))
     if contract:
-        return contract
+        return _policy_scopus_contract(contract)
 
     # Case-insensitive or stripped lookup
     for (fw_k, p_k, s_k), c in SUBCRITERION_EVIDENCE_CONTRACTS.items():
         if fw_k == clean_fw and p_k == param_clean and s_k.upper() == sub_clean:
-            return c
+            return _policy_scopus_contract(c)
 
     return None
 

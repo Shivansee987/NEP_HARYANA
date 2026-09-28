@@ -146,8 +146,13 @@ class ReviewerAdjustmentService:
                 found_param_res=found_param_res,
             )
 
-        # 4. Prohibited Action: Cannot bypass unresolved specification blocks
-        if found_sub_res.resolution_status in (ResolutionStatus.UNRESOLVED_RULE, ResolutionStatus.BOUNDARY_UNRESOLVED):
+        # 4. Prohibited Action: Cannot bypass unresolved specification / policy / invalid-input blocks
+        if found_sub_res.resolution_status in (
+            ResolutionStatus.UNRESOLVED_RULE,
+            ResolutionStatus.BOUNDARY_UNRESOLVED,
+            ResolutionStatus.POLICY_UNRESOLVED,
+            ResolutionStatus.INVALID_INPUT,
+        ):
             return ReviewerAdjustmentService._reject_adjustment(
                 framework_result,
                 (
@@ -172,8 +177,10 @@ class ReviewerAdjustmentService:
                 found_param_res=found_param_res,
             )
 
-        # 5. Prohibited Action: Cannot bypass evidence requirements (zero earned score if evidence rejected or absent)
-        if found_sub_res.gating_status in (GatingStatus.FAILED_EVIDENCE_ABSENT, GatingStatus.FAILED_EVIDENCE_REJECTED):
+        # 5. Prohibited Action: Cannot bypass evidence requirements. A positive score requires verified evidence
+        #    (or a subcriterion for which the source defines no documentary requirement). Pending, rejected
+        #    and absent evidence can never be converted into marks by an adjustment.
+        if found_sub_res.gating_status not in (GatingStatus.PASSED_EVIDENCE_VERIFIED, GatingStatus.NO_EVIDENCE_REQUIRED):
             if adjustment.adjusted_score > 0.0:
                 return ReviewerAdjustmentService._reject_adjustment(
                     framework_result,
@@ -197,7 +204,7 @@ class ReviewerAdjustmentService:
         # 6. Apply adjustment to SubcriterionResult
         adjustment.original_score = previous_score
         found_sub_res.review_adjusted_score = adjustment.adjusted_score
-        if found_sub_res.gating_status == GatingStatus.PASSED_EVIDENCE_VERIFIED:
+        if found_sub_res.gating_status in (GatingStatus.PASSED_EVIDENCE_VERIFIED, GatingStatus.NO_EVIDENCE_REQUIRED):
             found_sub_res.final_score = adjustment.adjusted_score
             resulting_state = "FINALIZABLE"
         else:
@@ -285,6 +292,8 @@ class ReviewerAdjustmentService:
             framework_result.final_certified_total = None
             if any("BLOCKED: Source specification" in r or "contradicts declared maximum" in r for r in framework_result.blocking_reasons):
                 framework_result.certification_status = CertificationStatus.BLOCKED_BY_SPECIFICATION
+            elif any("BLOCKED_BY_POLICY" in r for r in framework_result.blocking_reasons):
+                framework_result.certification_status = CertificationStatus.BLOCKED_BY_POLICY
             elif any("BLOCKED: Input landed on an unresolved boundary" in r for r in framework_result.blocking_reasons):
                 framework_result.certification_status = CertificationStatus.BLOCKED_BY_BOUNDARY
             elif any("Reviewer adjustment rejected" in r for r in framework_result.blocking_reasons):

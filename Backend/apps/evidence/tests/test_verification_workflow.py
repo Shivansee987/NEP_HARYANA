@@ -118,9 +118,18 @@ class VerificationWorkflowTestCase(TestCase):
         assessment_id="ASSESS-C-2026-001",
         parameter_id=None,
         subcriterion_id=None,
+        evidence_type=None,
     ) -> EvidenceDocument:
         """Helper to create and submit evidence to PENDING state."""
         uploader = uploader or self.principal_karnal
+        # Canonical NEP 2026 evidence types (the taxonomy rejects unknown identifiers such as EVID_CERTIFICATE)
+        if evidence_type is None:
+            from apps.evidence.taxonomy import get_subcriterion_contract
+            contract = get_subcriterion_contract(framework, parameter_id, subcriterion_id) if parameter_id else None
+            if contract and contract.canonical_evidence_type:
+                evidence_type = contract.canonical_evidence_type
+            else:
+                evidence_type = "EVID_U1_APPROVAL" if framework == "UNIVERSITY_2026" else "EVID_C1_APPROVED_IDP"
         doc = EvidenceService.create_evidence(
             uploader=uploader,
             assessment_id=assessment_id,
@@ -129,7 +138,7 @@ class VerificationWorkflowTestCase(TestCase):
             institution_id=institution_id,
             original_filename="sample_evidence.pdf",
             file_bytes=self.sample_bytes,
-            evidence_type="EVID_CERTIFICATE",
+            evidence_type=evidence_type,
             document_date=date(2025, 9, 15),
             academic_year="2025-26",
         )
@@ -430,7 +439,7 @@ class TestVerificationDecision(VerificationWorkflowTestCase):
 
         scoring_doc = EvidenceService.to_scoring_domain(doc)
         status, multiplier, _ = evaluate_evidence(
-            mandatory_evidence_types=["EVID_CERTIFICATE"],
+            mandatory_evidence_types=["EVID_C1_APPROVED_IDP"],
             uploaded_docs=[scoring_doc]
         )
         self.assertEqual(status, GatingStatus.PASSED_EVIDENCE_VERIFIED)
@@ -480,7 +489,7 @@ class TestRejectionDecision(VerificationWorkflowTestCase):
 
         scoring_doc = EvidenceService.to_scoring_domain(doc)
         status, multiplier, _ = evaluate_evidence(
-            mandatory_evidence_types=["EVID_CERTIFICATE"],
+            mandatory_evidence_types=["EVID_C1_APPROVED_IDP"],
             uploaded_docs=[scoring_doc]
         )
         self.assertEqual(status, GatingStatus.FAILED_EVIDENCE_REJECTED)
@@ -661,7 +670,7 @@ class TestScoringEngineIntegration(VerificationWorkflowTestCase):
             institution_id="C-3001",
             original_filename="certified_proof.pdf",
             file_bytes=valid_bytes,
-            evidence_type="EVID_CERTIFICATE",
+            evidence_type="EVID_C1_APPROVED_IDP",
         )
         # Note: doc1 had subcriterion association, now associate doc2
         # Since unique constraint is (evidence, parameter_id, subcriterion_id), doc2 can link cleanly

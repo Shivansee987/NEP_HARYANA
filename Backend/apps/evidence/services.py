@@ -10,6 +10,7 @@ from django.utils import timezone
 from apps.scoring.domain import EvidenceDocument as ScoringEvidenceDocument
 from apps.scoring.enums import EvidenceState as ScoringEvidenceState, GatingStatus
 from apps.scoring.evaluators.evidence_gating import evaluate_evidence
+from apps.scoring.orchestration import schedule_score_refresh
 
 from .enums import (
     AssignmentStatus,
@@ -30,6 +31,7 @@ from .exceptions import (
     ReviewerAssignmentError,
     ReviewerConflictOfInterestError,
     ReviewerNotAuthorizedError,
+    ReviewerFrameworkMismatchError,
     UnauthorizedEvidenceActionError,
 )
 from .models import (
@@ -272,7 +274,7 @@ class EvidenceService:
                 allowed_fw.extend(['COLLEGE_2026', 'COLLEGE'])
             fw_matching = user_auths.filter(framework__in=allowed_fw)
             if not fw_matching.exists():
-                raise ReviewerNotAuthorizedError(
+                raise ReviewerFrameworkMismatchError(
                     f"Reviewer is not authorized for framework '{doc.framework}'."
                 )
             inst_matching = fw_matching.filter(institution_id__in=["", doc.institution_id])
@@ -621,6 +623,7 @@ class EvidenceService:
             },
         )
 
+        schedule_score_refresh(doc.assessment_id)
         return verification
 
     @classmethod
@@ -721,6 +724,7 @@ class EvidenceService:
             },
         )
 
+        schedule_score_refresh(doc.assessment_id)
         return verification
 
     @classmethod
@@ -1121,6 +1125,7 @@ class EvidenceService:
             reason=f"Association {assoc.subcriterion_id} verified: {reason}",
             payload={"association_id": assoc.pk, "subcriterion_id": assoc.subcriterion_id},
         )
+        schedule_score_refresh(doc.assessment_id)
         return verification
 
     @classmethod
@@ -1170,6 +1175,7 @@ class EvidenceService:
             reason=f"Association {assoc.subcriterion_id} rejected: {reason}",
             payload={"association_id": assoc.pk, "subcriterion_id": assoc.subcriterion_id, "rejection_code": rejection_code},
         )
+        schedule_score_refresh(doc.assessment_id)
         return verification
 
     @classmethod
@@ -1367,6 +1373,7 @@ class EvidenceService:
         institution_id: Optional[str] = None,
         framework: Optional[str] = None,
         requesting_user=None,
+        subcriterion_codes: Optional[List[str]] = None,
     ):
         """
         Returns the structured ReviewReadinessReport for the reviewer workflow gate.
@@ -1381,6 +1388,7 @@ class EvidenceService:
             institution_id=institution_id,
             framework=framework,
             requesting_user=requesting_user,
+            subcriterion_codes=subcriterion_codes,
         )
 
     @staticmethod

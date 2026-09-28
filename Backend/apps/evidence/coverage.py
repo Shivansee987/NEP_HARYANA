@@ -260,7 +260,8 @@ class EvidenceCoverageEvaluator:
         all_sub_results: List[SubcriterionCoverageResult] = []
         global_blocking_reasons: List[str] = []
 
-        sub_filter = set(subcriterion_codes) if subcriterion_codes else None
+        # None -> all subcriteria; an explicit (possibly empty) list restricts evaluation to those codes
+        sub_filter = set(subcriterion_codes) if subcriterion_codes is not None else None
 
         for param_id, param_def in params_spec.items():
             param_period_rule = param_def.get("period_rule")
@@ -480,9 +481,9 @@ class EvidenceCoverageEvaluator:
         for scoring and review.
         Returns (is_ready, blocking_reasons, summary).
 
-        NOTE: blocking_reasons only includes ACTIVE documentary deficiencies
-        (MISSING + PENDING). SOURCE_SILENT and UNRESOLVED are excluded.
-        REJECTED evidence is returned via report.review_readiness.correction_required_reasons.
+        NOTE: blocking_reasons includes ACTIVE documentary deficiencies (MISSING + PENDING) and, because a
+        not-ready answer must always be explained, REJECTED evidence awaiting correction.
+        SOURCE_SILENT and UNRESOLVED are excluded.
         """
         report = cls.evaluate_evidence_coverage(
             assessment_id=assessment_id,
@@ -492,7 +493,11 @@ class EvidenceCoverageEvaluator:
             requesting_user=requesting_user,
             subcriterion_codes=subcriterion_codes,
         )
-        return report.is_ready_for_scoring, report.blocking_reasons, report.summary
+        reasons = list(report.blocking_reasons)
+        rr = getattr(report, "review_readiness", None)
+        if rr is not None:
+            reasons.extend(r for r in rr.correction_required_reasons if r not in reasons)
+        return report.is_ready_for_scoring, reasons, report.summary
 
     @classmethod
     def get_review_readiness(
@@ -502,6 +507,7 @@ class EvidenceCoverageEvaluator:
         institution_id: Optional[str] = None,
         framework: Optional[str] = None,
         requesting_user=None,
+        subcriterion_codes: Optional[List[str]] = None,
     ) -> Tuple[bool, "ReviewReadinessReport", CoverageSummary]:
         """
         Returns the structured ReviewReadinessReport for the reviewer workflow gate.
@@ -513,6 +519,9 @@ class EvidenceCoverageEvaluator:
           - governance_reasons: UNRESOLVED contracts \u2014 governance/source issues, not institution failure.
           - source_silent_subcriteria: Informational. No documentary requirement.
 
+        subcriterion_codes restricts the evaluation (the assessment services pass the subcriteria the
+        institution actually claims; an unclaimed subcriterion scores 0 and needs no documentary proof).
+
         Returns (is_complete_review_allowed, review_readiness, summary).
         """
         report = cls.evaluate_evidence_coverage(
@@ -521,6 +530,7 @@ class EvidenceCoverageEvaluator:
             institution_id=institution_id,
             framework=framework,
             requesting_user=requesting_user,
+            subcriterion_codes=subcriterion_codes,
         )
         rr = report.review_readiness
         if rr is None:

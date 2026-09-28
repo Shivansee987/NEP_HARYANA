@@ -37,6 +37,21 @@ from apps.scoring.enums import (
     InstitutionType,
     ResolutionStatus,
 )
+from apps.scoring.inputs import normalize_subcriterion
+from apps.scoring.rules.definitions import COLLEGE_PARAMETERS
+from apps.scoring.orchestration import (
+    claimed_subcriteria,
+    submission_errors,
+    REVIEWS_KEY,
+    SNAPSHOT_KEY,
+    approval_blockers,
+    build_certified_snapshot,
+    build_parameter_inputs,
+    build_scoring_evaluation,
+    certification_gate_errors,
+    load_persisted_adjustments,
+    persist_score_cache,
+)
 from .models import (
     CollegeAssessment,
     CollegeAssessmentAuditLog,
@@ -228,52 +243,10 @@ class CollegeAssessmentService:
             scoring_doc = EvidenceService.to_scoring_domain(assoc)
             subcrit_evidence_map.setdefault(assoc.subcriterion_id, []).append(scoring_doc)
 
-        # 3. Build ParameterInput for all C1–C22 parameters
-        parameters_input: Dict[str, ParameterInput] = {}
-        param_data = assessment.parameter_data or {}
-        registered_params = get_college_parameters()
-
-        for param_code in COLLEGE_PARAMETER_CODES:
-            param_conf = registered_params[param_code]
-            stored_param = param_data.get(param_code, {})
-            stored_raw = stored_param.get("raw_inputs")
-            if stored_raw is None:
-                stored_raw = {k: v for k, v in stored_param.items() if not k.startswith("_")}
-            stored_entities = stored_param.get("entities", [])
-            act_date = date.fromisoformat(stored_param["activity_date"]) if stored_param.get("activity_date") else None
-
-            # Subcriteria inputs
-            sub_inputs: Dict[str, SubcriterionInput] = {}
-            for sub_code in param_conf.get("subcriteria", {}).keys():
-                evid_docs = subcrit_evidence_map.get(sub_code, [])
-
-                # Map entity models if present
-                asset_entities = [
-                    AssetEntity(
-                        entity_id=e.get("entity_id", str(uuid.uuid4())),
-                        entity_type=e.get("entity_type", "PROGRAMME"),
-                        identifier_key=e.get("identifier_key", ""),
-                        date_of_record=date.fromisoformat(e["date_of_record"]) if e.get("date_of_record") else None,
-                        title=e.get("title", ""),
-                    )
-                    for e in stored_entities
-                ]
-
-                sub_inputs[sub_code] = SubcriterionInput(
-                    subcriterion_code=sub_code,
-                    raw_inputs=stored_raw.get(sub_code, stored_raw),
-                    evidence_docs=evid_docs,
-                    entities=asset_entities,
-                    activity_date=act_date,
-                )
-
-            parameters_input[param_code] = ParameterInput(
-                parameter_code=param_code,
-                subcriteria_inputs=sub_inputs,
-                raw_inputs=stored_raw,
-                evidence_docs=[d for docs in sub_inputs.values() for d in docs.evidence_docs],
-            )
-
+        # 3. Build ParameterInput for all C1–C22 parameters (entities/raw inputs scoped per subcriterion)
+        parameters_input = build_parameter_inputs(
+            assessment.parameter_data or {}, get_college_parameters(), COLLEGE_PARAMETER_CODES, subcrit_evidence_map
+        )
         return AssessmentInput(context=context, parameters=parameters_input)
 
     @classmethod
@@ -281,29 +254,19 @@ class CollegeAssessmentService:
         cls,
         assessment_id: str,
         reviewer_adjustments: Optional[List[ReviewerAdjustment]] = None,
+        persist: bool = True,
     ) -> FrameworkResult:
         """
         Executes scoring exclusively via the frozen NEP2026ScoringEngine.
         Does NOT recalculate or synthesize scores in this service layer.
+
+        persist=True caches the authoritative total on the assessment (explicit recalculation actions only).
+        A CERTIFIED assessment is never overwritten; read paths call this with persist=False.
         """
-        # Collect persistent adjustments if not explicitly provided
         if reviewer_adjustments is None:
-            try:
-                assessment_obj = CollegeAssessment.objects.get(assessment_id=assessment_id)
-                persisted_adjs = (assessment_obj.parameter_data or {}).get("_reviewer_adjustments", [])
-                if persisted_adjs:
-                    reviewer_adjustments = [
-                        ReviewerAdjustment(
-                            subcriterion_code=adj["subcriterion_code"],
-                            reviewer_id=adj["reviewer_id"],
-                            original_score=float(adj.get("original_score", 0.0)),
-                            adjusted_score=float(adj["adjusted_score"]),
-                            reason=adj["reason"],
-                        )
-                        for adj in persisted_adjs
-                    ]
-            except Exception:
-                pass
+            assessment_obj = CollegeAssessment.objects.filter(assessment_id=assessment_id).first()
+            if assessment_obj is not None:
+                reviewer_adjustments = load_persisted_adjustments(assessment_obj.parameter_data or {})
 
         assessment_input = cls.build_assessment_input(assessment_id)
         engine = NEP2026ScoringEngine()
@@ -312,12 +275,8 @@ class CollegeAssessmentService:
             reviewer_adjustments=reviewer_adjustments,
         )
 
-        # Cache certified score summary on the assessment instance
-        CollegeAssessment.objects.filter(assessment_id=assessment_id).update(
-            certified_score=result.evidence_gated_total,
-            certification_status=result.certification_status.value,
-            updated_at=timezone.now(),
-        )
+        if persist:
+            persist_score_cache(CollegeAssessment, assessment_id, result)
 
         return result
 
@@ -326,16 +285,14 @@ class CollegeAssessmentService:
         cls,
         assessment_id: str,
         user: Any = None,
+        persist: bool = False,
     ) -> Dict[str, Any]:
         """
         Retrieves the complete server-authoritative scoring evaluation,
         parameter maximums, reviewer acceptance state, live running total,
         and award classification for a College assessment.
         """
-        from apps.scoring.awards import get_authoritative_award_classification
-        from apps.scoring.formatters import format_parameter_scoring_basis, format_subcriterion_scoring_basis
         from apps.scoring.rules.definitions import COLLEGE_PARAMETERS
-        from apps.scoring.enums import ResolutionStatus
 
         try:
             assessment = CollegeAssessment.objects.select_related("college").get(
@@ -344,98 +301,21 @@ class CollegeAssessmentService:
         except CollegeAssessment.DoesNotExist:
             raise CollegeValidationError(f"Assessment '{assessment_id}' not found.", code="NOT_FOUND")
 
-        result = cls.evaluate_assessment_scoring(assessment_id)
+        # A certified assessment is served from its frozen certification snapshot; the live engine
+        # is only consulted (read-only) when an older certified record has no snapshot.
+        result = None
+        if assessment.status != "CERTIFIED" or SNAPSHOT_KEY not in (assessment.parameter_data or {}):
+            result = cls.evaluate_assessment_scoring(assessment_id, persist=persist and assessment.status != "CERTIFIED")
+            assessment.refresh_from_db()
 
-        param_data = assessment.parameter_data or {}
-        parameter_reviews = dict(param_data.get("_committee_reviews", {}))
-
-        # Calculate live running total strictly from approved parameters
-        approved_codes = [
-            code for code, rec in parameter_reviews.items()
-            if rec.get("status") == "APPROVED" and code in COLLEGE_PARAMETER_CODES
-        ]
-        running_total = min(
-            sum(float(parameter_reviews[code].get("awarded_score", 0.0)) for code in approved_codes),
-            100.00
+        return build_scoring_evaluation(
+            assessment=assessment,
+            result=result,
+            definitions=COLLEGE_PARAMETERS,
+            param_codes=COLLEGE_PARAMETER_CODES,
+            framework_code=COLLEGE_FRAMEWORK_CODE,
+            institution_name=assessment.college.name,
         )
-
-        award_classification = get_authoritative_award_classification(
-            score=running_total,
-            framework=COLLEGE_FRAMEWORK_CODE,
-        )
-
-        param_results_dict = {}
-        for p_code in COLLEGE_PARAMETER_CODES:
-            param_def = COLLEGE_PARAMETERS[p_code]
-            p_res = result.parameter_results.get(p_code)
-
-            review_info = parameter_reviews.get(p_code, {})
-            is_approved = review_info.get("status") == "APPROVED"
-            awarded_score = float(review_info["awarded_score"]) if is_approved else None
-
-            sub_dict = {}
-            if p_res and p_res.subcriteria_results:
-                for s_code, s_res in p_res.subcriteria_results.items():
-                    sub_def = param_def.get("subcriteria", {}).get(s_code, {})
-                    sub_dict[s_code] = {
-                        "subcriterion_code": s_res.subcriterion_code,
-                        "raw_score": s_res.raw_score,
-                        "evidence_gated_score": s_res.evidence_gated_score,
-                        "final_score": s_res.final_score,
-                        "max_score": sub_def.get("max_score", s_res.max_score),
-                        "resolution_status": s_res.resolution_status.value if hasattr(s_res.resolution_status, "value") else str(s_res.resolution_status),
-                        "gating_status": s_res.gating_status.value if hasattr(s_res.gating_status, "value") else str(s_res.gating_status),
-                        "scoring_basis": format_subcriterion_scoring_basis(s_res),
-                        "trace": s_res.trace,
-                    }
-
-            is_unresolved = p_res.resolution_status != ResolutionStatus.CALCULABLE if p_res else False
-            unresolved_msg = None
-            if is_unresolved:
-                unresolved_msg = param_def.get("unresolved_reason") or "Maximum unresolved — source clarification required"
-
-            param_results_dict[p_code] = {
-                "parameter_code": p_code,
-                "parameter_title": param_def.get("title", p_code),
-                "max_marks": float(param_def.get("max_marks", 0.0)),
-                "raw_score": p_res.raw_score if p_res else 0.0,
-                "evidence_gated_score": p_res.evidence_gated_score if p_res else 0.0,
-                "final_score": p_res.final_score if p_res else None,
-                "resolution_status": (p_res.resolution_status.value if hasattr(p_res.resolution_status, "value") else str(p_res.resolution_status)) if p_res else "CALCULABLE",
-                "is_unresolved": is_unresolved,
-                "unresolved_reason": unresolved_msg,
-                "review_status": "APPROVED" if is_approved else "PENDING",
-                "awarded_score": awarded_score,
-                "scoring_basis": format_parameter_scoring_basis(p_res) if p_res else "No submission",
-                "subcriteria_results": sub_dict,
-                "review_info": review_info,
-                "trace": p_res.trace if p_res else {},
-            }
-
-        return {
-            "framework": result.framework.value if hasattr(result.framework, "value") else str(result.framework),
-            "assessment_id": result.assessment_id,
-            "institution_id": result.institution_id,
-            "institution_name": assessment.college.name,
-            "calculation_id": result.calculation_id,
-            "raw_total": result.raw_total,
-            "evidence_gated_total": result.evidence_gated_total,
-            "final_certified_total": result.final_certified_total,
-            "running_total": running_total,
-            "expected_total_display": f"{int(running_total) if running_total.is_integer() else running_total} / {int(result.max_marks)}",
-            "current_awarded": running_total,
-            "max_available": float(result.max_marks),
-            "max_marks": float(result.max_marks),
-            "certification_status": result.certification_status.value if hasattr(result.certification_status, "value") else str(result.certification_status),
-            "blocking_reasons": result.blocking_reasons,
-            "parameters_reviewed_count": len(approved_codes),
-            "total_parameters_count": len(COLLEGE_PARAMETER_CODES),
-            "all_parameters_reviewed": len(approved_codes) == len(COLLEGE_PARAMETER_CODES),
-            "parameter_reviews": parameter_reviews,
-            "parameter_results": param_results_dict,
-            "award_classification": award_classification,
-            "trace": result.trace,
-        }
 
     @classmethod
     @transaction.atomic
@@ -466,25 +346,18 @@ class CollegeAssessmentService:
         if assessment.status in ("CERTIFIED", "BLOCKED"):
             raise AssessmentLockedError(f"Assessment is {assessment.status} and cannot be modified.")
 
-        # Evaluate current server-authoritative scoring
-        result = cls.evaluate_assessment_scoring(assessment_id)
+        # Evaluate current server-authoritative scoring (explicit action -> persisted)
+        result = cls.evaluate_assessment_scoring(assessment_id, persist=True)
         param_res = result.parameter_results.get(param_clean)
         if not param_res:
             raise CollegeValidationError(f"Parameter '{param_clean}' not found in framework.", code="NOT_FOUND")
 
-        # Block approval of unresolved contradictory parameters
         param_def = COLLEGE_PARAMETERS[param_clean]
-        if param_res.resolution_status in (ResolutionStatus.UNRESOLVED_RULE, ResolutionStatus.SOURCE_INCONSISTENCY):
-            reason_msg = param_def.get("unresolved_reason") or "Maximum unresolved — source clarification required"
+        blocker = approval_blockers(param_res)
+        if blocker:
             raise CollegeValidationError(
-                f"Parameter {param_clean} is blocked: {reason_msg}. Reviewer cannot accept an unresolved specification without State Council determination.",
-                code="UNRESOLVED_SPECIFICATION"
-            )
-
-        if param_res.resolution_status == ResolutionStatus.BOUNDARY_UNRESOLVED:
-            raise CollegeValidationError(
-                f"Parameter {param_clean} landed on an unresolved boundary void in the rubric.",
-                code="BOUNDARY_UNRESOLVED"
+                f"Parameter {param_clean} cannot be approved yet: {blocker['message']}",
+                code=blocker["code"],
             )
 
         # Enforce server-side hard maximum cap
@@ -535,7 +408,7 @@ class CollegeAssessmentService:
             reason=f"Accepted score {awarded_score} / {max_marks} for {param_clean}",
         )
 
-        return cls.get_assessment_scoring_evaluation(assessment_id, user=reviewer)
+        return cls.get_assessment_scoring_evaluation(assessment_id, user=reviewer, persist=True)
 
     @classmethod
     @transaction.atomic
@@ -681,7 +554,7 @@ class CollegeAssessmentService:
             reason=reason.strip(),
         )
 
-        return cls.get_assessment_scoring_evaluation(assessment_id, user=reviewer)
+        return cls.get_assessment_scoring_evaluation(assessment_id, user=reviewer, persist=True)
 
 
     @classmethod
@@ -746,6 +619,8 @@ class CollegeAssessmentService:
             institution_id=assessment.college.aishe_code,
             framework=COLLEGE_FRAMEWORK_CODE,
             requesting_user=eval_user,
+            # Only claimed subcriteria need documentary proof (unclaimed ones score 0)
+            subcriterion_codes=claimed_subcriteria(assessment.parameter_data or {}, get_college_parameters(), COLLEGE_PARAMETER_CODES),
         )
 
     @classmethod
@@ -781,6 +656,8 @@ class CollegeAssessmentService:
             institution_id=assessment.college.aishe_code,
             framework=COLLEGE_FRAMEWORK_CODE,
             requesting_user=eval_user,
+            # Only claimed subcriteria need documentary proof (unclaimed ones score 0)
+            subcriterion_codes=claimed_subcriteria(assessment.parameter_data or {}, get_college_parameters(), COLLEGE_PARAMETER_CODES),
         )
 
 
@@ -822,6 +699,16 @@ class CollegeAssessmentService:
             raise CollegeValidationError(
                 "Cannot submit assessment with empty parameter data. Complete parameter responses before submission.",
                 code="PARAMETER_DATA_REQUIRED",
+            )
+
+        # Invalid values, period-bound claims without dates and out-of-period claims must be corrected first
+        errors = submission_errors(assessment.parameter_data, get_college_parameters(), COLLEGE_PARAMETER_CODES)
+        if errors:
+            raise CollegeValidationError(
+                f"Submission blocked: {len(errors)} input issue(s) must be corrected. " + "; ".join(
+                    f"{e.get('subcriterion') or e.get('parameter')} {e['field']}: {e['message']}" for e in errors[:5]),
+                code="SUBMISSION_VALIDATION_FAILED",
+                details=errors,
             )
 
         prev_status = assessment.status
@@ -1219,20 +1106,12 @@ class CollegeReviewService:
                 f"Cannot complete review: {' | '.join(error_parts)}"
             )
 
-        # Gate: Scoring evaluation check
-        if assessment.certified_score is None:
-            CollegeAssessmentService.evaluate_assessment_scoring(assessment.assessment_id)
-            assessment.refresh_from_db()
-
-        if assessment.certification_status in (
-            "BLOCKED_BY_SPECIFICATION",
-            "BLOCKED_BY_EVIDENCE",
-            "BLOCKED_BY_VALIDATION",
-            "BLOCKED_BY_BOUNDARY",
-        ):
-            raise CertificationBlockedError(
-                f"Cannot complete review: Scoring is blocked ({assessment.certification_status})."
-            )
+        # Gate: authoritative scoring is FINALIZABLE and every parameter is approved at its current score
+        result = CollegeAssessmentService.evaluate_assessment_scoring(assessment.assessment_id, persist=True)
+        assessment.refresh_from_db()
+        gate_errors = certification_gate_errors(result, assessment.parameter_data or {}, COLLEGE_PARAMETER_CODES)
+        if gate_errors:
+            raise CertificationBlockedError("Cannot complete review: " + " | ".join(gate_errors))
 
         prev_status = assessment.status
         # Status remains UNDER_REVIEW; review action recorded in CollegeReviewRecord
@@ -1455,35 +1334,25 @@ class CollegeReviewService:
             reasons_str = "; ".join(blocking_reasons) if blocking_reasons else "Evidence requirements incomplete"
             raise CertificationBlockedError(f"Certification blocked by evidence: {reasons_str}")
 
-        # Gate 6 & 7: Scoring evaluation completed & valid via frozen scoring engine
-        result = CollegeAssessmentService.evaluate_assessment_scoring(assessment.assessment_id)
+        # Gate 6, 7, 8 & 11: authoritative scoring is FINALIZABLE and every parameter is approved
+        # at its current backend score (committee total == certified total)
+        result = CollegeAssessmentService.evaluate_assessment_scoring(assessment.assessment_id, persist=True)
         assessment.refresh_from_db()
-
-        if assessment.certified_score is None or result.evidence_gated_total is None:
-            raise CertificationBlockedError("Certification blocked: Scoring engine did not produce a certified total.")
-
-        # Gate 8 & 11: No unresolved blocking specification or validation
-        cert_status_str = result.certification_status.value if hasattr(result.certification_status, "value") else str(result.certification_status)
-        if cert_status_str in (
-            "BLOCKED_BY_SPECIFICATION",
-            "BLOCKED_BY_EVIDENCE",
-            "BLOCKED_BY_VALIDATION",
-            "BLOCKED_BY_BOUNDARY",
-        ) or assessment.certification_status in (
-            "BLOCKED_BY_SPECIFICATION",
-            "BLOCKED_BY_EVIDENCE",
-            "BLOCKED_BY_VALIDATION",
-            "BLOCKED_BY_BOUNDARY",
-        ):
+        gate_errors = certification_gate_errors(result, assessment.parameter_data or {}, COLLEGE_PARAMETER_CODES)
+        if gate_errors or result.final_certified_total is None:
             raise CertificationBlockedError(
-                f"Certification blocked by scoring engine rules ({cert_status_str})."
+                "Certification blocked: " + " | ".join(gate_errors or ["Scoring engine did not produce a certified total."])
             )
 
         # ALL 11 GATES PASSED: Transition to CERTIFIED and lock
         prev_status = assessment.status
         assessment.status = "CERTIFIED"
         assessment.certification_status = "CERTIFIED"
-        assessment.save(update_fields=["status", "certification_status", "certified_score", "updated_at"])
+        assessment.certified_score = result.final_certified_total
+        frozen = dict(assessment.parameter_data or {})
+        frozen[SNAPSHOT_KEY] = build_certified_snapshot(result, COLLEGE_PARAMETERS)
+        assessment.parameter_data = frozen
+        assessment.save(update_fields=["status", "certification_status", "certified_score", "parameter_data", "updated_at"])
 
         scoring_snap = {
             "certified_total": assessment.certified_score,

@@ -151,10 +151,10 @@ def handle_college_exceptions(view_func):
             InvalidInstitutionTypeError,
             TemporalWindowViolationError,
         ) as exc:
-            return Response(
-                {"error": str(exc), "code": getattr(exc, 'code', 'VALIDATION_ERROR')},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            body = {"error": str(exc), "code": getattr(exc, 'code', 'VALIDATION_ERROR')}
+            if getattr(exc, "details", None):
+                body["errors"] = exc.details
+            return Response(body, status=status.HTTP_400_BAD_REQUEST)
         except serializers.ValidationError as exc:
             return Response(
                 {"error": exc.detail, "code": "INVALID_INPUT"},
@@ -563,9 +563,11 @@ class CollegeAssessmentEvaluateView(APIView):
                     code="INVALID_PARAMETER_INPUT"
                 )
 
+        # Explicit recalculation: persists the authoritative total (never for a CERTIFIED assessment)
         evaluation = CollegeAssessmentService.get_assessment_scoring_evaluation(
             assessment_id=assessment.assessment_id,
             user=request.user,
+            persist=True,
         )
         return Response(evaluation, status=status.HTTP_200_OK)
 
