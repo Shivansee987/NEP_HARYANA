@@ -19,7 +19,7 @@ export async function uploadEvidenceDocument(formData) {
  * GET /api/evidence/?assessment_id=<assessmentId>
  */
 export async function fetchAssessmentEvidenceDocuments(assessmentId) {
-  return request(`/evidence/?assessment_id=${encodeURIComponent(assessmentId)}`);
+  return fetchAllPages(`/evidence/?assessment_id=${encodeURIComponent(assessmentId)}`);
 }
 
 /**
@@ -27,7 +27,26 @@ export async function fetchAssessmentEvidenceDocuments(assessmentId) {
  * GET /api/evidence/associations/?assessment_id=<assessmentId>
  */
 export async function fetchAssessmentEvidenceAssociations(assessmentId) {
-  return request(`/evidence/associations/?assessment_id=${encodeURIComponent(assessmentId)}`);
+  return fetchAllPages(`/evidence/associations/?assessment_id=${encodeURIComponent(assessmentId)}`);
+}
+
+/**
+ * Follows DRF page links (`next`) and returns every result as one array, so assessments with more than one
+ * page of evidence (20 per page) are not silently truncated.
+ */
+async function fetchAllPages(path) {
+  const apiPrefix = new URL(API_BASE_URL, window.location.origin).pathname.replace(/\/$/, "");
+  const all = [];
+  let next = path;
+  while (next) {
+    const page = await request(next);
+    if (Array.isArray(page)) return all.concat(page);
+    all.push(...(page?.results || []));
+    if (!page?.next) break;
+    const url = new URL(page.next, window.location.origin);
+    next = url.pathname.slice(apiPrefix.length) + url.search;
+  }
+  return all;
 }
 
 /**

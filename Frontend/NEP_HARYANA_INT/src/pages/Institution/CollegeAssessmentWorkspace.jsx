@@ -1,11 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext.jsx";
-import {
-  COLLEGE_PARAMETER_CODES,
-  COLLEGE_PARAMETER_TITLES,
-  COLLEGE_FRAMEWORK_DATA,
-} from "../../utils/nepTaxonomy.js";
+import { COLLEGE_PARAMETER_CODES, COLLEGE_PARAMETER_TITLES, COLLEGE_FRAMEWORK_DATA, getParameterInputStatus } from "../../utils/nepTaxonomy.js";
 import {
   fetchCollegeAssessmentDetail,
   fetchCollegeAssessmentParameters,
@@ -58,31 +54,7 @@ export default function CollegeAssessmentWorkspace() {
     const def = COLLEGE_FRAMEWORK_DATA[code];
     if (!def) return "NOT_STARTED";
 
-    const subcriteria = def.subcriteria || [];
-    if (subcriteria.length === 0) return "NOT_STARTED";
-
-    const hasAny = Object.keys(raw).some((subCode) => {
-      const vals = raw[subCode];
-      return vals && Object.values(vals).some((v) => v !== "" && v !== null && v !== undefined);
-    });
-
-    if (!hasAny) return "NOT_STARTED";
-
-    const allComplete = subcriteria.every((sub) => {
-      const vals = raw[sub.code];
-      if (!vals || typeof vals !== "object") return false;
-      const fields = sub.fields || [];
-      return (
-        fields.length > 0 &&
-        fields.every((f) => {
-          const v = vals[f.key];
-          if (f.type === "checkbox") return v === true;
-          return v !== undefined && v !== "" && v !== null;
-        })
-      );
-    });
-
-    return allComplete ? "COMPLETE" : "IN_PROGRESS";
+    return getParameterInputStatus(def, raw);
   };
 
   const loadWorkspaceData = useCallback(async () => {

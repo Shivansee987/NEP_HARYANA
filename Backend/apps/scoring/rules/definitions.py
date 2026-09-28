@@ -203,9 +203,10 @@ _NAAC_MAP = {"A++": 2.0, "A+": 2.0, "A": 2.0, "B++": 1.0, "B+": 1.0, "B": 1.0, "
 COLLEGE_PARAMETERS: Dict[str, Dict[str, Any]] = {
     "C1": _param(C, "C1", "Institutional Development Plan (IDP) and NEP Implementation Targets", 6,
                  PeriodRule.REFERENCE_YEAR_DEPENDENT, EvaluationType.MAX, [
+        # No evidence_academic_year: C1 has a single subcriterion, so there is no sibling year to keep apart,
+        # and uploads carry the assessment session year (2025-26), which would exclude every C1 document.
         _s("C1.1", 6, ratio("achieved_targets_2024_25", "fixed_targets_2024_25"),
-           [_gt(90, 6), _gt_lte(75, 90, 4), _gt_lte(50, 75, 2), _lte(50, 1)],
-           evidence_academic_year="2024-25"),
+           [_gt(90, 6), _gt_lte(75, 90, 4), _gt_lte(50, 75, 2), _lte(50, 1)]),
     ], ["EVID_C1_APPROVED_IDP"]),
     "C2": _param(C, "C2", "Apprenticeship / Internships", 4, PS, EvaluationType.MAX, [
         _s("C2.1", 4, ratio("students_completed", "eligible_students"), _PCT_90_75_50_25),
