@@ -5,6 +5,8 @@ import { UNIVERSITY_PARAMETER_CODES, UNIVERSITY_PARAMETER_TITLES, UNIVERSITY_FRA
 import {
   fetchUniversityAssessmentDetail,
   fetchUniversityAssessmentParameters,
+  fetchUniversityAssessmentReadiness,
+  fetchUniversityScoringEvaluation,
   updateUniversityAssessmentParameter,
   submitUniversityAssessment,
 } from "../../api/university";
@@ -37,6 +39,8 @@ export default function UniversityAssessmentWorkspace() {
   const [evidenceAssociations, setEvidenceAssociations] = useState([]);
   const [existingDocs, setExistingDocs] = useState([]);
   const [submitting, setSubmitting] = useState(false);
+  const [scoring, setScoring] = useState(null);
+  const [readiness, setReadiness] = useState(null);
 
   // Modal State for Evidence Upload
   const [evidenceModal, setEvidenceModal] = useState({
@@ -55,6 +59,17 @@ export default function UniversityAssessmentWorkspace() {
 
     return getParameterInputStatus(def, raw);
   };
+
+  // Backend-derived state that changes whenever inputs or evidence change: live score and submission gate
+  const refreshDerivedState = useCallback(async () => {
+    if (!assessmentId) return;
+    const [scoringRes, readinessRes] = await Promise.all([
+      fetchUniversityScoringEvaluation(assessmentId).catch(() => null),
+      fetchUniversityAssessmentReadiness(assessmentId).catch(() => null),
+    ]);
+    setScoring(scoringRes);
+    setReadiness(readinessRes);
+  }, [assessmentId]);
 
   const loadWorkspaceData = useCallback(async () => {
     if (!assessmentId) return;
@@ -86,13 +101,15 @@ export default function UniversityAssessmentWorkspace() {
 
       const docsList = Array.isArray(docsRes) ? docsRes : docsRes?.results || [];
       setExistingDocs(docsList);
+
+      await refreshDerivedState();
     } catch (err) {
       console.error("University Assessment Workspace load error:", err);
       setError(err?.message || "Failed to load University Assessment session.");
     } finally {
       setLoading(false);
     }
-  }, [assessmentId]);
+  }, [assessmentId, refreshDerivedState]);
 
   useEffect(() => {
     loadWorkspaceData();
@@ -119,6 +136,7 @@ export default function UniversityAssessmentWorkspace() {
         submitted_input: { raw_inputs: formData },
       },
     }));
+    refreshDerivedState();
   };
 
   // Action: Open Evidence Attachment Modal
@@ -146,6 +164,7 @@ export default function UniversityAssessmentWorkspace() {
       ]);
       setEvidenceAssociations(Array.isArray(assocsRes) ? assocsRes : assocsRes?.results || []);
       setExistingDocs(Array.isArray(docsRes) ? docsRes : docsRes?.results || []);
+      refreshDerivedState();
     } catch (err) {
       console.warn("Evidence refresh failed:", err);
     }
@@ -161,6 +180,7 @@ export default function UniversityAssessmentWorkspace() {
         status: "SUBMITTED",
         submitted_at: res?.submitted_at || new Date().toISOString(),
       }));
+      refreshDerivedState();
     } finally {
       setSubmitting(false);
     }
@@ -217,14 +237,15 @@ export default function UniversityAssessmentWorkspace() {
     );
   }
 
-  const isReadOnly = assessment?.status === "SUBMITTED";
+  // Inputs are editable only before submission and after the committee returns the assessment
+  const isReadOnly = !["DRAFT", "RETURNED"].includes(assessment?.status || "DRAFT");
 
   return (
     <div className="min-h-screen bg-slate-50 flex font-sans antialiased text-slate-800">
       {/* University Stepper Sidebar (Strictly U1–U20) */}
       <AssessmentStepperSidebar
         framework="UNIVERSITY_2026"
-        institutionName={user?.university_name || "University Self-Appraisal"}
+        institutionName={assessment?.university_name || user?.university_name || "University Self-Appraisal"}
         assessmentId={assessmentId}
         parameterCodes={UNIVERSITY_PARAMETER_CODES}
         parameterTitles={UNIVERSITY_PARAMETER_TITLES}
@@ -281,6 +302,7 @@ export default function UniversityAssessmentWorkspace() {
               parameterDetail={parametersMap[activeStep] || {}}
               evidenceAssociations={evidenceAssociations}
               isReadOnly={isReadOnly}
+              scoreResult={scoring?.parameter_results?.[activeStep] || null}
               onSaveDraft={handleSaveParameterDraft}
               onOpenEvidenceModal={handleOpenEvidenceModal}
               onPrevParam={handlePrevParam}
@@ -303,6 +325,9 @@ export default function UniversityAssessmentWorkspace() {
               onNavigateToParam={(code) => setActiveStep(code)}
               onSubmitAssessment={handleSubmitAssessment}
               submitting={submitting}
+              editableStatuses={["DRAFT", "RETURNED"]}
+              submissionReady={readiness ? readiness.submission_ready : undefined}
+              submissionIssues={readiness?.submission_issues || []}
             />
           )}
         </main>

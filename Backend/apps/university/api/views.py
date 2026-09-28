@@ -475,12 +475,19 @@ class UniversityAssessmentReadinessView(APIView):
             user=request.user,
         )
 
+        # Submission readiness mirrors the gate enforced by UniversityAssessmentService.submit_assessment
+        submission_issues = UniversityAssessmentService.get_submission_issues(assessment)
+        if not assessment.parameter_data:
+            submission_issues = [{"parameter": None, "field": "parameter_data", "message": "No parameter data inputs recorded."}]
+
         return Response({
             "assessment_id": assessment.assessment_id,
             "framework": UNIVERSITY_FRAMEWORK_CODE,
             "is_ready": is_ready,
             "blocking_reasons": blocking_reasons,
             "evidence_readiness_summary": summary.to_dict(),
+            "submission_ready": assessment.status in ("DRAFT", "RETURNED") and not submission_issues,
+            "submission_issues": submission_issues,
         }, status=status.HTTP_200_OK)
 
 

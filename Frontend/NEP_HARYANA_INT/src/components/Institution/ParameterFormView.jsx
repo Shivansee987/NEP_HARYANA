@@ -38,6 +38,8 @@ export default function ParameterFormView({
   onNextParam = () => {},
   isFirst = false,
   isLast = false,
+  // Optional backend scoring result for this parameter (evaluate endpoint parameter_results entry)
+  scoreResult = null,
 }) {
   const [formData, setFormData] = useState({});
   const [isDirty, setIsDirty] = useState(false);
@@ -254,9 +256,14 @@ export default function ParameterFormView({
               </span>
               <span className="text-slate-300">•</span>
               <span className="text-xs font-bold text-slate-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full">
-                Max Score: {maxMarks} pts
+                {scoreResult
+                  ? `Calculated Score: ${scoreResult.awarded_score ?? scoreResult.calculated_score} / ${maxMarks}`
+                  : `Max Score: ${maxMarks} pts`}
               </span>
             </div>
+            {scoreResult?.scoring_basis && (
+              <p className="text-[11px] text-slate-500 mb-1">Scoring basis: {scoreResult.scoring_basis}</p>
+            )}
 
             <h2 className="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight">
               {parameterDef?.title || parameterDetail?.title || `Parameter ${parameterCode}`}
@@ -334,6 +341,7 @@ export default function ParameterFormView({
               (a.parameter_id || "").toUpperCase() === parameterCode.toUpperCase() &&
               (a.subcriterion_id || "").toUpperCase() === sub.code.toUpperCase()
           );
+          const subScore = scoreResult?.subcriteria_results?.[sub.code];
 
           return (
             <div
@@ -355,6 +363,14 @@ export default function ParameterFormView({
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0">
+                  {subScore && (
+                    <span
+                      className="text-[11px] font-mono font-bold text-slate-700 bg-white border border-slate-200 px-2 py-0.5 rounded"
+                      title={subScore.scoring_basis || ""}
+                    >
+                      {subScore.evidence_gated_score ?? subScore.raw_score} / {subScore.max_score}
+                    </span>
+                  )}
                   <span className="text-[11px] text-slate-500 font-medium">
                     Evidence Attached:{" "}
                     <strong className={subAssocs.length > 0 ? "text-purple-700" : "text-slate-600"}>
@@ -583,6 +599,27 @@ export default function ParameterFormView({
                                 {assoc.claim_description && (
                                   <p className="text-[11px] text-slate-600 mt-1 italic">
                                     "{assoc.claim_description}"
+                                  </p>
+                                )}
+                                {assoc.verification_status && (
+                                  <span
+                                    className={`inline-block mt-1 text-[10px] font-bold px-2 py-0.5 rounded-full border uppercase tracking-wider ${
+                                      assoc.verification_status === "VERIFIED"
+                                        ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                                        : assoc.verification_status === "REJECTED"
+                                        ? "bg-red-50 text-red-800 border-red-200"
+                                        : "bg-amber-50 text-amber-800 border-amber-200"
+                                    }`}
+                                  >
+                                    {assoc.verification_status.replaceAll("_", " ")}
+                                  </span>
+                                )}
+                                {assoc.verification_status === "REJECTED" && assoc.latest_verification && (
+                                  <p className="text-[11px] text-red-800 bg-red-50 border border-red-200 rounded px-2 py-1 mt-1">
+                                    <strong>Committee feedback:</strong>{" "}
+                                    {assoc.latest_verification.reason || "No reason given."}
+                                    {assoc.latest_verification.rejection_code && ` (${assoc.latest_verification.rejection_code})`}
+                                    {" — replace this document with a corrected one."}
                                   </p>
                                 )}
                               </div>

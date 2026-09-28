@@ -205,13 +205,16 @@ class EvidenceListCreateView(APIView):
 
         # Scope restriction by role
         if not (getattr(user, 'is_superuser', False) or role in ('admin', 'state_admin')):
-            if role in ('principal', 'nodal_officer', 'faculty'):
-                user_college = getattr(user, 'college', None)
-                college_code = getattr(user_college, 'aishe_code', None) or str(getattr(user_college, 'pk', ''))
-                qs = qs.filter(institution_id=college_code)
-            elif role == 'committee':
+            if role in ('committee', 'committee_chair'):
                 # Reviewers see documents assigned to them or in their authorized framework
                 qs = qs.exclude(institution_id=getattr(user.college, 'aishe_code', ''))
+            else:
+                # Institutional users (college or university) only ever see their own institution's evidence
+                inst_codes = []
+                for inst in (getattr(user, 'college', None), getattr(user, 'university', None)):
+                    if inst:
+                        inst_codes.append(getattr(inst, 'aishe_code', None) or str(inst.pk))
+                qs = qs.filter(institution_id__in=inst_codes)
 
         # Filtering parameters
         assessment_id = request.query_params.get('assessment_id')

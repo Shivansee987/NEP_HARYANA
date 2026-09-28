@@ -36,6 +36,46 @@ class EvidenceUploadPipeline:
     storage, and database persistence of documentary evidence.
     """
 
+    # Assessment states in which the institution may still add evidence
+    EDITABLE_STATUSES = {
+        "UNIVERSITY_2026": ("DRAFT", "RETURNED"),
+        "COLLEGE_2026": ("DRAFT",),
+    }
+
+    @classmethod
+    def _authorize_assessment_target(cls, uploader, assessment_id: str, framework: str, institution_id: str) -> str:
+        """
+        When the target assessment exists, the uploader must belong to its institution (admins excepted),
+        the assessment must still be editable, and the evidence is filed under the assessment's own
+        institution rather than a client-supplied one. Returns the institution id to record.
+        """
+        if framework == "UNIVERSITY_2026":
+            from apps.university.models import UniversityAssessment
+            assessment = UniversityAssessment.objects.select_related("university").filter(assessment_id=assessment_id).first()
+            owner = assessment.university if assessment else None
+            user_inst = getattr(uploader, "university", None)
+        else:
+            from apps.college.models import CollegeAssessment
+            assessment = CollegeAssessment.objects.select_related("college").filter(assessment_id=assessment_id).first()
+            owner = assessment.college if assessment else None
+            user_inst = getattr(uploader, "college", None)
+
+        if assessment is None:
+            return institution_id
+
+        is_admin = getattr(uploader, "is_superuser", False) or getattr(uploader, "role", "") in ("admin", "state_admin")
+        if not is_admin and not (user_inst and user_inst.pk == owner.pk):
+            raise UnauthorizedEvidenceActionError(
+                f"User '{getattr(uploader, 'email', '')}' cannot upload evidence to another institution's assessment."
+            )
+
+        if assessment.status not in cls.EDITABLE_STATUSES[framework]:
+            raise UnauthorizedEvidenceActionError(
+                f"Assessment '{assessment_id}' is in '{assessment.status}' status; evidence can no longer be added."
+            )
+
+        return owner.aishe_code or str(owner.pk)
+
     @classmethod
     def process_upload(
         cls,
@@ -65,13 +105,16 @@ class EvidenceUploadPipeline:
             raise UnauthorizedEvidenceActionError("Authenticated user is required to upload evidence.")
 
         uploader_role = getattr(uploader, 'role', '')
-        if uploader_role == 'committee':
+        if uploader_role in ('committee', 'committee_chair'):
             raise UnauthorizedEvidenceActionError("Screening Committee members cannot upload institutional evidence.")
 
         # Step 2: Framework identity validation
         clean_framework = framework.strip().upper()
         if clean_framework not in ("UNIVERSITY_2026", "COLLEGE_2026"):
             raise FrameworkMismatchError(f"Invalid framework identifier: {framework}")
+
+        # Step 2a: Target assessment ownership & edit lock
+        institution_id = cls._authorize_assessment_target(uploader, assessment_id, clean_framework, institution_id)
 
         # Parameter framework isolation pre-check
         if parameter_id:

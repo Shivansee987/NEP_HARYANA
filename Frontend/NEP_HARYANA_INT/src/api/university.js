@@ -97,3 +97,19 @@ export async function submitUniversityAssessment(assessmentId) {
     method: "POST",
   });
 }
+
+/**
+ * Live, read-only score breakdown (U1–U20 and subcriteria) computed by the backend scoring engine.
+ * GET /api/v1/university/university-assessments/<assessmentId>/evaluate/
+ */
+export async function fetchUniversityScoringEvaluation(assessmentId) {
+  return request(`/v1/university/university-assessments/${assessmentId}/evaluate/`);
+}
+
+/**
+ * Committee review history (start, return-for-correction remarks, completion, certification).
+ * GET /api/v1/university/university-assessments/<assessmentId>/review-history/
+ */
+export async function fetchUniversityReviewHistory(assessmentId) {
+  return request(`/v1/university/university-assessments/${assessmentId}/review-history/`);
+}
