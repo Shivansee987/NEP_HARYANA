@@ -211,7 +211,7 @@ export default function AdminAssessmentDetail() {
         <p className="text-xs text-slate-500">{error || "Assessment not found or access denied."}</p>
         <div className="flex items-center gap-3 pt-2">
           <button 
-            onClick={() => navigate('/admin')} 
+            onClick={() => navigate('/admin/institutions')} 
             className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors"
           >
             Back to Dashboard
@@ -262,7 +262,7 @@ export default function AdminAssessmentDetail() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div className="flex items-center space-x-3">
           <button 
-            onClick={() => navigate('/admin')}
+            onClick={() => navigate('/admin/institutions')}
             className="p-2 bg-white rounded-xl border border-[#ebdcd0] text-slate-600 hover:text-[#600b0b] hover:border-[#c29b68] hover:bg-[#fbf5ee] transition-all cursor-pointer shadow-xs"
             title="Back to Admin Dashboard"
           >

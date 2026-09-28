@@ -59,18 +59,18 @@ const Footer = () => {
                 </a>
               </li>
               <li>
-                <a href="/admin/reviews" className="hover:text-blue-600 transition-colors">
-                  Application Reviews
+                <a href="/admin/institutions?stage=SUBMITTED" className="hover:text-blue-600 transition-colors">
+                  Submitted Assessments
                 </a>
               </li>
               <li>
-                <a href="/admin/colleges" className="hover:text-blue-600 transition-colors">
-                  College Roster
+                <a href="/admin/institutions" className="hover:text-blue-600 transition-colors">
+                  Institutions
                 </a>
               </li>
               <li>
-                <a href="/admin/scoring" className="hover:text-blue-600 transition-colors">
-                  Scoring Matrix
+                <a href="/admin/reports" className="hover:text-blue-600 transition-colors">
+                  Reports
                 </a>
               </li>
             </ul>

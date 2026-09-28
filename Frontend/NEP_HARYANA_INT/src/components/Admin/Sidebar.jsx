@@ -2,7 +2,6 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
   School,
-  Award,
   FileSpreadsheet,
   Settings as SettingsIcon,
   LogOut,
@@ -27,9 +26,7 @@ const Sidebar = () => {
 
   const links = [
     { name: 'Overview', path: '/admin', icon: LayoutDashboard },
-    { name: 'Review Applications', path: '/admin/reviews', icon: UserCheck },
-    { name: 'College List', path: '/admin/colleges', icon: School },
-    { name: 'Scoring & Comparison', path: '/admin/scoring', icon: Award },
+    { name: 'Institutions', path: '/admin/institutions', icon: School },
     { name: 'Reports', path: '/admin/reports', icon: FileSpreadsheet },
     { name: 'Settings', path: '/admin/settings', icon: SettingsIcon },
   ];
@@ -52,7 +49,7 @@ const Sidebar = () => {
       {/* Nav Menu */}
       <nav className="flex-1 overflow-y-auto py-6 px-3 space-y-1.5">
         <span className="px-3.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2.5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 whitespace-nowrap">
-          Evaluation Console
+          State Admin Console
         </span>
         <ul className="space-y-1">
           {links.map((link) => {
@@ -92,7 +89,7 @@ const Sidebar = () => {
           </div>
           <div className="min-w-0 flex-1 opacity-0 group-hover:opacity-100 transition-opacity duration-300 whitespace-nowrap">
             <p className="text-xs font-semibold text-slate-800 truncate">{user?.full_name || "Admin Officer"}</p>
-            <p className="text-[10px] text-[#600b0b] font-semibold truncate">{user?.role === "admin" ? "DHE Admin" : "Evaluator"}</p>
+            <p className="text-[10px] text-[#600b0b] font-semibold truncate">{user?.role === "admin" ? "State Admin" : "Evaluator"}</p>
           </div>
         </div>
         <button

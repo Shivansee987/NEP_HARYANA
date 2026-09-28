@@ -1,25 +1,26 @@
-import React, { useState, useMemo } from "react";
-import { Search, MapPin, Award, Building, Bookmark } from "lucide-react";
-import { getColleges } from "../../utils/mockData";
+import React, { useState, useMemo, useEffect } from "react";
+import { Search, Building, Bookmark } from "lucide-react";
+import { fetchColleges } from "../../api/auth";
 import styles from "./Institutions.module.css";
 
 function Institutions() {
-  const colleges = useMemo(() => getColleges() || [], []);
+  const [colleges, setColleges] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedType, setSelectedType] = useState("All");
+
+  useEffect(() => {
+    fetchColleges()
+      .then((data) => setColleges(Array.isArray(data) ? data : data?.results || []))
+      .catch(() => setColleges([]));
+  }, []);
 
   const filteredColleges = useMemo(() => {
-    return colleges.filter((college) => {
-      const matchesSearch =
-        college.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        college.aishe.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        college.district.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesType = selectedType === "All" || college.type === selectedType;
-      return matchesSearch && matchesType;
-    });
-  }, [colleges, searchTerm, selectedType]);
-
-  const collegeTypes = ["All", "Govt", "Aided", "Private"];
+    const term = searchTerm.toLowerCase();
+    return colleges.filter(
+      (college) =>
+        college.name.toLowerCase().includes(term) ||
+        (college.aishe_code || "").toLowerCase().includes(term)
+    );
+  }, [colleges, searchTerm]);
 
   return (
     <main className={styles.pageShell} id="main-content">
@@ -44,24 +45,11 @@ function Institutions() {
               <Search className={styles.searchIcon} />
               <input
                 type="text"
-                placeholder="Search by name, AISHE code, or district..."
+                placeholder="Search by name or AISHE code..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className={styles.searchInput}
               />
-            </div>
-
-            {/* Type Buttons */}
-            <div className={styles.typeFilter}>
-              {collegeTypes.map((type) => (
-                <button
-                  key={type}
-                  className={`${styles.filterBtn} ${selectedType === type ? styles.activeFilterBtn : ""}`}
-                  onClick={() => setSelectedType(type)}
-                >
-                  {type === "All" ? "All Types" : `${type} Colleges`}
-                </button>
-              ))}
             </div>
 
           </div>
@@ -82,7 +70,6 @@ function Institutions() {
                   <div className={styles.iconFrame}>
                     <Building className={styles.buildingIcon} />
                   </div>
-                  <div className={styles.typeBadge}>{college.type}</div>
                 </div>
 
                 <div className={styles.cardBody}>
@@ -91,32 +78,14 @@ function Institutions() {
                   <div className={styles.metaRow}>
                     <div className={styles.metaItem}>
                       <Bookmark className={styles.metaIcon} />
-                      <span>AISHE: {college.aishe}</span>
-                    </div>
-                    <div className={styles.metaItem}>
-                      <MapPin className={styles.metaIcon} />
-                      <span>{college.district}, Haryana</span>
+                      <span>AISHE: {college.aishe_code}</span>
                     </div>
                   </div>
-
-                  {college.remarks && (
-                    <p className={styles.remarksText}>
-                      <strong>Evaluation status:</strong> {college.remarks}
-                    </p>
-                  )}
                 </div>
 
                 <div className={styles.cardFooter}>
-                  <div className={`${styles.statusLabel} ${
-                    college.status === "Approved"
-                      ? styles.statusApproved
-                      : college.status === "Pending Review"
-                      ? styles.statusPending
-                      : styles.statusActionNeeded
-                  }`}>
-                    {college.status}
-                  </div>
-                  <span className={styles.viewDetails}>Verification Active</span>
+                  <div className={`${styles.statusLabel} ${styles.statusPending}`}>Registered</div>
+                  <span className={styles.viewDetails}>NEP Awards 2026</span>
                 </div>
               </div>
             ))}
@@ -124,7 +93,7 @@ function Institutions() {
             {filteredColleges.length === 0 && (
               <div className={styles.noResults}>
                 <h3>No institutions found</h3>
-                <p>Try refining your search terms or selecting a different college type filter.</p>
+                <p>Try refining your search terms.</p>
               </div>
             )}
           </div>

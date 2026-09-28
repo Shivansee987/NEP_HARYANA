@@ -18,12 +18,10 @@ import UniversityAssessmentWorkspace from "./pages/Institution/UniversityAssessm
 // New Admin Panel imports
 import AdminLayout from "./components/Admin/AdminLayout";
 import AdminOverview from "./pages/Admin/AdminOverview";
-import CollegeManagement from "./pages/Admin/CollegeManagement";
-import CollegeDetail from "./pages/Admin/CollegeDetail";
+import StateInstitutions from "./pages/Admin/StateInstitutions";
 import AdminAssessmentDetail from "./pages/Admin/AdminAssessmentDetail";
 import Reports from "./pages/Admin/Reports";
 import Settings from "./pages/Admin/Settings";
-import Scoring from "./pages/Admin/Scoring";
 
 import {
   ProtectedRoute,
@@ -140,10 +138,10 @@ function App() {
           }
         >
           <Route path="/admin" element={<AdminOverview />} />
-          <Route path="/admin/reviews" element={<CollegeManagement onlySubmitted={true} />} />
-          <Route path="/admin/colleges" element={<CollegeManagement />} />
-          <Route path="/admin/colleges/:id" element={<CollegeDetail />} />
-          <Route path="/admin/scoring" element={<Scoring />} />
+          <Route path="/admin/institutions" element={<StateInstitutions />} />
+          <Route path="/admin/colleges/*" element={<Navigate to="/admin/institutions?type=COLLEGE" replace />} />
+          <Route path="/admin/reviews" element={<Navigate to="/admin/institutions?stage=SUBMITTED" replace />} />
+          <Route path="/admin/scoring" element={<Navigate to="/admin/institutions" replace />} />
           <Route path="/admin/assessments/:assessmentId" element={<AdminAssessmentDetail />} />
           <Route path="/admin/reports" element={<Reports />} />
           <Route path="/admin/settings" element={<Settings />} />

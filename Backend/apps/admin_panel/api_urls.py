@@ -10,6 +10,7 @@ from .api_views import (
     AdminAssessmentInspectView,
     AdminReviewQueueView,
     AdminReviewerAuthorizationsView,
+    AdminStateInstitutionsView,
 )
 
 urlpatterns = [
@@ -22,6 +23,9 @@ urlpatterns = [
     path('assessments/<str:assessment_id>/review/', AdminAssessmentInspectView.as_view(), name='admin-assessment-review'),
     path('assessments/<str:assessment_id>/assign/', AdminAssessmentAssignReviewerView.as_view(), name='admin-assessment-assign'),
     path('assessments/<str:assessment_id>/certify/', AdminAssessmentCertifyView.as_view(), name='admin-assessment-certify'),
+
+    # State Admin institution overview (read-only)
+    path('institutions/', AdminStateInstitutionsView.as_view(), name='admin-state-institutions'),
 
     # Reviewer Authorizations Management
     path('authorizations/', AdminReviewerAuthorizationsView.as_view(), name='admin-authorizations'),

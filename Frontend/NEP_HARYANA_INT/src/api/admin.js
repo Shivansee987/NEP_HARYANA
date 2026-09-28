@@ -102,3 +102,12 @@ export function reviewAdminNomination(collegeId, reviewData) {
     body: JSON.stringify(reviewData),
   });
 }
+
+/**
+ * GET /api/v1/admin/institutions/
+ * State Admin overview: every University and College with its latest assessment stage, score and reviewer,
+ * state totals, committee workload and recent audit activity. Read-only; restricted to admin.
+ */
+export function fetchStateInstitutions() {
+  return request("/v1/admin/institutions/");
+}
