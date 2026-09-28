@@ -612,3 +612,42 @@ class TestCategoryFEvidenceReadiness(EvidenceCoverageTestCase):
                 requesting_user=self.principal_karnal,  # from College 1
                 subcriterion_codes=["C1.1"]
             )
+
+
+class TestCategoryGReviewerCoverageAuthorization(EvidenceCoverageTestCase):
+    """
+    Coverage access must honour the same reviewer scoping as review actions:
+    an ALL-framework grant covers every framework, and chairs/admins are not rejected by role.
+    """
+    def _coverage(self, user, framework="COLLEGE_2026"):
+        return EvidenceService.evaluate_evidence_coverage(
+            assessment_id="ASSESS-COLLEGE-2026-01",
+            framework=framework,
+            institution_id="C-4001",
+            requesting_user=user,
+            subcriterion_codes=["C1.1"]
+        )
+
+    def _user(self, email, role):
+        return User.objects.create_user(
+            email=email, full_name=email, role=role, password="securepassword123"
+        )
+
+    def test_all_framework_grant_authorizes_committee_reviewer(self):
+        reviewer = self._user("all.reviewer@haryana.gov.in", "committee")
+        EvidenceService.authorize_reviewer(reviewer, framework="ALL", granted_by=self.admin_user)
+        self._coverage(reviewer)
+        self._coverage(reviewer, framework="UNIVERSITY_2026")
+
+    def test_all_framework_grant_authorizes_committee_chair(self):
+        chair = self._user("chair@haryana.gov.in", "committee_chair")
+        # Chairs are seeded with a direct ALL binding (authorize_reviewer only grants committee/admin)
+        ReviewerAuthorization.objects.create(user=chair, framework="ALL", granted_by=self.admin_user)
+        self._coverage(chair)
+
+    def test_admin_role_has_coverage_oversight(self):
+        self._coverage(self._user("dhe.admin@haryana.gov.in", "admin"))
+
+    def test_reviewer_scoped_to_other_framework_is_rejected(self):
+        with self.assertRaises(UnauthorizedEvidenceActionError):
+            self._coverage(self.committee_reviewer, framework="UNIVERSITY_2026")
