@@ -638,6 +638,14 @@ class UniversityAssessmentService:
         )
 
     @classmethod
+    def get_submission_issues(cls, assessment: UniversityAssessment) -> list:
+        """
+        Input issues that block submission: invalid values, period-bound claims without dates and
+        out-of-period claims. Evidence verification is not a submission gate.
+        """
+        return submission_errors(assessment.parameter_data or {}, get_university_parameters(), UNIVERSITY_PARAMETER_CODES)
+
+    @classmethod
     @transaction.atomic
     def submit_assessment(
         cls,
@@ -646,7 +654,7 @@ class UniversityAssessmentService:
     ) -> UniversityAssessment:
         """
         Submits a University assessment for review.
-        Validates ownership, state (must be DRAFT), and required parameter inputs.
+        Validates ownership, state (DRAFT, or RETURNED for resubmission), and required parameter inputs.
         Does NOT gate submission on committee evidence verification.
         """
         try:
@@ -669,9 +677,9 @@ class UniversityAssessmentService:
                         code="ASSESSMENT_NOT_AUTHORIZED"
                     )
 
-        if assessment.status != "DRAFT":
+        if assessment.status not in ("DRAFT", "RETURNED"):
             raise InvalidStateTransitionError(
-                f"Cannot submit assessment in '{assessment.status}' status. Only DRAFT assessments can be submitted."
+                f"Cannot submit assessment in '{assessment.status}' status. Only DRAFT or RETURNED assessments can be submitted."
             )
 
         if not assessment.parameter_data:
@@ -680,8 +688,7 @@ class UniversityAssessmentService:
                 code="INVALID_PARAMETER_INPUT"
             )
 
-        # Invalid values, period-bound claims without dates and out-of-period claims must be corrected first
-        errors = submission_errors(assessment.parameter_data, get_university_parameters(), UNIVERSITY_PARAMETER_CODES)
+        errors = cls.get_submission_issues(assessment)
         if errors:
             raise UniversityValidationError(
                 f"Submission blocked: {len(errors)} input issue(s) must be corrected. " + "; ".join(
@@ -702,7 +709,7 @@ class UniversityAssessmentService:
             previous_status=prev_status,
             new_status="SUBMITTED",
             outcome="SUCCESS",
-            reason="Formal submission by institution",
+            reason="Resubmission after correction" if prev_status == "RETURNED" else "Formal submission by institution",
         )
 
         return assessment
@@ -758,8 +765,16 @@ class UniversityAssessmentService:
         actor_role = getattr(actor, "role", "")
         is_admin = getattr(actor, "is_superuser", False) or actor_role in ("admin", "state_admin")
 
+        # Certification must go through UniversityReviewService.certify_assessment, which enforces
+        # certification authority and freezes the certified result; a bare status flip would bypass both.
+        if clean_target == "CERTIFIED":
+            raise UniversityNotAuthorizedError(
+                "Assessments can only be certified through the certification endpoint.",
+                code="CERTIFICATION_NOT_AUTHORIZED"
+            )
+
         # Reviewer-only transitions check
-        if clean_target in ("UNDER_REVIEW", "EVALUATED", "CERTIFICATION_PENDING", "FINALIZED", "BLOCKED"):
+        if clean_target in ("UNDER_REVIEW", "EVALUATED", "CERTIFICATION_PENDING", "FINALIZED", "BLOCKED", "RETURNED"):
             if not is_admin and actor_role not in ("committee", "committee_chair"):
                 raise UniversityNotAuthorizedError(
                     f"Only committee reviewers and administrators can transition assessment to '{clean_target}'.",

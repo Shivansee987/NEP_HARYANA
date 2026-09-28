@@ -4,7 +4,8 @@
  * Professional, Modern Institutional Grade Dashboard Pass.
  * Matches College Principal Dashboard architecture:
  * - Persistent left sidebar with council branding, university profile, and module navigation tabs
- * - Dedicated sections: Overview, Parameters (U1–U20), Evidence Readiness, and Audit Reports
+ * - Primary sections: Overview, Parameters (U1–U20), Evidence Readiness, Submit Assessment
+ * - Support section: Audit & Reports
  * - Professional white footer with council branding and statutory window
  * - Strictly adheres to server-authoritative scoring, RBAC, tenant isolation, and statutory definitions.
  * - Zero client-side score computation.
@@ -18,6 +19,8 @@ import {
   createUniversityAssessment,
   fetchUniversityAssessmentParameters,
   fetchUniversityAssessmentReadiness,
+  fetchUniversityScoringEvaluation,
+  fetchUniversityReviewHistory,
   submitUniversityAssessment,
 } from "../../api/university";
 import {
@@ -32,7 +35,6 @@ import {
   PlusCircle,
   FileSpreadsheet,
   Eye,
-  AlertTriangle,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -42,6 +44,7 @@ import {
 } from "lucide-react";
 import { downloadAssessmentReportCSV } from "../../api/reports";
 import AssessmentReportModal from "../../components/Reports/AssessmentReportModal";
+import SubmissionStatusPanel from "../../components/University/SubmissionStatusPanel";
 import hshecLogo from "../../assets/hshec_logo.jpeg";
 import {
   StatusBadge,
@@ -63,7 +66,7 @@ export default function UniversityDashboard() {
   const { user, logout } = useAuth();
 
   // Navigation & View state
-  const [activeSection, setActiveSection] = useState("overview"); // 'overview' | 'parameters' | 'evidence' | 'reports'
+  const [activeSection, setActiveSection] = useState("overview"); // 'overview' | 'parameters' | 'evidence' | 'submit' | 'reports'
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Data state
@@ -78,6 +81,8 @@ export default function UniversityDashboard() {
   const [activeAssessment, setActiveAssessment] = useState(null);
   const [parameters, setParameters] = useState([]);
   const [readiness, setReadiness] = useState(null);
+  const [scoring, setScoring] = useState(null);
+  const [reviewHistory, setReviewHistory] = useState([]);
   const [showReportModal, setShowReportModal] = useState(false);
   const [paramFilter, setParamFilter] = useState("ALL"); // 'ALL' | 'COMPLETED' | 'PENDING'
 
@@ -96,6 +101,8 @@ export default function UniversityDashboard() {
         setActiveAssessment(null);
         setParameters([]);
         setReadiness(null);
+        setScoring(null);
+        setReviewHistory([]);
         return;
       }
       setUniversity(myUni);
@@ -109,18 +116,24 @@ export default function UniversityDashboard() {
         const latest = assessList[0];
         setActiveAssessment(latest);
 
-        // 3. Fetch parameter metadata and readiness for the active assessment
-        const [paramsData, readyData] = await Promise.all([
+        // 3. Fetch parameters, readiness, live score breakdown and review history for the active assessment
+        const [paramsData, readyData, scoringData, historyData] = await Promise.all([
           fetchUniversityAssessmentParameters(latest.assessment_id).catch(() => []),
           fetchUniversityAssessmentReadiness(latest.assessment_id).catch(() => null),
+          fetchUniversityScoringEvaluation(latest.assessment_id).catch(() => null),
+          fetchUniversityReviewHistory(latest.assessment_id).catch(() => []),
         ]);
 
         setParameters(Array.isArray(paramsData) ? paramsData : []);
         setReadiness(readyData);
+        setScoring(scoringData);
+        setReviewHistory(Array.isArray(historyData) ? historyData : []);
       } else {
         setActiveAssessment(null);
         setParameters([]);
         setReadiness(null);
+        setScoring(null);
+        setReviewHistory([]);
       }
 
       setLastRefreshed(new Date());
@@ -152,10 +165,10 @@ export default function UniversityDashboard() {
   };
 
   const handleSubmitAssessment = async () => {
-    if (!activeAssessment) return;
+    if (!activeAssessment || !readiness?.submission_ready) return;
     if (
       !window.confirm(
-        "Are you sure you want to formally submit this assessment for Screening Committee evaluation? Once submitted, inputs are locked."
+        `Are you sure you want to formally ${activeAssessment.status === "RETURNED" ? "resubmit" : "submit"} this assessment for Screening Committee evaluation? Once submitted, inputs are locked.`
       )
     ) {
       return;
@@ -179,8 +192,8 @@ export default function UniversityDashboard() {
   };
 
   const roleLabel = ROLE_LABELS[user?.role] || "University Officer";
-  const universityName = university?.name || user?.university_name || "Kurukshetra University";
-  const aisheCode = university?.aishe_code || user?.aishe_code || "U-0123";
+  const universityName = university?.name || user?.university_name || "—";
+  const aisheCode = university?.aishe_code || user?.aishe_code || "—";
 
   // Compute metrics from actual domain data (strictly U1–U20 = 20 parameters)
   const completedParameters = parameters.filter((p) => p.submitted_input != null && Object.keys(p.submitted_input).length > 0).length;
@@ -201,24 +214,35 @@ export default function UniversityDashboard() {
     return true;
   });
 
-  // Statutory Access Control: Only State Admin, Committee Chair, and Committee Members are authorized to view affiliated college lists
-  const canViewAffiliatedColleges = ["admin", "committee_chair", "committee"].includes(user?.role);
+  const assessmentStatus = activeAssessment?.status || null;
+  const isEditable = ["DRAFT", "RETURNED"].includes(assessmentStatus);
+  const parameterResults = scoring?.parameter_results || {};
 
-  useEffect(() => {
-    if (!canViewAffiliatedColleges && activeSection === "colleges") {
-      setActiveSection("overview");
-    }
-  }, [canViewAffiliatedColleges, activeSection]);
+  const submitBadge = !activeAssessment
+    ? null
+    : assessmentStatus === "RETURNED"
+    ? "Returned"
+    : isEditable
+    ? readiness?.submission_ready ? "Ready" : "Action"
+    : assessmentStatus === "CERTIFIED"
+    ? "Certified"
+    : "Locked";
 
-  // Sidebar navigation items
-  const navItems = [
-    { id: "overview", label: "Dashboard Overview", icon: LayoutDashboard, badge: null },
-    ...(canViewAffiliatedColleges
-      ? [{ id: "colleges", label: "Affiliated Colleges (64)", icon: Building2, badge: "52/64" }]
-      : []),
-    { id: "parameters", label: "Parameters (U1–U20)", icon: ClipboardList, badge: `${completedParameters}/20` },
-    { id: "evidence", label: "Evidence Readiness", icon: CheckCircle2, badge: isReadyForScoring ? "Ready" : "Action" },
-    { id: "reports", label: "Audit Reports", icon: FileSpreadsheet, badge: null },
+  // Sidebar navigation: the Nodal Officer's job first, supporting audit material second
+  const navGroups = [
+    {
+      label: "Assessment",
+      items: [
+        { id: "overview", label: "Dashboard Overview", icon: LayoutDashboard, badge: null },
+        { id: "parameters", label: "Parameters (U1–U20)", icon: ClipboardList, badge: `${completedParameters}/20` },
+        { id: "evidence", label: "Evidence Readiness", icon: CheckCircle2, badge: isReadyForScoring ? "Ready" : "Action" },
+        { id: "submit", label: "Submit Assessment", icon: Send, badge: submitBadge },
+      ],
+    },
+    {
+      label: "Support",
+      items: [{ id: "reports", label: "Audit & Reports", icon: FileSpreadsheet, badge: null }],
+    },
   ];
 
   return (
@@ -305,13 +329,15 @@ export default function UniversityDashboard() {
 
           {/* Navigation Links */}
           <nav className="px-2.5 space-y-1 overflow-y-auto flex-1 py-1">
+            {navGroups.map((group, groupIdx) => (
+              <div key={group.label} className={`space-y-1 ${groupIdx > 0 ? "pt-3 mt-2 border-t border-slate-100" : ""}`}>
             <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider px-3 py-1 opacity-0 group-hover:opacity-100 transition-opacity duration-300 whitespace-nowrap hidden lg:block">
-              Assessment Modules
+              {group.label}
             </div>
             <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider px-3 py-1 block lg:hidden">
-              Assessment Modules
+              {group.label}
             </div>
-            {navItems.map((item) => {
+            {group.items.map((item) => {
               const Icon = item.icon;
               const isActive = activeSection === item.id;
               return (
@@ -364,6 +390,8 @@ export default function UniversityDashboard() {
                 </button>
               );
             })}
+              </div>
+            ))}
           </nav>
         </div>
 
@@ -445,7 +473,8 @@ export default function UniversityDashboard() {
                 {activeSection === "overview" && "Assessment Overview & Health"}
                 {activeSection === "parameters" && "Statutory Parameters (U1–U20)"}
                 {activeSection === "evidence" && "Documentary Evidence Readiness"}
-                {activeSection === "reports" && "Official Audit & Assessment Reports"}
+                {activeSection === "submit" && "Submit Assessment"}
+                {activeSection === "reports" && "Audit & Reports"}
               </h1>
               <p className="text-xs text-slate-500 mt-1">
                 Haryana State Higher Education Council — Authoritative Institutional Evaluation
@@ -619,251 +648,46 @@ export default function UniversityDashboard() {
                       </div>
                     </div>
 
-                    {/* Metric 4: Statutory Framework */}
+                    {/* Metric 4: Backend-calculated score (certified score once certified) */}
                     <div className="bg-white rounded-xl border border-slate-200/90 p-5 shadow-xs flex flex-col justify-between">
                       <div>
                         <div className="flex items-center justify-between gap-2 mb-2">
                           <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                            Statutory Framework
+                            {scoring?.is_certified ? "Certified Score" : "Calculated Score"}
                           </span>
                           <span className="text-[10px] font-bold text-purple-700 bg-purple-50 border border-purple-200 px-2 py-0.5 rounded-full">
-                            Gated
+                            {scoring?.is_certified ? "Final" : "Live"}
                           </span>
                         </div>
-                        <p className="text-lg font-extrabold text-slate-900 tracking-tight">
-                          {activeAssessment?.framework || "UNIVERSITY_2026"}
-                        </p>
+                        <div className="flex items-baseline gap-1.5">
+                          <span className="text-2xl font-extrabold text-slate-900 tracking-tight font-mono">
+                            {scoring ? (scoring.is_certified ? scoring.final_certified_total : scoring.authoritative_total) : "—"}
+                          </span>
+                          <span className="text-xs font-semibold text-slate-400">
+                            / {scoring?.max_marks ?? 100}
+                          </span>
+                        </div>
                       </div>
                       <div className="mt-3 pt-3 border-t border-slate-100 flex items-center gap-1.5 text-xs text-slate-500">
-                        <Building2 size={12} className="text-slate-400" />
-                        <span>Academic Period 2025–2026</span>
+                        <ShieldCheck size={12} className="text-slate-400" />
+                        <span>{scoring?.is_certified ? "Frozen at certification" : "Evidence-gated, pending committee review"}</span>
                       </div>
                     </div>
                   </div>
 
-                  {/* Attention & Action Banner */}
+                  {/* Next Action: status-aware submission / review / result panel */}
                   {activeAssessment && (
-                    <div className="bg-white rounded-xl border border-[#ebdcd0] p-5 shadow-xs space-y-4">
-                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-100">
-                        <div>
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="text-[11px] font-bold text-[#600b0b] uppercase tracking-wider bg-[#eaded2]/60 px-2 py-0.5 rounded border border-[#ebdcd0]">
-                              Recommended Action
-                            </span>
-                            <span className="text-xs font-semibold text-slate-600">
-                              Phase: {activeAssessment.status}
-                            </span>
-                          </div>
-                          {activeAssessment.status === "DRAFT" ? (
-                            <h3 className="text-sm sm:text-base font-bold text-slate-900">
-                              Complete Parameter Inputs and Submit for Screening
-                            </h3>
-                          ) : (
-                            <h3 className="text-sm sm:text-base font-bold text-slate-900">
-                              Assessment Locked for Official Committee Evaluation
-                            </h3>
-                          )}
-                          <p className="text-xs text-slate-500 mt-0.5 max-w-2xl leading-relaxed">
-                            {activeAssessment.status === "DRAFT"
-                              ? "Ensure all 20 parameter values are recorded and required evidence documents are attached prior to formal submission."
-                              : "Independent verification of your documentary evidence is underway by the Screening Committee."}
-                          </p>
-                        </div>
-
-                        <div className="flex items-center gap-3 shrink-0 flex-wrap">
-                          <button
-                            onClick={() => handleOpenAssessment()}
-                            className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-[#600b0b] hover:bg-[#4a0707] text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
-                          >
-                            <span>Continue Assessment (U1–U20)</span>
-                            <ChevronRight size={13} />
-                          </button>
-
-                          {activeAssessment.status === "DRAFT" && (
-                            <button
-                              onClick={handleSubmitAssessment}
-                              disabled={submitting}
-                              className="inline-flex items-center gap-2 px-3.5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold transition-all shadow-xs disabled:opacity-50 cursor-pointer"
-                            >
-                              <Send size={13} />
-                              <span>{submitting ? "Submitting..." : "Submit"}</span>
-                            </button>
-                          )}
-
-                          <button
-                            onClick={() => setShowReportModal(true)}
-                            className="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
-                          >
-                            <Eye size={13} />
-                            <span>View Inspection Report</span>
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Conditional Alert Inside the Action Card if Gating Requirements Unmet */}
-                      {activeAssessment.status === "DRAFT" && readiness && !readiness.is_ready && (
-                        <div className="flex items-start gap-3 p-3.5 bg-amber-50/80 border border-amber-200 rounded-lg text-xs text-amber-900">
-                          <AlertTriangle size={16} className="text-amber-600 shrink-0 mt-0.5" />
-                          <div className="flex-1 min-w-0">
-                            <p className="font-bold text-amber-950 mb-0.5">Evidence Gating Requirements Unmet</p>
-                            <p className="text-amber-800 leading-relaxed">
-                              {readiness.evidence_readiness_summary?.uncovered_subcriteria ?? 51} subcriteria still require documentary evidence before the evaluation engine will unlock earned marks.
-                            </p>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Evidence Readiness Summary Card */}
-                  {activeAssessment && readiness && (
-                    <EvidenceReadinessSummary
-                      summary={readiness.evidence_readiness_summary}
-                      isReady={readiness.is_ready}
-                      onActionClick={() => setShowReportModal(true)}
+                    <SubmissionStatusPanel
+                      compact
+                      status={assessmentStatus}
+                      readiness={readiness}
+                      scoring={scoring}
+                      reviewHistory={reviewHistory}
+                      submitting={submitting}
+                      onSubmit={handleSubmitAssessment}
+                      onOpenWorkspace={() => handleOpenAssessment()}
                     />
                   )}
-
-                  {/* Vice Chancellor & Nodal Officer Statutory Endorsement Card */}
-                  {activeAssessment && (
-                    <div className="bg-white rounded-xl border border-[#dfb987] p-5 shadow-xs bg-gradient-to-br from-white via-white to-[#fbf5ee]">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[#ebdcd0]">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-xl bg-[#fbf5ee] border border-[#dfb987] flex items-center justify-center text-[#c29b68] shrink-0">
-                            <ShieldCheck size={20} />
-                          </div>
-                          <div>
-                            <span className="text-[10px] font-bold text-[#600b0b] uppercase tracking-widest font-mono">
-                              Statutory Governance Endorsement
-                            </span>
-                            <h4 className="text-sm font-bold text-slate-900">
-                              University Council Cluster Endorsement & Digital Seal
-                            </h4>
-                          </div>
-                        </div>
-
-                        <span className="text-xs font-mono font-semibold px-2.5 py-1 rounded-md bg-[#eaded2] text-[#600b0b] border border-[#ebdcd0] shrink-0">
-                          Section 12-A Validated
-                        </span>
-                      </div>
-
-                      <p className="text-xs text-slate-600 my-4 leading-relaxed">
-                        {canViewAffiliatedColleges
-                          ? "I hereby endorse that Kurukshetra University campus parameters U1–U20 and 52 affiliated collegiate self-appraisals have been vetted for statutory authenticity under the Haryana State Higher Education Council guidelines."
-                          : "I hereby endorse that Kurukshetra University campus parameters U1–U20 have been vetted for statutory authenticity under the Haryana State Higher Education Council guidelines."}
-                      </p>
-
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-slate-100">
-                        <div className="text-xs text-slate-500 font-mono">
-                          Signatories: <span className="font-bold text-slate-800">Prof. Sanjeev Kumar</span> (Nodal Officer) & <span className="font-bold text-slate-800">Hon'ble Vice Chancellor</span>
-                        </div>
-                        {canViewAffiliatedColleges && (
-                          <button
-                            onClick={() => setActiveSection("colleges")}
-                            className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-[#600b0b] hover:bg-[#4a0707] text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
-                          >
-                            <Building2 size={13} />
-                            <span>Inspect 64 Affiliated Colleges</span>
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* SECTION: AFFILIATED COLLEGES CLUSTER VERIFICATION MATRIX (RESTRICTED) */}
-              {activeSection === "colleges" && canViewAffiliatedColleges && (
-                <div className="bg-white rounded-xl border border-slate-200/90 shadow-xs overflow-hidden">
-                  <div className="p-4 sm:p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/60">
-                    <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-[10px] font-bold text-blue-700 uppercase tracking-wider bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
-                          Academic Cluster Matrix
-                        </span>
-                        <span className="text-xs text-slate-400 font-medium">Kurukshetra University Zone</span>
-                      </div>
-                      <h2 className="text-base font-bold text-slate-900 tracking-tight">
-                        Affiliated Colleges Dossier Verification Matrix (64 Colleges)
-                      </h2>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-mono font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
-                        52 / 64 Submitted (81.3%)
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row gap-3 bg-white">
-                    <input
-                      type="text"
-                      placeholder="Search affiliated colleges by name, AISHE code, or district..."
-                      className="flex-1 px-3 py-2 rounded-lg border border-slate-200 text-xs text-slate-800 focus:outline-hidden focus:border-blue-500 font-medium"
-                    />
-                    <select className="px-3 py-2 rounded-lg border border-slate-200 text-xs text-slate-700 font-medium bg-white">
-                      <option>All Districts (Kurukshetra, Kaithal, Panipat, Yamunanagar)</option>
-                      <option>Kurukshetra District (24 Colleges)</option>
-                      <option>Kaithal District (16 Colleges)</option>
-                      <option>Panipat District (14 Colleges)</option>
-                      <option>Yamunanagar District (10 Colleges)</option>
-                    </select>
-                  </div>
-
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse text-xs">
-                      <thead>
-                        <tr className="bg-slate-50/80 border-b border-slate-100 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                          <th className="py-3 px-4">AISHE</th>
-                          <th className="py-3 px-4">Affiliated Institution</th>
-                          <th className="py-3 px-4">District</th>
-                          <th className="py-3 px-4">Principal In-Charge</th>
-                          <th className="py-3 px-4">Self Score</th>
-                          <th className="py-3 px-4">Endorsement Status</th>
-                          <th className="py-3 px-4 text-right">Action</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {[
-                          { code: "C-28104", name: "Govt. PG College, Kaithal", dist: "Kaithal", principal: "Dr. Sudhir Sharma", score: "84.5", status: "Univ Endorsed", statusColor: "emerald" },
-                          { code: "C-28450", name: "Arya PG College, Panipat", dist: "Panipat", principal: "Dr. Jagdish Gupta", score: "82.0", status: "Univ Endorsed", statusColor: "emerald" },
-                          { code: "C-28211", name: "Markanda National College, Shahabad", dist: "Kurukshetra", principal: "Dr. Ashok Kumar", score: "78.4", status: "Pending Review", statusColor: "amber" },
-                          { code: "C-28190", name: "D.A.V. College, Pundri", dist: "Kaithal", principal: "Dr. R. K. Goel", score: "76.2", status: "In Screening", statusColor: "blue" },
-                          { code: "C-28602", name: "Govt. College for Women, Yamunanagar", dist: "Yamunanagar", principal: "Dr. Rekha Rani", score: "64.0", status: "Clause C5 Deficit", statusColor: "red" },
-                          { code: "C-28315", name: "Seth Navrang Rai Lohia Jairam Girls College", dist: "Kurukshetra", principal: "Dr. Sudesh Rawal", score: "71.8", status: "Under Rectification", statusColor: "amber" },
-                        ].map((item, idx) => (
-                          <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
-                            <td className="py-3 px-4 font-mono font-bold text-slate-500">{item.code}</td>
-                            <td className="py-3 px-4 font-bold text-slate-800">{item.name}</td>
-                            <td className="py-3 px-4 text-slate-600">{item.dist}</td>
-                            <td className="py-3 px-4 text-slate-600">{item.principal}</td>
-                            <td className="py-3 px-4 font-mono font-bold text-slate-900">{item.score} / 100</td>
-                            <td className="py-3 px-4">
-                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border uppercase tracking-wider ${
-                                item.statusColor === 'emerald'
-                                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                                  : item.statusColor === 'amber'
-                                  ? 'bg-amber-50 text-amber-800 border-amber-200'
-                                  : item.statusColor === 'red'
-                                  ? 'bg-red-50 text-red-800 border-red-200'
-                                  : 'bg-blue-50 text-blue-800 border-blue-200'
-                              }`}>
-                                {item.status}
-                              </span>
-                            </td>
-                            <td className="py-3 px-4 text-right">
-                              <button
-                                onClick={() => alert(`Reviewing collegiate dossier for ${item.name}`)}
-                                className="px-2.5 py-1 text-xs font-semibold text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-md transition-colors cursor-pointer"
-                              >
-                                View Dossier
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
                 </div>
               )}
 
@@ -928,7 +752,7 @@ export default function UniversityDashboard() {
                             <tr className="bg-slate-50/80 border-b border-slate-100 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                               <th className="py-3 px-4 w-16">Code</th>
                               <th className="py-3 px-4">Parameter Title</th>
-                              <th className="py-3 px-4 text-center w-28">Max Marks</th>
+                              <th className="py-3 px-4 text-center w-28">Score</th>
                               <th className="py-3 px-4">Mandatory Evidence Types</th>
                               <th className="py-3 px-4 text-center w-32">Input Status</th>
                               <th className="py-3 px-4 text-center w-24">Action</th>
@@ -937,6 +761,7 @@ export default function UniversityDashboard() {
                           <tbody className="divide-y divide-slate-100">
                             {filteredParameters.map((param) => {
                               const isComplete = param.submitted_input != null && Object.keys(param.submitted_input).length > 0;
+                              const paramScore = parameterResults[param.parameter_code || param.code];
                               return (
                                 <tr
                                   key={param.parameter_code || param.code}
@@ -948,8 +773,11 @@ export default function UniversityDashboard() {
                                   <td className="py-3.5 px-4 font-medium text-slate-900 max-w-md">
                                     {param.title}
                                   </td>
-                                  <td className="py-3.5 px-4 text-center font-bold text-slate-700 whitespace-nowrap">
-                                    {param.max_marks} pts
+                                  <td
+                                    className="py-3.5 px-4 text-center font-bold text-slate-700 whitespace-nowrap font-mono"
+                                    title={paramScore?.scoring_basis || ""}
+                                  >
+                                    {paramScore ? paramScore.awarded_score ?? paramScore.calculated_score : "—"} / {param.max_marks}
                                   </td>
                                   <td className="py-3.5 px-4 text-slate-600">
                                     {param.mandatory_evidence && param.mandatory_evidence.length > 0 ? (
@@ -993,7 +821,7 @@ export default function UniversityDashboard() {
                                       onClick={() => handleOpenAssessment(param.parameter_code || param.code)}
                                       className="text-xs font-bold text-[#600b0b] hover:text-[#4a0707] hover:underline cursor-pointer"
                                     >
-                                      Open in Form
+                                      {isEditable ? "Open in Form" : "View"}
                                     </button>
                                   </td>
                                 </tr>
@@ -1041,7 +869,65 @@ export default function UniversityDashboard() {
                 </div>
               )}
 
-              {/* SECTION 4: AUDIT REPORTS */}
+              {/* SECTION 4: SUBMIT ASSESSMENT */}
+              {activeSection === "submit" && (
+                <div className="space-y-6">
+                  {activeAssessment ? (
+                    <>
+                      <SubmissionStatusPanel
+                        status={assessmentStatus}
+                        readiness={readiness}
+                        scoring={scoring}
+                        reviewHistory={reviewHistory}
+                        submitting={submitting}
+                        onSubmit={handleSubmitAssessment}
+                        onOpenWorkspace={() => handleOpenAssessment()}
+                      />
+
+                      <div className="bg-white rounded-xl border border-slate-200/90 p-5 shadow-xs">
+                        <h3 className="text-sm font-bold text-slate-900 mb-3">Pre-submission Checklist</h3>
+                        <ul className="text-xs text-slate-700 space-y-2">
+                          <li className="flex items-center gap-2">
+                            <CheckCircle2 size={14} className={completedParameters === totalParameters ? "text-emerald-600" : "text-slate-300"} />
+                            <span>Parameters recorded: <strong>{completedParameters} / {totalParameters}</strong></span>
+                          </li>
+                          <li className="flex items-center gap-2">
+                            <CheckCircle2 size={14} className={(readiness?.submission_issues || []).length === 0 ? "text-emerald-600" : "text-slate-300"} />
+                            <span>Input validation issues: <strong>{(readiness?.submission_issues || []).length}</strong></span>
+                          </li>
+                          <li className="flex items-center gap-2">
+                            <CheckCircle2 size={14} className={coveredSubcriteria >= totalSubcriteria ? "text-emerald-600" : "text-slate-300"} />
+                            <span>Subcriteria with evidence: <strong>{coveredSubcriteria} / {totalSubcriteria}</strong></span>
+                          </li>
+                        </ul>
+                      </div>
+
+                      {reviewHistory.length > 0 && (
+                        <div className="bg-white rounded-xl border border-slate-200/90 p-5 shadow-xs">
+                          <h3 className="text-sm font-bold text-slate-900 mb-3">Review Timeline</h3>
+                          <ol className="space-y-2 text-xs">
+                            {reviewHistory.map((rec) => (
+                              <li key={rec.review_id} className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
+                                <span className="font-mono text-slate-400 shrink-0">{new Date(rec.created_at).toLocaleString()}</span>
+                                <span className="font-bold text-slate-800">{rec.action.replaceAll("_", " ")}</span>
+                                <span className="text-slate-500">{rec.status_before} → {rec.status_after}</span>
+                              </li>
+                            ))}
+                          </ol>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <EmptyState
+                      icon={Send}
+                      title="No Active Assessment"
+                      description="Start the 2025-26 assessment from the Dashboard Overview before submitting."
+                    />
+                  )}
+                </div>
+              )}
+
+              {/* SECTION 5: AUDIT & REPORTS */}
               {activeSection === "reports" && (
                 <div className="space-y-6">
                   <div className="bg-white rounded-xl border border-slate-200/90 p-6 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">

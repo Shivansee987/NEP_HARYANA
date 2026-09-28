@@ -3,7 +3,7 @@ NEP Excellence Awards 2026 - University API Permissions
 Enforces strict institutional isolation, framework barriers, and segregation of duties.
 """
 from rest_framework.exceptions import NotAuthenticated, PermissionDenied
-from rest_framework.permissions import BasePermission, IsAuthenticated
+from rest_framework.permissions import SAFE_METHODS, BasePermission, IsAuthenticated
 
 from apps.evidence.models import ReviewerAuthorization
 from apps.scoring.enums import FrameworkType
@@ -224,6 +224,11 @@ class IsCommitteeOrAdminForEvaluation(BasePermission):
             raise NotAuthenticated()
 
         if getattr(user, 'is_superuser', False) or getattr(user, 'role', '') in ('admin', 'state_admin', 'committee', 'committee_chair'):
+            return True
+
+        # University users may read (never persist) their own live score breakdown; ownership is
+        # enforced by IsUniversityAssessmentOwnerOrReviewer's object check.
+        if request.method in SAFE_METHODS and getattr(user, 'university', None):
             return True
 
         raise AssessmentPermissionDenied(

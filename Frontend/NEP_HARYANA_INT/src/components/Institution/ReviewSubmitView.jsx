@@ -24,6 +24,11 @@ export default function ReviewSubmitView({
   onNavigateToParam = () => {},
   onSubmitAssessment = async () => {},
   submitting = false,
+  // Statuses in which the institution may still (re)submit; universities also resubmit RETURNED assessments
+  editableStatuses = ["DRAFT"],
+  // Backend submission gate (readiness.submission_ready / submission_issues); undefined = not provided
+  submissionReady,
+  submissionIssues = [],
 }) {
   const [declared, setDeclared] = useState(false);
   const [submitError, setSubmitError] = useState(null);
@@ -40,7 +45,9 @@ export default function ReviewSubmitView({
 
   const completedCount = completedCodes.length;
   const incompleteCount = totalCount - completedCount;
-  const isSubmitted = assessment.status === "SUBMITTED";
+  const isSubmitted = !editableStatuses.includes(assessment.status || "DRAFT");
+  const isResubmission = assessment.status === "RETURNED";
+  const blockedByBackend = submissionReady === false;
 
   // Count evidence by parameter
   const evidenceCountByParam = {};
@@ -268,6 +275,26 @@ export default function ReviewSubmitView({
             Institutional Submission Certification
           </h3>
 
+          {blockedByBackend && submissionIssues.length > 0 && (
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-900 space-y-1">
+              <p className="font-bold">Correct these {submissionIssues.length} input issue(s) before submitting:</p>
+              <ul className="list-disc pl-5 space-y-0.5">
+                {submissionIssues.map((issue, idx) => (
+                  <li key={idx}>
+                    <button
+                      type="button"
+                      onClick={() => issue.parameter && onNavigateToParam(issue.parameter)}
+                      className="font-mono font-bold hover:underline cursor-pointer"
+                    >
+                      {issue.subcriterion || issue.parameter}
+                    </button>
+                    {issue.field ? ` · ${issue.field}` : ""}: {issue.message}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           <div className="p-4 bg-slate-50 rounded-lg border border-slate-200 text-xs text-slate-700 space-y-2">
             <label className="flex items-start gap-2.5 cursor-pointer select-none">
               <input
@@ -297,11 +324,17 @@ export default function ReviewSubmitView({
             <button
               type="button"
               onClick={handleSubmit}
-              disabled={submitting || !declared}
+              disabled={submitting || !declared || blockedByBackend}
               className="inline-flex items-center justify-center gap-2 px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
             >
               <Send size={14} />
-              <span>{submitting ? "Submitting Assessment..." : "Submit Assessment to Committee"}</span>
+              <span>
+                {submitting
+                  ? "Submitting Assessment..."
+                  : isResubmission
+                  ? "Resubmit Corrected Assessment"
+                  : "Submit Assessment to Committee"}
+              </span>
             </button>
           </div>
         </div>
