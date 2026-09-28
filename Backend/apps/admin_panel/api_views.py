@@ -29,6 +29,7 @@ from .api_serializers import (
 from .services import (
     AdminControlPlaneService,
     AdminValidationError,
+    StateOverviewService,
 )
 
 
@@ -234,3 +235,15 @@ class AdminReviewerAuthorizationsView(APIView):
             ReviewerAuthorizationListSerializer(auth_record).data,
             status=status.HTTP_201_CREATED,
         )
+
+
+class AdminStateInstitutionsView(APIView):
+    """
+    GET /api/v1/admin/institutions/
+    State Admin overview: every University and College with its latest assessment stage, score and reviewer,
+    state totals, committee workload and recent audit activity. Read-only.
+    """
+    permission_classes = [IsAuthenticatedUser, IsAdminOnly]
+
+    def get(self, request):
+        return Response(StateOverviewService.build(), status=status.HTTP_200_OK)

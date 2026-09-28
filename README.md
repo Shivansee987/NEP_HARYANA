@@ -2,195 +2,222 @@ The ChatGPT Link with all the work - https://chatgpt.com/share/6ab7cd81-895c-83e
 
 <div align="center">
 
-# 🏛️ NEP Excellence Awards 2026 — Haryana Apex Platform
+# 🏛️ NEP Excellence Awards 2026 — Haryana
+
 ### Higher Education Department (DHE) & Haryana State Higher Education Council (HSHEC)
 
-<!-- Animated Typing Header -->
 <a href="https://git.io/typing-svg">
-  <img src="https://readme-typing-svg.demolab.com?font=Outfit&weight=700&size=26&duration=3000&pause=1000&color=600B0B&center=true&vCenter=true&width=850&lines=Haryana+State+Higher+Education+Council+(HSHEC);NEP+Excellence+Awards+2026+Apex+Platform;Server-Authoritative+Institutional+Assessment;Dual-Pane+Evidence+Scrutiny+%26+Digital+Certification;Complete+A-to-Z+Continuous+Walkthrough" alt="Typing SVG" />
+  <img src="https://readme-typing-svg.demolab.com?font=Outfit&weight=700&size=24&duration=2800&pause=900&color=600B0B&center=true&vCenter=true&width=880&lines=Colleges+and+Universities+fill+in+their+NEP+2026+details;They+upload+proof+for+every+claim;The+Committee+checks+the+proof+and+the+marks;The+Chair+gives+the+final+stamp+%E2%9C%85;The+State+Admin+watches+the+whole+state" alt="Animated summary: fill in, upload proof, committee checks, chair certifies, state admin watches" />
 </a>
 
-<p align="center">
-  <img src="https://img.shields.io/badge/System_Status-100%25_Operational-059669?style=for-the-badge&logo=checkmarx&logoColor=white" alt="Status" />
-  <img src="https://img.shields.io/badge/Frontend_Suite-26%2F26_Passed-4338ca?style=for-the-badge&logo=vitest&logoColor=white" alt="Frontend Tests" />
-  <img src="https://img.shields.io/badge/Backend_Regression-578%2F578_Passed-0284c7?style=for-the-badge&logo=django&logoColor=white" alt="Backend Tests" />
-  <img src="https://img.shields.io/badge/Aesthetics-Gov_Maroon_%26_Gold-600b0b?style=for-the-badge&logo=pantone&logoColor=white" alt="Palette" />
-  <img src="https://img.shields.io/badge/Walkthrough-53s_Full_HD_Video-c29b68?style=for-the-badge&logo=youtube&logoColor=white" alt="Walkthrough" />
+<p>
+  <img src="https://img.shields.io/badge/Backend-Django_REST-0c4b33?style=for-the-badge&logo=django&logoColor=white" alt="Django" />
+  <img src="https://img.shields.io/badge/Frontend-React_+_Vite-4338ca?style=for-the-badge&logo=react&logoColor=white" alt="React" />
+  <img src="https://img.shields.io/badge/Session-2025--26-600b0b?style=for-the-badge" alt="Session" />
+  <img src="https://img.shields.io/badge/Marks-Server_Calculated-c29b68?style=for-the-badge" alt="Server calculated marks" />
 </p>
 
 </div>
 
 ---
 
-## 🎬 Platform Full Video Tour (A to Z Continuous Walkthrough)
+## 🤔 What is this, in one minute?
 
-<div align="center">
-  <a href="./website_full_tour.mp4" title="Click to watch / download full 53s MP4 video">
-    <img src="./website_full_tour.webp" alt="Continuous 53s Walkthrough from Landing Page through all 4 Dashboards" width="920" style="border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.15); border: 2px solid #ebdcd0;" />
-  </a>
-  <p><em>🎥 <strong>Continuous Walkthrough:</strong> Landing Page ➔ Committee Chair Console ➔ State DHE Admin Apex Console ➔ University Dashboard ➔ College Principal Dashboard.</em><br />
-  📁 <strong>Direct Video File:</strong> <a href="./website_full_tour.mp4"><strong><code>website_full_tour.mp4</code></strong></a> (1440×900 HD, 6.2 MB, 53 seconds) | <a href="./website_full_tour.webp"><strong><code>website_full_tour.webp</code></strong></a></p>
-</div>
+Haryana gives **NEP Excellence Awards** to its universities and colleges. This website runs the whole process online:
 
----
+1. 🏫 **A college or university fills in a form** about what it did in the year (**1 July 2025 – 30 June 2026**).
+2. 📎 **It uploads proof** (PDFs) for each thing it claims.
+3. 🔍 **The Screening Committee checks the proof.** No checked proof = no marks.
+4. ✅ **The Committee Chair approves the marks and certifies the result.**
+5. 🗺️ **The State Admin watches everything** — who has started, who is stuck, who is certified — and can pull reports.
 
-## 🚀 Live System Readiness & Implementation Status
-
-| Capability / Module | Implementation State | Test Coverage | Live Status |
-|:---|:---:|:---:|:---:|
-| **Public Portal & Landing Page** | Fully Redesigned with State Emblem, Leadership & Telemetry | Built-in | <img src="https://img.shields.io/badge/Operational-059669?style=flat-square&logo=statuspage&logoColor=white" /> |
-| **State DHE Apex Admin Console** (`/admin`) | Statewide Command Center, College Directory & Scoring Matrix | Phase 8 & 9 Suite | <img src="https://img.shields.io/badge/Operational-059669?style=flat-square&logo=statuspage&logoColor=white" /> |
-| **Screening Committee Console** (`/checker/queue`) | Fixed KPI Cards, Dual-Pane Scrutiny & Framework Tabs | 15/15 Phase W4 Tests | <img src="https://img.shields.io/badge/Operational-059669?style=flat-square&logo=statuspage&logoColor=white" /> |
-| **University Dashboard** (`/university/dashboard`) | 20 NEP Criteria (U1–U20), Affiliated Colleges RBAC Guard | 11/11 Phase W2 Tests | <img src="https://img.shields.io/badge/Operational-059669?style=flat-square&logo=statuspage&logoColor=white" /> |
-| **College Principal Dashboard** (`/institution/...`) | 22 College NEP Parameters (C1–C22) & Completion Trackers | 11/11 Institution Tests | <img src="https://img.shields.io/badge/Operational-059669?style=flat-square&logo=statuspage&logoColor=white" /> |
-| **Authoritative Scoring Engine** | Frozen Server-Side Engine with Double-Counting Detection | 117/117 Scoring Tests | <img src="https://img.shields.io/badge/Frozen-600B0B?style=flat-square&logo=lock&logoColor=white" /> |
-| **Evidence Scrutiny & Storage** | SHA-256 Gated Storage, Subcriterion Citation Mapping | 42/42 Acceptance Tests | <img src="https://img.shields.io/badge/Frozen-600B0B?style=flat-square&logo=lock&logoColor=white" /> |
-| **Hover-Expand Navigation Rail** | Desktop Collapsed `w-20` Expanding to `w-64` Across All Dashboards | Cross-Browser | <img src="https://img.shields.io/badge/Polished-C29B68?style=flat-square&logo=safari&logoColor=white" /> |
+The computer, not a person, calculates the marks from the rules. People can only **check**, **approve**, or **adjust with a written reason** — and every action is saved in an audit log.
 
 ---
 
-## 🎨 Interactive Architecture & Feature Breakdown
-
-<details open>
-<summary><h3>🌟 1. User Interface & Multi-Dashboard Experience</h3></summary>
-
-The frontend is tailored to each institutional persona while sharing the cohesive **Haryana State Higher Education palette** (`#600b0b` Deep Maroon, `#c29b68` Gold Accent, `#eaded2` Sand, `#fdfaf6` Warm Alabaster):
-
-```text
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│                               HSHEC APEX ECOSYSTEM (NEP 2026)                          │
-├─────────────────────────┬──────────────────────────┬───────────────────────────────────┤
-│  State DHE Admin        │  Screening Committee     │  Universities & Colleges          │
-│  (/admin)               │  (/checker/queue)        │  (/university & /institution)     │
-├─────────────────────────┼──────────────────────────┼───────────────────────────────────┤
-│ • Statewide macro KPIs  │ • Fixed 4 KPI cards      │ • 20 University Criteria (U1–U20) │
-│ • Review queue triage   │ • SLA urgency badges     │ • 22 College Parameters (C1–C22)  │
-│ • College Management    │ • Framework tabs (Uni/Col│ • Evidence document upload        │
-│ • Scoring weightages    │ • Dual-pane scrutiny     │ • Real-time completion progress   │
-│ • Hover-expand sidebar  │ • Reviewer verification  │ • Data privacy RBAC isolation     │
-└─────────────────────────┴──────────────────────────┴───────────────────────────────────┘
-```
-
-#### Key UI Highlights:
-- **Hover-to-Expand Navigation**: All dashboards feature a space-efficient icon rail (`w-20` on desktop) that smoothly expands to a detailed navigation drawer (`w-64`) on hover without layout reflow.
-- **Fixed KPI Metric Cards**: Cards in the Committee Console use generous `p-5 rounded-2xl` padding, font-mono typography, and rounded accent badges (`w-10 h-10`) preventing border clipping.
-- **Strict RBAC Privacy**: The affiliated colleges list is strictly locked to **State Admin** and **Screening Committee** members; University Admins and Nodal Officers are automatically barred from accessing it.
-
-</details>
-
-<details open>
-<summary><h3>📊 2. Authoritative Statutory Frameworks</h3></summary>
-
-The platform strictly isolates the two statutory assessment frameworks:
+## 🧭 Who does what
 
 ```mermaid
-graph TD
-    A[Statutory NEP 2026 Frameworks] --> B[University Framework]
-    A --> C[College Framework]
-    
-    B --> B1[20 Authoritative Parameters: U1 to U20]
-    B --> B2[Max Score: 100 Marks]
-    B --> B3[Focus: Research, Patents, Doctoral Programs, Governance]
-    
-    C --> C1[22 Authoritative Parameters: C1 to C22]
-    C --> C2[Max Score: 100 Marks]
-    C --> C3[Focus: Multidisciplinary, Skilling, Outcomes, Inclusivity]
+flowchart TD
+    SA["🗺️ STATE ADMIN<br/>watches the whole state"]
+    SA --> U["🏛️ UNIVERSITIES"]
+    SA --> C["🏫 COLLEGES"]
+    U --> NO["Nodal Officer<br/>fills U1–U20"]
+    C --> P["Principal<br/>fills C1–C22"]
+    NO --> CR["🔍 COMMITTEE REVIEW"]
+    P --> CR
+    CR --> R["Reviewer<br/>checks the proof"]
+    CR --> CH["Chairperson<br/>approves the marks"]
+    R --> CERT["🏅 CERTIFICATION"]
+    CH --> CERT
 ```
 
-- **Statutory Assessment Period**: **01 July 2025 — 30 June 2026 (Academic Cycle 2025–26)**.
-- **Framework Isolation**: A university assessment is **never** evaluated with college rubrics, and a college is **never** evaluated with university rubrics.
-- **Server Authority**: The browser client **never** computes or adjusts marks; all evaluations are server-authoritative and cryptographic evidence-gated.
+| Role | In one line | Where they work |
+|---|---|---|
+| 🏫 **College Principal** | "I complete my college's assessment (C1–C22)." | `/institution/.../dashboard` |
+| 🏛️ **University Nodal Officer** | "I complete my university's assessment (U1–U20)." | `/university` |
+| 🔍 **Committee Reviewer** | "I check the proof and review the assessment." | `/checker/queue` |
+| ⚖️ **Committee Chairperson** | "I finalise the committee's decision and certify." | `/checker/queue` |
+| 🗺️ **State Admin** | "I control and monitor the entire state's process." | `/admin` |
 
-</details>
+### 🗺️ What the State Admin can and cannot do
 
-<details>
-<summary><h3>🔒 3. Evidence Principle & Verification Pipeline</h3></summary>
+The State Admin is the **eye on the whole state**, not a super-reviewer.
 
-```text
-  [ INSTITUTION ]                                [ SCREENING COMMITTEE ]
-  Parameter Input                                      Review Queue
-        │                                                   │
-        ▼                                                   ▼
-Document Upload ➔ SHA-256 Hash ➔ Subcriterion Citation ➔ Dual-Pane Scrutiny
-                                                            │
-                                        ┌───────────────────┴───────────────────┐
-                                        ▼                                       ▼
-                                 [ VERIFIED ]                            [ REJECTED ]
-                                        │                                       │
-                                        ▼                                       ▼
-                               Unlocks Earned Marks                    Blocks Criterion Score
-                                        │                                       │
-                                        └───────────────┬───────────────────────┘
-                                                        ▼
-                                            [ DIGITAL CERTIFICATION ]
-```
+| ✅ Can | ❌ Should not |
+|---|---|
+| See **every** university and college, even ones that have not started | Fill in an institution's form |
+| See each one's stage: *Not Started → Filling In → Submitted → Under Review → Awaiting Certification → Certified* (or *Returned*) | Approve or reject evidence (Committee's job) |
+| Open any assessment in **read-only** mode | Accept or change marks (Committee's job) |
+| Assign or reassign a reviewer (a reason is required when reassigning) | Quietly edit scores outside the workflow |
+| See committee workload: pending reviews, unassigned ones, open work per reviewer | |
+| Download a CSV of institutions and pull state reports | |
+| Read the recent audit trail (who did what, and when) | |
 
-> ⚠️ **Core Statutory Rule:** `NO VERIFIED EVIDENCE = NO EARNED MARKS`
-> Uploading an evidence document does not award marks; only documentary verification with page-level citations unlocks rubric points.
+**Admin console pages**
 
-</details>
-
-<details>
-<summary><h3>🧪 4. Complete Test Automation & Verification Telemetry</h3></summary>
-
-The platform is backed by extensive automated test suites:
-
-- **Frontend Contract & Workflow Suite**: `26 / 26 tests passed` (0 failures)
-  - 15/15 Phase W4 Modern Checker & Reviewer tests
-  - 11/11 Institution & Framework Isolation tests
-- **Authoritative Backend Regression**: `578 / 578 tests passed` (0 failures)
-  - 117/117 Scoring Engine tests
-  - 42/42 Evidence Scrutiny tests
-  - 18/18 Analytics & Reporting tests
-
-```bash
-# Run Frontend Test Suite
-cd Frontend/NEP_HARYANA_INT
-npm test
-
-# Run Backend Regression Tests
-cd Backend
-python manage.py test
-```
-
-</details>
+| Page | What you see |
+|---|---|
+| **Overview** (`/admin`) | State totals · a *Needs Attention* list (not started, submitted without a reviewer, returned, waiting for the Chair) · committee workload · latest scores · recent activity |
+| **Institutions** (`/admin/institutions`) | Every university and college in one table. Filter by type (University / College) and stage, search by name / AISHE code / email, export CSV. Click a row to open its assessment. |
+| **Reports** (`/admin/reports`) | State-level and institution-level reports |
 
 ---
 
-## ⚡ Quick Start & Local Development
+## 🔄 The workflow, step by step
 
-### 1. Backend Server Setup
+```mermaid
+stateDiagram-v2
+    direction LR
+    [*] --> NotStarted: institution registered
+    NotStarted --> FillingIn: starts the form
+    FillingIn --> Submitted: fills every parameter + uploads proof
+    Submitted --> UnderReview: Committee starts review
+    UnderReview --> Returned: sent back to fix something
+    Returned --> Submitted: institution fixes & resubmits
+    UnderReview --> AwaitingCertification: all marks approved, review completed
+    AwaitingCertification --> Certified: Chair certifies 🏅
+    Certified --> [*]
+```
+
+**1 · Fill in (Principal / Nodal Officer)**
+Open the dashboard → start the 2025-26 assessment → fill each parameter. The system checks your numbers before it accepts a submission (for example, "students placed" cannot be more than "students who took part").
+
+**2 · Upload proof**
+Each part of a parameter asks for a specific document. Upload a PDF against that part. Uploading alone gives **no** marks — it only makes the claim checkable.
+
+**3 · Submit**
+When every parameter is filled, press **Submit**. The form locks.
+
+**4 · Committee review (Reviewer)**
+Open the queue → **Start Review** → look at each document next to the claim → **Verify** or **Reject** it (a reason is required). Verified proof unlocks the marks for that part.
+
+**5 · Approve marks (Chairperson)**
+For each parameter, **Accept** the calculated score, or **Adjust** it with a written reason. If something is wrong, **Return for Correction** instead — the institution gets it back to fix.
+
+**6 · Certify (Chairperson)**
+Once every parameter is approved: **Complete Review → Award → Certify**. Certification is final and cannot be undone.
+
+**7 · Watch (State Admin)**
+Throughout, the State Admin sees every institution's stage, who is stuck, and who has been certified.
+
+> ⚠️ **Golden rule:** `NO VERIFIED PROOF = NO MARKS`. The browser never calculates marks — the server does, from the official rubric.
+
+---
+
+## 📐 The two rulebooks
+
+| | 🏛️ University | 🏫 College |
+|---|---|---|
+| Parameters | **U1 – U20** | **C1 – C22** |
+| Maximum | 100 marks | 100 marks |
+| Filled by | Nodal Officer | Principal |
+
+A university is never marked with the college rules, and a college is never marked with the university rules.
+
+---
+
+## ⚡ Run it on your computer
+
+**1. Backend (Django, port 8000)**
 ```bash
 cd Backend
-# Activate Python Virtual Environment
-..\venv\Scripts\activate   # Windows
-# source ../venv/bin/activate # Linux/macOS
-
-# Run Migrations & Start Server
+..\venv\Scripts\activate          # Windows
+# source ../venv/bin/activate     # Linux / macOS
 python manage.py migrate
+python manage.py create_dev_users  # creates the staff logins below
 python manage.py runserver 8000
 ```
 
-### 2. Frontend Client Setup
+**2. Frontend (React, port 5173)**
 ```bash
 cd Frontend/NEP_HARYANA_INT
 npm install
 npm run dev
 ```
 
-The portal will be live at `http://localhost:5173/`.
+Or start both at once from the repo root: `npm run dev`.
+Open **http://localhost:5173**.
 
 ---
 
-## 👥 Seed Test Credentials for Demonstrations
+## 🧪 Demo data — try the whole flow
 
-| Persona / Role | Email | Password | Target Console |
+`demo_tools/seed_demo.py` creates **5 colleges and 3 universities**, each stopped at a different step, so you can test every role right away. It uses the real API, so the backend must be running.
+
+```bash
+# from the repo root, with the backend running on :8000
+venv\Scripts\python.exe demo_tools\wipe_institutions.py           # ⚠️ deletes ALL institutions, assessments and uploads (dev only)
+set PYTHONPATH=demo_tools && venv\Scripts\python.exe demo_tools\seed_demo.py
+```
+
+**Staff logins**
+
+| Role | Email | Password |
+|---|---|---|
+| 🗺️ State Admin | `admin@dev.local` | `DevAdmin@123` |
+| 🔍 Committee Reviewer | `committee@dev.local` | `DevCommittee@123` |
+| ⚖️ Committee Chair | `chair@dev.local` | `DevChair@123` |
+
+**Institution logins** (password for all: `Demo@1234`)
+
+| Institution | Login | Where it is stopped | What to try |
 |---|---|---|---|
-| **State DHE Admin** | `admin@dev.local` | `DevPass@123` | `/admin` (Apex Command Center) |
-| **Committee Chair** | `chair@dev.local` | `DevPass@123` | `/checker/queue` (Screening Queue) |
-| **Committee Member** | `committee@dev.local` | `DevPass@123` | `/checker/queue` (Scrutiny Console) |
-| **University Nodal Officer** | `nodal@dev.local` | `DevPass@123` | `/university/dashboard` (University) |
-| **College Principal** | `principal@dev.local` | `DevPass@123` | `/institution/.../dashboard` (College) |
+| Govt. College, Sector 9, Gurugram | `principal.gurugram@demo.local` | Not started | Fill the form from scratch |
+| Dayanand College, Hisar | `principal.hisar@demo.local` | Filled + proof uploaded | Press **Submit** |
+| Govt. College for Women, Rohtak | `principal.rohtak@demo.local` | Submitted | Committee: start review, verify proof |
+| Hindu College, Sonepat | `principal.sonepat@demo.local` | Under review, proof verified | Chair: accept / adjust marks |
+| Dyal Singh College, Karnal | `principal.karnal@demo.local` | All marks approved | Chair: **Complete → Award → Certify** |
+| Kurukshetra University | `nodal.kuk@demo.local` | Not started | Fill U1–U20 from scratch |
+| Maharshi Dayanand University, Rohtak | `nodal.mdu@demo.local` | Submitted | Committee review |
+| Guru Jambheshwar University, Hisar | `nodal.gju@demo.local` | All marks approved | Chair: certify |
+
+Log in as `admin@dev.local` at any point to watch them move through the stages.
+
+---
+
+## 🧰 Tests
+
+```bash
+# Backend
+cd Backend
+python manage.py test
+
+# Frontend
+cd Frontend/NEP_HARYANA_INT
+npm test
+```
+
+---
+
+## 🎬 Video tour
+
+<div align="center">
+  <a href="./website_full_tour.mp4">
+    <img src="./website_full_tour.webp" alt="Walkthrough of the landing page and the dashboards" width="880" />
+  </a>
+  <p><em>Recorded before the State Admin console redesign — the admin screens now look different.</em></p>
+</div>
 
 ---
 

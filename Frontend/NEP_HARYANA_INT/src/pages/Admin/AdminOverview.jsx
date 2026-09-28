@@ -1,712 +1,353 @@
 /**
- * AdminOverview — Phase 8.5
+ * AdminOverview — State Admin dashboard.
  *
- * Drives the admin dashboard exclusively from the Phase 8 review queue API.
- * Legacy P1–P20 mockData imports and client-side score calculations are removed.
- * The backend is the single source of truth for all numbers shown here.
+ * Driven entirely by GET /api/v1/admin/institutions/: state totals, the institutions that need attention,
+ * committee workload and recent audit activity. The State Admin monitors, assigns and reports here;
+ * evidence decisions and score approval stay with the committee workflow.
  */
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
+  Building2,
   School,
-  CheckCircle2,
+  PlayCircle,
+  FileCheck,
   Clock,
+  Undo2,
+  CheckCircle2,
+  RefreshCw,
   AlertTriangle,
   ArrowRight,
-  TrendingUp,
-  FileCheck,
-  RefreshCw,
-  Building2,
-  User,
-  Layers,
-  ShieldCheck,
-  Award,
+  Users,
   FileSpreadsheet,
+  History,
+  ShieldCheck,
 } from 'lucide-react';
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  PieChart,
-  Pie,
-  Cell,
-  ResponsiveContainer,
-} from 'recharts';
-import { fetchAdminReviewQueue } from '../../api/admin';
+import { fetchStateInstitutions } from '../../api/admin';
+import { formatScore } from '../../utils/stateStages';
+import { StageBadge, TypeBadge } from '../../components/Admin/StageBadges';
 
-// ─── Status colour palette ────────────────────────────────────────────────────
-const STATUS_COLORS = {
-  SUBMITTED:    { fill: '#600b0b', label: 'Submitted' },
-  UNDER_REVIEW: { fill: '#b45309', label: 'Under Review' },
-  CERTIFIED:    { fill: '#047857', label: 'Certified' },
-  REJECTED:     { fill: '#991b1b', label: 'Rejected' },
-  DRAFT:        { fill: '#718096', label: 'Draft' },
+const ACTION_LABELS = {
+  CREATED: 'Assessment started',
+  PARAMETER_UPDATED: 'Parameter saved',
+  SUBMITTED: 'Submitted',
+  REVIEW_STARTED: 'Review started',
+  REVIEW_COMPLETED: 'Review completed',
+  RETURNED_FOR_CORRECTION: 'Returned for correction',
+  REVIEW_BLOCKED: 'Review blocked',
+  EVALUATION_TRIGGERED: 'Score evaluated',
+  CERTIFICATION_SUCCEEDED: 'Certified',
+  REVIEWER_ASSIGNED: 'Reviewer assigned',
+  REVIEWER_REASSIGNED: 'Reviewer reassigned',
+  PARAMETER_SCORE_ACCEPTED: 'Parameter approved',
+  SCORE_ADJUSTED: 'Score adjusted',
 };
+const humanize = (action) =>
+  ACTION_LABELS[action] || String(action || '').replace(/_/g, ' ').toLowerCase().replace(/^\w/, (c) => c.toUpperCase());
 
-// ─── Framework colour palette ─────────────────────────────────────────────────
-const FRAMEWORK_COLORS = {
-  COLLEGE_2026:    '#600b0b',
-  UNIVERSITY_2026: '#c29b68',
-};
-
-// ─── Custom tooltip for charts ─────────────────────────────────────────────────
-const CustomTooltip = ({ active, payload }) => {
-  if (!active || !payload || !payload.length) return null;
-  const d = payload[0].payload;
-  return (
-    <div
-      style={{
-        background: '#300303',
-        color: '#f8fafc',
-        padding: '10px 14px',
-        borderRadius: '10px',
-        border: '1px solid #c29b68',
-        fontSize: '12px',
-        fontFamily: "'Inter', sans-serif",
-      }}
-    >
-      <p style={{ color: '#dfcbb5', margin: '0 0 4px', fontWeight: 600 }}>
-        {d.label || d.name || d.framework || d.institution_name || ''}
-      </p>
-      <p style={{ color: '#dfb987', margin: 0, fontWeight: 700 }}>
-        Count: {payload[0].value}
-      </p>
+const Card = ({ title, subtitle, action, children }) => (
+  <div className="bg-white p-6 rounded-2xl border border-[#ebdcd0] shadow-xs flex flex-col">
+    <div className="flex justify-between items-start gap-3 mb-4">
+      <div>
+        <h3 className="text-base font-bold text-slate-800 tracking-tight">{title}</h3>
+        {subtitle && <p className="text-xs text-slate-400 font-medium mt-0.5">{subtitle}</p>}
+      </div>
+      {action}
     </div>
-  );
-};
+    {children}
+  </div>
+);
 
-// ─── Component ────────────────────────────────────────────────────────────────
+const LinkButton = ({ onClick, children }) => (
+  <button
+    onClick={onClick}
+    className="text-xs font-bold text-[#600b0b] hover:text-[#4a0707] flex items-center gap-1 group whitespace-nowrap"
+  >
+    <span>{children}</span>
+    <ArrowRight className="w-3 h-3 transition-transform group-hover:translate-x-1" />
+  </button>
+);
+
 const AdminOverview = () => {
   const navigate = useNavigate();
-
-  const [queue, setQueue] = useState([]);
+  const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [lastRefreshed, setLastRefreshed] = useState(null);
 
-  const loadQueue = async () => {
+  const fetchData = () =>
+    fetchStateInstitutions()
+      .then((res) => {
+        setData(res);
+        setLastRefreshed(new Date());
+      })
+      .catch((err) => setError(err?.message || 'Failed to load the state overview.'))
+      .finally(() => setLoading(false));
+
+  const load = () => {
     setLoading(true);
     setError(null);
-    try {
-      const data = await fetchAdminReviewQueue();
-      setQueue(data?.results || []);
-      setLastRefreshed(new Date());
-    } catch (err) {
-      setError(err?.message || 'Failed to load review queue.');
-    } finally {
-      setLoading(false);
-    }
+    fetchData();
   };
 
   useEffect(() => {
-    loadQueue();
+    fetchData();
   }, []);
 
-  // ─── Loading Spinner ────────────────────────────────────────────────────────
-  if (loading) {
+  if (loading && !data) {
     return (
       <div className="flex flex-col items-center justify-center py-24 space-y-4">
         <div className="w-10 h-10 border-4 border-slate-200 border-t-[#600b0b] rounded-full animate-spin" />
-        <p className="text-xs text-slate-400 font-bold uppercase tracking-wider animate-pulse">
-          Loading Console Data...
-        </p>
+        <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">Loading state overview...</p>
       </div>
     );
   }
 
-  // ─── Error Banner ───────────────────────────────────────────────────────────
   if (error) {
     return (
-      <div className="space-y-6">
-        <div className="bg-red-50 border border-red-200 text-red-800 rounded-2xl p-6 flex items-start gap-3">
-          <AlertTriangle className="w-5 h-5 mt-0.5 shrink-0 text-red-500" />
-          <div>
-            <p className="font-bold text-sm mb-1">Failed to load the admin review queue</p>
-            <p className="text-xs text-red-600">{error}</p>
-            <button
-              onClick={loadQueue}
-              className="mt-3 flex items-center gap-2 text-xs font-bold text-red-700 hover:text-red-900"
-            >
-              <RefreshCw className="w-3 h-3" /> Retry
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // ─── Derived KPIs (all from real backend data — no score computation) ───────
-  const total            = queue.length;
-  const submitted        = queue.filter(q => q.status === 'SUBMITTED').length;
-  const underReview      = queue.filter(q => q.status === 'UNDER_REVIEW').length;
-  const certified        = queue.filter(q => q.status === 'CERTIFIED').length;
-  const unassigned       = queue.filter(q => !q.assigned_reviewer_id).length;
-  const collegeCount     = queue.filter(q => q.framework === 'COLLEGE_2026').length;
-  const universityCount  = queue.filter(q => q.framework === 'UNIVERSITY_2026').length;
-
-  const kpis = [
-    {
-      title:    'Total in Queue',
-      value:    total,
-      desc:     'Across all frameworks',
-      icon:     School,
-      color:    'text-[#600b0b] bg-[#eaded2]/60 border-[#ebdcd0]',
-      progress: 100,
-    },
-    {
-      title:    'Submitted',
-      value:    submitted,
-      desc:     'Awaiting reviewer assignment',
-      icon:     FileCheck,
-      color:    'text-indigo-600 bg-indigo-50 border-indigo-100',
-      progress: total ? Math.round((submitted / total) * 100) : 0,
-    },
-    {
-      title:    'Certified',
-      value:    certified,
-      desc:     'Evaluation completed',
-      icon:     CheckCircle2,
-      color:    'text-emerald-600 bg-emerald-50 border-emerald-100',
-      progress: total ? Math.round((certified / total) * 100) : 0,
-    },
-    {
-      title:    'Under Review',
-      value:    underReview,
-      desc:     'Active reviewer sessions',
-      icon:     Clock,
-      color:    'text-amber-600 bg-amber-50 border-amber-100',
-      progress: total ? Math.round((underReview / total) * 100) : 0,
-    },
-  ];
-
-  // ─── Status distribution (Pie chart) ───────────────────────────────────────
-  const statusCounts = {};
-  queue.forEach(q => {
-    statusCounts[q.status] = (statusCounts[q.status] || 0) + 1;
-  });
-  const pieData = Object.keys(statusCounts).map(s => ({
-    name:  STATUS_COLORS[s]?.label || s,
-    value: statusCounts[s],
-    fill:  STATUS_COLORS[s]?.fill || '#94A3B8',
-  })).filter(d => d.value > 0);
-
-  // ─── Framework split (Bar chart) ───────────────────────────────────────────
-  const frameworkData = [
-    { name: 'College',    value: collegeCount,    fill: FRAMEWORK_COLORS.COLLEGE_2026 },
-    { name: 'University', value: universityCount,  fill: FRAMEWORK_COLORS.UNIVERSITY_2026 },
-  ];
-
-  // ─── Recent submissions feed (last 5 SUBMITTED items) ──────────────────────
-  const recentFeed = [...queue]
-    .filter(q => q.submitted_at)
-    .sort((a, b) => new Date(b.submitted_at) - new Date(a.submitted_at))
-    .slice(0, 5);
-
-  // ─── Empty Queue State ─────────────────────────────────────────────────────
-  if (!loading && !error && queue.length === 0) {
-    return (
-      <div className="space-y-8">
-        {/* Welcome Banner — still show branding even when empty */}
-        <div className="bg-gradient-to-r from-[#600b0b] via-[#4a0707] to-[#300303] border-b-3 border-[#c29b68] p-6 rounded-2xl shadow-lg text-white flex flex-col md:flex-row justify-between items-start md:items-center">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">
-              NEP Excellence Awards Evaluation Portal
-            </h1>
-            <p className="text-[#eaded2] text-xs mt-1 font-medium max-w-xl">
-              Unified review queue across COLLEGE_2026 and UNIVERSITY_2026 frameworks.
-            </p>
-          </div>
-          <button
-            onClick={loadQueue}
-            className="mt-4 md:mt-0 flex items-center gap-1.5 text-xs font-bold bg-white/10 hover:bg-white/20 border border-white/20 py-2 px-3 rounded-xl transition-colors"
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-            Refresh
-          </button>
-        </div>
-
-        {/* Empty State Panel */}
-        <div className="flex flex-col items-center justify-center py-20 px-8 bg-white border border-[#ebdcd0] rounded-2xl shadow-xs text-center">
-          <div className="w-16 h-16 rounded-full bg-[#eaded2]/50 border border-[#ebdcd0] flex items-center justify-center mb-5">
-            <School className="w-8 h-8 text-[#600b0b]" />
-          </div>
-          <h2 className="text-lg font-bold text-slate-800 mb-2">
-            Review Queue is Empty
-          </h2>
-          <p className="text-sm text-slate-500 max-w-md mb-1">
-            No assessments have been submitted for review yet. The queue will populate once
-            colleges and universities submit their NEP 2026 assessments.
-          </p>
-          <p className="text-xs text-slate-400 max-w-sm mt-2">
-            Institutional users (principals, nodal officers) must complete their parameter
-            inputs and formally submit their assessments before they appear here.
-          </p>
-          <button
-            onClick={loadQueue}
-            className="mt-6 flex items-center gap-2 text-xs font-bold text-[#600b0b] hover:text-[#4a0707] border border-[#ebdcd0] hover:border-[#600b0b] py-2 px-4 rounded-xl transition-colors"
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-            Check Again
+      <div className="bg-red-50 border border-red-200 text-red-800 rounded-2xl p-6 flex items-start gap-3">
+        <AlertTriangle className="w-5 h-5 mt-0.5 shrink-0 text-red-500" />
+        <div>
+          <p className="font-bold text-sm mb-1">Failed to load the state overview</p>
+          <p className="text-xs text-red-600">{error}</p>
+          <button onClick={load} className="mt-3 flex items-center gap-2 text-xs font-bold text-red-700">
+            <RefreshCw className="w-3 h-3" /> Retry
           </button>
         </div>
       </div>
     );
   }
+
+  const { summary, committee, institutions, recent_activity: activity } = data;
+  const s = summary.by_stage;
+  const goTo = (query) => navigate(`/admin/institutions${query ? `?${query}` : ''}`);
+
+  const tiles = [
+    { title: 'Universities', value: summary.universities, icon: Building2, query: 'type=UNIVERSITY' },
+    { title: 'Colleges', value: summary.colleges, icon: School, query: 'type=COLLEGE' },
+    { title: 'Started', value: summary.started, icon: PlayCircle, query: '' },
+    { title: 'Submitted', value: s.SUBMITTED, icon: FileCheck, query: 'stage=SUBMITTED' },
+    { title: 'Under Review', value: s.UNDER_REVIEW + s.AWAITING_CERTIFICATION, icon: Clock, query: 'stage=UNDER_REVIEW' },
+    { title: 'Returned', value: s.RETURNED, icon: Undo2, query: 'stage=RETURNED' },
+    { title: 'Certified', value: s.CERTIFIED, icon: CheckCircle2, query: 'stage=CERTIFIED' },
+  ];
+
+  // Institutions waiting on someone: unassigned submissions, returned work, and pending certification.
+  const attention = institutions
+    .map((r) => {
+      if (r.stage === 'SUBMITTED' && !r.assigned_reviewer_id) return { ...r, reason: 'Submitted — needs a reviewer' };
+      if (r.stage === 'RETURNED') return { ...r, reason: 'Returned — waiting on institution' };
+      if (r.stage === 'AWAITING_CERTIFICATION') return { ...r, reason: 'Review complete — awaiting Chair' };
+      if (r.stage === 'NOT_STARTED') return { ...r, reason: 'Has not started the assessment' };
+      return null;
+    })
+    .filter(Boolean);
+
+  const certifiedPct = summary.total ? Math.round((s.CERTIFIED / summary.total) * 100) : 0;
 
   return (
-    <div className="space-y-8 animate-fadeIn">
-      {/* State Executive Command Center Header */}
-      <div className="bg-white rounded-2xl border border-[#ebdcd0] p-6 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="bg-gradient-to-r from-[#600b0b] via-[#4a0707] to-[#300303] border-b-3 border-[#c29b68] p-6 rounded-2xl shadow-lg text-white flex flex-col md:flex-row justify-between md:items-center gap-4">
         <div>
-          <div className="flex items-center gap-2 mb-2 flex-wrap">
-            <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-[#eaded2] text-[#600b0b] border border-[#ebdcd0] uppercase tracking-widest font-mono">
-              DHE Haryana Apex Console
-            </span>
-            <span className="text-slate-300">•</span>
-            <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-              Statutory Cycle 2025–26 Active • 14 Days to Freeze
-            </span>
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
-            Macro Strategic Governance Dashboard
-          </h1>
-          <p className="text-xs text-slate-500 mt-1 max-w-2xl leading-relaxed">
-            State-level supervisory command across <span className="font-semibold text-slate-700">482 Higher Education Institutions</span> in Haryana. Sourced from the authoritative assessment control plane.
+          <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-white/10 border border-white/20 uppercase tracking-widest">
+            State Admin · NEP Excellence Awards 2026
+          </span>
+          <h1 className="text-2xl font-extrabold tracking-tight mt-2">State Overview</h1>
+          <p className="text-[#eaded2] text-xs mt-1 max-w-2xl">
+            {summary.universities} universities and {summary.colleges} colleges registered · {summary.started} have
+            started · {certifiedPct}% certified.
           </p>
         </div>
-
-        <div className="flex items-center gap-3 shrink-0 flex-wrap">
-          <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-[#fdfaf6] border border-[#ebdcd0] text-xs font-semibold text-slate-700">
-            <TrendingUp className="w-4 h-4 text-emerald-600" />
-            <span>{total ? Math.round((certified / total) * 100) : 0}% State Certified</span>
-          </div>
-
+        <div className="flex items-center gap-2">
           <button
-            onClick={() => navigate('/admin/colleges')}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#600b0b] hover:bg-[#4a0707] text-white text-xs font-bold transition-all shadow-xs cursor-pointer"
+            onClick={() => goTo('')}
+            className="flex items-center gap-1.5 text-xs font-bold bg-white text-[#600b0b] hover:bg-[#fdfaf6] py-2 px-3.5 rounded-xl"
           >
-            <Layers className="w-3.5 h-3.5" />
-            <span>Manage All ({total})</span>
+            <Building2 className="w-3.5 h-3.5" /> All Institutions
           </button>
-
           <button
-            onClick={loadQueue}
-            className="inline-flex items-center gap-1.5 text-xs font-bold bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 py-2 px-3 rounded-xl transition-colors cursor-pointer shadow-xs"
-            title="Refresh live server state"
+            onClick={load}
+            className="flex items-center gap-1.5 text-xs font-bold bg-white/10 hover:bg-white/20 border border-white/20 py-2 px-3 rounded-xl"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
-            <span>Refresh</span>
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /> Refresh
           </button>
         </div>
       </div>
-
       {lastRefreshed && (
-        <p className="text-[10px] text-slate-400 font-medium -mt-5 px-1 font-mono">
-          Authoritative server telemetry synchronized at {lastRefreshed.toLocaleTimeString()}
+        <p className="text-[10px] text-slate-400 font-medium -mt-3 px-1">
+          Updated {lastRefreshed.toLocaleTimeString()}
         </p>
       )}
 
-      {/* Statewide Macro KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-        {kpis.map((kpi) => {
-          const Icon = kpi.icon;
+      {/* State totals */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+        {tiles.map((t) => {
+          const Icon = t.icon;
           return (
-            <div
-              key={kpi.title}
-              className="bg-white p-5 rounded-2xl border border-[#ebdcd0] shadow-xs hover:border-[#c29b68] transition-all flex flex-col justify-between"
+            <button
+              key={t.title}
+              onClick={() => goTo(t.query)}
+              className="bg-white p-4 rounded-2xl border border-[#ebdcd0] shadow-xs hover:border-[#c29b68] text-left transition-colors"
             >
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-[11px] text-slate-400 font-bold uppercase tracking-wider font-mono">
-                    {kpi.title}
-                  </p>
-                  <p className="text-3xl font-extrabold text-slate-900 mt-1.5 tracking-tight font-mono">
-                    {kpi.value}
-                  </p>
-                </div>
-                <div className={`p-2.5 rounded-xl border ${kpi.color}`}>
-                  <Icon className="w-5 h-5" />
-                </div>
+              <div className="flex items-center justify-between">
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{t.title}</p>
+                <Icon className="w-4 h-4 text-[#600b0b]" />
               </div>
-              <div className="mt-4 pt-3 border-t border-slate-100">
-                <div className="flex justify-between items-center text-[10px] text-slate-500 font-semibold mb-1.5">
-                  <span className="truncate">{kpi.desc}</span>
-                  <span className="font-mono font-bold text-slate-700">{kpi.progress}%</span>
-                </div>
-                <div className="w-full bg-[#eaded2]/40 rounded-full h-1.5 overflow-hidden">
-                  <div
-                    className="bg-[#600b0b] h-1.5 rounded-full transition-all duration-500"
-                    style={{ width: `${kpi.progress}%` }}
-                  />
-                </div>
-              </div>
-            </div>
+              <p className="text-2xl font-extrabold text-slate-900 mt-1.5 font-mono">{t.value}</p>
+            </button>
           );
         })}
       </div>
 
-      {/* Review & Certification Funnel Pipeline */}
-      <div className="bg-white rounded-2xl border border-[#ebdcd0] p-6 shadow-xs">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5 pb-4 border-b border-slate-100">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-[10px] font-bold text-[#600b0b] uppercase tracking-wider bg-[#eaded2]/60 px-2 py-0.5 rounded border border-[#ebdcd0]">
-                Workflow Throughput
-              </span>
-              <span className="text-xs text-slate-400 font-medium">State Evaluation Funnel</span>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Needs attention */}
+        <div className="lg:col-span-2">
+          <Card
+            title="Needs Attention"
+            subtitle="Institutions waiting on the institution, a reviewer, or the Chair"
+            action={<LinkButton onClick={() => goTo('')}>View all institutions</LinkButton>}
+          >
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-slate-400 border-b border-slate-100 text-[10px] uppercase tracking-wider">
+                    <th className="text-left pb-2 pr-3 font-bold">Institution</th>
+                    <th className="text-left pb-2 pr-3 font-bold">Type</th>
+                    <th className="text-left pb-2 pr-3 font-bold">Stage</th>
+                    <th className="text-left pb-2 font-bold">Why</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {attention.slice(0, 10).map((r) => (
+                    <tr
+                      key={`${r.institution_type}-${r.institution_id}`}
+                      onClick={() => (r.assessment_id ? navigate(`/admin/assessments/${r.assessment_id}`) : goTo(`q=${encodeURIComponent(r.aishe_code)}`))}
+                      className="border-b border-slate-50 hover:bg-[#fdfaf6] cursor-pointer"
+                    >
+                      <td className="py-2.5 pr-3 font-semibold text-slate-700">{r.name}</td>
+                      <td className="py-2.5 pr-3"><TypeBadge type={r.institution_type} /></td>
+                      <td className="py-2.5 pr-3"><StageBadge stage={r.stage} /></td>
+                      <td className="py-2.5 text-slate-500">{r.reason}</td>
+                    </tr>
+                  ))}
+                  {attention.length === 0 && (
+                    <tr>
+                      <td colSpan={4} className="py-8 text-center text-slate-400 font-bold">
+                        Nothing is waiting — every institution is moving.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
             </div>
-            <h2 className="text-base font-bold text-slate-900 tracking-tight">
-              Review & Certification Pipeline Status
-            </h2>
-          </div>
-          <span className="text-xs font-mono font-semibold text-slate-500 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200">
-            Avg Turnaround: 4.2 Days
-          </span>
+          </Card>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-          <div className="p-3.5 rounded-xl bg-slate-50/80 border border-slate-200/80">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block font-mono">Stage 1</span>
-            <p className="text-lg font-extrabold text-slate-900 mt-1 font-mono">{submitted}</p>
-            <p className="text-xs text-slate-600 font-semibold mt-0.5">Submitted</p>
-            <span className="text-[10px] text-slate-400 block mt-1">Pre-check Passed</span>
+        {/* Committee */}
+        <Card title="Committee" subtitle="Reviewer workload across open reviews">
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            <div className="p-3 rounded-xl bg-amber-50/60 border border-amber-200/70">
+              <p className="text-[10px] font-bold text-amber-700 uppercase tracking-wider">Pending reviews</p>
+              <p className="text-xl font-extrabold text-amber-900 font-mono">{committee.pending_reviews}</p>
+            </div>
+            <button
+              onClick={() => goTo('stage=SUBMITTED')}
+              className="p-3 rounded-xl bg-red-50/60 border border-red-200/70 text-left"
+            >
+              <p className="text-[10px] font-bold text-red-700 uppercase tracking-wider">Unassigned</p>
+              <p className="text-xl font-extrabold text-red-900 font-mono">{committee.unassigned}</p>
+            </button>
           </div>
-
-          <div className="p-3.5 rounded-xl bg-amber-50/60 border border-amber-200/70">
-            <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wider block font-mono">Stage 2</span>
-            <p className="text-lg font-extrabold text-amber-900 mt-1 font-mono">{underReview}</p>
-            <p className="text-xs text-amber-800 font-semibold mt-0.5">Under Review</p>
-            <span className="text-[10px] text-amber-600 block mt-1">Committee In Session</span>
-          </div>
-
-          <div className="p-3.5 rounded-xl bg-slate-50/80 border border-slate-200/80">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block font-mono">Stage 3</span>
-            <p className="text-lg font-extrabold text-slate-900 mt-1 font-mono">{unassigned}</p>
-            <p className="text-xs text-slate-600 font-semibold mt-0.5">Unassigned</p>
-            <span className="text-[10px] text-slate-400 block mt-1">Pending Evaluator</span>
-          </div>
-
-          <div className="p-3.5 rounded-xl bg-[#eaded2]/40 border border-[#ebdcd0]">
-            <span className="text-[10px] font-bold text-[#600b0b] uppercase tracking-wider block font-mono">Stage 4</span>
-            <p className="text-lg font-extrabold text-[#600b0b] mt-1 font-mono">
-              {Math.max(0, submitted - unassigned)}
-            </p>
-            <p className="text-xs text-[#600b0b] font-semibold mt-0.5">Assigned & Active</p>
-            <span className="text-[10px] text-[#600b0b]/70 block mt-1">Evidence Vetted</span>
-          </div>
-
-          <div className="p-3.5 rounded-xl bg-emerald-50/60 border border-emerald-200/70 col-span-2 sm:col-span-1">
-            <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider block font-mono">Stage 5</span>
-            <p className="text-lg font-extrabold text-emerald-900 mt-1 font-mono">{certified}</p>
-            <p className="text-xs text-emerald-800 font-semibold mt-0.5">Certified</p>
-            <span className="text-[10px] text-emerald-600 block mt-1">DHE Gazetted</span>
-          </div>
-        </div>
+          <ul className="space-y-2">
+            {committee.reviewers.map((rv) => (
+              <li key={rv.id} className="flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Users className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                  <div className="min-w-0">
+                    <p className="font-semibold text-slate-700 truncate">{rv.full_name}</p>
+                    <p className="text-[10px] text-slate-400">{rv.role === 'committee_chair' ? 'Chairperson' : 'Reviewer'}</p>
+                  </div>
+                </div>
+                <span className="font-mono font-bold text-slate-600">{rv.active_assignments} open</span>
+              </li>
+            ))}
+            {committee.reviewers.length === 0 && (
+              <li className="text-xs text-slate-400">No committee members registered.</li>
+            )}
+          </ul>
+          <p className="text-[10px] text-slate-400 mt-4 flex items-start gap-1.5">
+            <ShieldCheck className="w-3.5 h-3.5 shrink-0 text-emerald-600" />
+            Assign reviewers from an assessment page. Evidence and score decisions stay with the committee.
+          </p>
+        </Card>
       </div>
 
-      {/* Empty State */}
-      {queue.length === 0 && (
-        <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center">
-          <Building2 className="w-10 h-10 text-slate-300 mx-auto mb-4" />
-          <p className="text-slate-700 font-bold text-sm mb-2">No assessments in the review queue yet</p>
-          <p className="text-slate-400 text-xs max-w-sm mx-auto">
-            Assessments will appear here once institutions submit their self-appraisals and they are ingested into the Phase 8 control plane.
-          </p>
-        </div>
-      )}
-
-      {queue.length > 0 && (
-        <>
-          {/* Charts */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-
-            {/* Framework Distribution Bar */}
-            <div className="bg-white p-6 rounded-2xl border border-[#ebdcd0] shadow-xs lg:col-span-2">
-              <div className="mb-6">
-                <h3 className="text-lg font-bold text-slate-800 tracking-tight">
-                  Framework Distribution
-                </h3>
-                <p className="text-xs text-slate-400 font-medium">
-                  Assessments by framework in the Phase 8 control plane
-                </p>
-              </div>
-              <div className="h-52 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart
-                    data={frameworkData}
-                    margin={{ top: 10, right: 20, left: 10, bottom: 10 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                    <XAxis
-                      dataKey="name"
-                      tick={{ fill: '#64748b', fontSize: 11, fontWeight: 600 }}
-                    />
-                    <YAxis
-                      allowDecimals={false}
-                      tick={{ fill: '#64748b', fontSize: 11, fontWeight: 500 }}
-                    />
-                    <Tooltip content={<CustomTooltip />} />
-                    <Bar dataKey="value" radius={[6, 6, 0, 0]} maxBarSize={80}>
-                      {frameworkData.map((entry, idx) => (
-                        <Cell key={idx} fill={entry.fill} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-
-            {/* Status Breakdown Pie */}
-            <div className="bg-white p-6 rounded-2xl border border-[#ebdcd0] shadow-xs flex flex-col justify-between">
-              <div>
-                <h3 className="text-lg font-bold text-slate-800 tracking-tight">
-                  Status Breakdown
-                </h3>
-                <p className="text-xs text-slate-400 font-medium mb-4">
-                  Current lifecycle state distribution
-                </p>
-              </div>
-
-              <div className="h-40 flex items-center justify-center relative">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={pieData}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={52}
-                      outerRadius={70}
-                      paddingAngle={3}
-                      dataKey="value"
-                    >
-                      {pieData.map((entry, idx) => (
-                        <Cell key={idx} fill={entry.fill} />
-                      ))}
-                    </Pie>
-                    <Tooltip content={<CustomTooltip />} />
-                  </PieChart>
-                </ResponsiveContainer>
-                <div className="absolute text-center">
-                  <span className="block text-2xl font-black text-slate-800 leading-none">
-                    {total}
-                  </span>
-                  <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
-                    Total
-                  </span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 gap-2 mt-4 pt-4 border-t border-slate-100">
-                {pieData.map(d => (
-                  <div key={d.name} className="flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-2">
-                      <span
-                        className="w-2.5 h-2.5 rounded-full shrink-0"
-                        style={{ backgroundColor: d.fill }}
-                      />
-                      <span className="font-semibold text-slate-700">{d.name}</span>
-                    </div>
-                    <span className="font-bold text-slate-500">{d.value}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Queue Table + Unassigned Feed */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-
-            {/* Unassigned Items (needs attention) */}
-            <div className="bg-white p-6 rounded-2xl border border-[#ebdcd0] shadow-xs lg:col-span-2">
-              <div className="flex justify-between items-center mb-5">
-                <div>
-                  <h3 className="text-lg font-bold text-slate-800 tracking-tight">
-                    Unassigned Assessments
-                  </h3>
-                  <p className="text-xs text-slate-400 font-medium">
-                    {unassigned} {unassigned === 1 ? 'assessment needs' : 'assessments need'} a reviewer assigned
-                  </p>
-                </div>
-                <button
-                  onClick={() => navigate('/admin/colleges')}
-                  className="text-xs font-bold text-[#600b0b] hover:text-[#4a0707] flex items-center gap-1 group cursor-pointer"
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Top scores */}
+        <Card title="Scores So Far" subtitle="Latest calculated totals (final once certified)">
+          <ul className="space-y-2">
+            {institutions
+              .filter((r) => r.score != null)
+              .sort((a, b) => b.score - a.score)
+              .slice(0, 6)
+              .map((r) => (
+                <li
+                  key={`${r.institution_type}-${r.institution_id}`}
+                  onClick={() => navigate(`/admin/assessments/${r.assessment_id}`)}
+                  className="flex items-center justify-between text-xs cursor-pointer hover:text-[#600b0b]"
                 >
-                  <span>View All</span>
-                  <ArrowRight className="w-3 h-3 transition-transform group-hover:translate-x-1" />
-                </button>
-              </div>
+                  <span className="font-semibold text-slate-700 truncate pr-2">{r.name}</span>
+                  <span className="font-mono font-bold whitespace-nowrap">{formatScore(r.score)}</span>
+                </li>
+              ))}
+            {institutions.every((r) => r.score == null) && (
+              <li className="text-xs text-slate-400">No scores calculated yet.</li>
+            )}
+          </ul>
+        </Card>
 
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="text-slate-400 border-b border-slate-100">
-                      <th className="text-left pb-2 font-bold uppercase tracking-wider text-[10px] pr-4">
-                        Assessment
-                      </th>
-                      <th className="text-left pb-2 font-bold uppercase tracking-wider text-[10px] pr-4">
-                        Institution
-                      </th>
-                      <th className="text-left pb-2 font-bold uppercase tracking-wider text-[10px] pr-4">
-                        Framework
-                      </th>
-                      <th className="text-left pb-2 font-bold uppercase tracking-wider text-[10px]">
-                        Status
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {queue
-                      .filter(q => !q.assigned_reviewer_id)
-                      .slice(0, 8)
-                      .map(item => {
-                        const sc = STATUS_COLORS[item.status] || STATUS_COLORS.DRAFT;
-                        return (
-                          <tr
-                            key={item.assessment_id}
-                            className="border-b border-slate-50 hover:bg-slate-50 cursor-pointer transition-colors"
-                            onClick={() => navigate(`/admin/assessments/${item.assessment_id}`)}
-                          >
-                            <td className="py-2.5 pr-4 font-mono text-slate-400 text-[10px]">
-                              {item.assessment_id}
-                            </td>
-                            <td className="py-2.5 pr-4 font-semibold text-slate-700 max-w-[160px] truncate">
-                              {item.institution_name}
-                            </td>
-                            <td className="py-2.5 pr-4">
-                              <span
-                                className="text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase"
-                                style={{
-                                  background: item.framework === 'UNIVERSITY_2026' ? '#fbf5ee' : '#eaded2',
-                                  color:      item.framework === 'UNIVERSITY_2026' ? '#c29b68' : '#600b0b',
-                                }}
-                              >
-                                {item.framework === 'UNIVERSITY_2026' ? 'University' : 'College'}
-                              </span>
-                            </td>
-                            <td className="py-2.5">
-                              <span
-                                className="text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase"
-                                style={{
-                                  background: sc.fill + '20',
-                                  color:      sc.fill,
-                                  border:     `1px solid ${sc.fill}40`,
-                                }}
-                              >
-                                {sc.label}
-                              </span>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    {unassigned === 0 && (
-                      <tr>
-                        <td colSpan={4} className="py-8 text-center text-slate-400 text-xs font-bold uppercase tracking-wider">
-                          All assessments have reviewers assigned.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* Recent Submissions Feed */}
-            <div className="bg-white p-6 rounded-2xl border border-[#ebdcd0] shadow-xs flex flex-col">
-              <div className="flex justify-between items-center mb-5">
-                <div>
-                  <h3 className="text-lg font-bold text-slate-800 tracking-tight">
-                    Recent Submissions
-                  </h3>
-                  <p className="text-xs text-slate-400 font-medium">
-                    Latest 5 by submission date
-                  </p>
-                </div>
-              </div>
-
-              <div className="flow-root flex-1 overflow-y-auto max-h-72">
-                <ul className="-mb-8">
-                  {recentFeed.length === 0 ? (
-                    <div className="text-center py-12 text-slate-400 text-xs font-bold uppercase tracking-wider">
-                      No submissions yet.
+        {/* Audit trail */}
+        <div className="lg:col-span-2">
+          <Card
+            title="Recent Activity"
+            subtitle="Latest actions from the assessment audit trail"
+            action={<LinkButton onClick={() => navigate('/admin/reports')}>Reports</LinkButton>}
+          >
+            <ul className="divide-y divide-slate-50 max-h-80 overflow-y-auto">
+              {activity.map((a, i) => (
+                <li
+                  key={i}
+                  onClick={() => navigate(`/admin/assessments/${a.assessment_id}`)}
+                  className="py-2 flex items-center justify-between gap-3 text-xs cursor-pointer hover:bg-[#fdfaf6]"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <History className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    <div className="min-w-0">
+                      <p className="font-semibold text-slate-700 truncate">
+                        {humanize(a.action)} · <span className="text-slate-500">{a.institution_name}</span>
+                      </p>
+                      <p className="text-[10px] text-slate-400">by {a.actor}</p>
                     </div>
-                  ) : (
-                    recentFeed.map((item, index) => {
-                      const sc = STATUS_COLORS[item.status] || STATUS_COLORS.DRAFT;
-                      return (
-                        <li key={item.assessment_id}>
-                          <div className="relative pb-8">
-                            {index !== recentFeed.length - 1 && (
-                              <span
-                                className="absolute top-4 left-4 -ml-px h-full w-0.5 bg-slate-100"
-                                aria-hidden="true"
-                              />
-                            )}
-                            <div className="relative flex space-x-3">
-                              <span
-                                className="h-8 w-8 rounded-lg flex items-center justify-center ring-4 ring-white"
-                                style={{
-                                  background: sc.fill + '15',
-                                  border: `1px solid ${sc.fill}30`,
-                                  color: sc.fill,
-                                }}
-                              >
-                                <School className="w-4 h-4" />
-                              </span>
-                              <div className="min-w-0 flex-1 pt-1 flex justify-between space-x-4">
-                                <div>
-                                  <p
-                                    onClick={() => navigate(`/admin/assessments/${item.assessment_id}`)}
-                                    className="text-xs font-bold text-slate-700 hover:text-[#600b0b] transition-colors cursor-pointer truncate max-w-[130px]"
-                                    title={item.institution_name}
-                                  >
-                                    {item.institution_name}
-                                  </p>
-                                  <div className="flex items-center gap-1.5 mt-1">
-                                    <span
-                                      className="text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase"
-                                      style={{
-                                        background: sc.fill + '20',
-                                        color: sc.fill,
-                                        border: `1px solid ${sc.fill}40`,
-                                      }}
-                                    >
-                                      {sc.label}
-                                    </span>
-                                    <span className="text-[9px] text-slate-400">
-                                      {item.framework === 'UNIVERSITY_2026' ? 'Univ.' : 'College'}
-                                    </span>
-                                  </div>
-                                </div>
-                                <div className="text-right text-[10px] whitespace-nowrap text-slate-400 font-medium">
-                                  <time>
-                                    {item.submitted_at
-                                      ? new Date(item.submitted_at).toLocaleDateString('en-IN', {
-                                          day: '2-digit',
-                                          month: 'short',
-                                        })
-                                      : '—'}
-                                  </time>
-                                  <span className="block text-[8px] text-slate-400/80 mt-0.5">
-                                    {item.assigned_reviewer_name || 'Unassigned'}
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        </li>
-                      );
-                    })
-                  )}
-                </ul>
-              </div>
+                  </div>
+                  <time className="text-[10px] text-slate-400 whitespace-nowrap">
+                    {new Date(a.timestamp).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                  </time>
+                </li>
+              ))}
+              {activity.length === 0 && <li className="py-6 text-center text-xs text-slate-400">No activity yet.</li>}
+            </ul>
+            <div className="mt-4 pt-3 border-t border-slate-100 flex flex-wrap gap-2">
+              <button
+                onClick={() => navigate('/admin/reports')}
+                className="flex items-center gap-1.5 text-xs font-bold text-slate-700 border border-slate-200 hover:border-[#600b0b] py-1.5 px-3 rounded-lg"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5" /> State & institution reports
+              </button>
             </div>
-          </div>
-        </>
-      )}
+          </Card>
+        </div>
+      </div>
     </div>
   );
 };

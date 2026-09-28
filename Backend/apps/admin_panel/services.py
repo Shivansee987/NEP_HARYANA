@@ -881,3 +881,126 @@ class AdminControlPlaneService:
                 f"Unknown framework '{framework}'. Cannot certify assessment.",
                 code="UNKNOWN_FRAMEWORK"
             )
+
+
+# Stage buckets used by the State Admin overview; every assessment status maps to exactly one.
+STATE_STAGE_BY_STATUS = {
+    "DRAFT": "IN_PROGRESS",
+    "RETURNED": "RETURNED",
+    "SUBMITTED": "SUBMITTED",
+    "UNDER_REVIEW": "UNDER_REVIEW",
+    "EVIDENCE_VERIFIED": "UNDER_REVIEW",
+    "EVALUATED": "UNDER_REVIEW",
+    "BLOCKED": "UNDER_REVIEW",
+    "CERTIFICATION_PENDING": "AWAITING_CERTIFICATION",
+    "CERTIFIED": "CERTIFIED",
+    "REJECTED": "REJECTED",
+}
+STATE_STAGES = ["NOT_STARTED", "IN_PROGRESS", "RETURNED", "SUBMITTED", "UNDER_REVIEW",
+                "AWAITING_CERTIFICATION", "CERTIFIED", "REJECTED"]
+REVIEW_STAGES = {"SUBMITTED", "UNDER_REVIEW", "AWAITING_CERTIFICATION"}
+
+
+class StateOverviewService:
+    """Read-only, state-wide view of every institution and its latest NEP 2026 assessment (no state mutation)."""
+
+    @classmethod
+    def _rows(cls, institutions, assessments_by_inst, contacts, inst_type, framework):
+        rows = []
+        for inst in institutions:
+            a = assessments_by_inst.get(inst.pk)
+            stage = STATE_STAGE_BY_STATUS.get(a.status, "UNDER_REVIEW") if a else "NOT_STARTED"
+            reviewer = a.assigned_reviewer if a else None
+            contact = contacts.get(inst.pk)
+            rows.append({
+                "institution_type": inst_type,
+                "framework": framework,
+                "institution_id": str(inst.pk),
+                "name": inst.name,
+                "aishe_code": inst.aishe_code,
+                "contact_name": contact.full_name if contact else "",
+                "contact_email": contact.email if contact else "",
+                "assessment_id": a.assessment_id if a else None,
+                "academic_year": a.academic_year if a else None,
+                "status": a.status if a else "NOT_STARTED",
+                "stage": stage,
+                "score": a.certified_score if a else None,
+                "certification_status": (a.certification_status or "") if a else "",
+                "assigned_reviewer_id": reviewer.pk if reviewer else None,
+                "assigned_reviewer_name": reviewer.full_name if reviewer else None,
+                "submitted_at": a.submitted_at if a else None,
+                "updated_at": a.updated_at if a else None,
+            })
+        return rows
+
+    @staticmethod
+    def _latest_by(qs, key):
+        latest = {}
+        for a in qs.order_by("created_at"):
+            latest[getattr(a, key)] = a
+        return latest
+
+    @classmethod
+    def build(cls) -> Dict[str, Any]:
+        from apps.university.models import University, UniversityAssessmentAuditLog
+        from apps.college.models import CollegeAssessmentAuditLog
+
+        uni_assess = cls._latest_by(UniversityAssessment.objects.select_related("assigned_reviewer"), "university_id")
+        col_assess = cls._latest_by(CollegeAssessment.objects.select_related("assigned_reviewer"), "college_id")
+        uni_contacts, col_contacts = {}, {}
+        for u in User.objects.filter(role__in=("nodal_officer", "university_admin", "principal"), is_active=True).order_by("-role"):
+            if u.university_id and (u.university_id not in uni_contacts or u.role == "nodal_officer"):
+                uni_contacts[u.university_id] = u
+            if u.college_id:
+                col_contacts.setdefault(u.college_id, u)
+
+        rows = (
+            cls._rows(University.objects.order_by("name"), uni_assess, uni_contacts, "UNIVERSITY", UNIVERSITY_FRAMEWORK_CODE)
+            + cls._rows(College.objects.order_by("name"), col_assess, col_contacts, "COLLEGE", COLLEGE_FRAMEWORK_CODE)
+        )
+
+        by_stage = {s: 0 for s in STATE_STAGES}
+        for r in rows:
+            by_stage[r["stage"]] += 1
+        summary = {
+            "universities": sum(r["institution_type"] == "UNIVERSITY" for r in rows),
+            "colleges": sum(r["institution_type"] == "COLLEGE" for r in rows),
+            "total": len(rows),
+            "started": len(rows) - by_stage["NOT_STARTED"],
+            "by_stage": by_stage,
+        }
+
+        in_review = [r for r in rows if r["stage"] in REVIEW_STAGES]
+        workload = {}
+        for r in in_review:
+            if r["assigned_reviewer_id"]:
+                workload[r["assigned_reviewer_id"]] = workload.get(r["assigned_reviewer_id"], 0) + 1
+        reviewers = [
+            {"id": u.pk, "full_name": u.full_name, "email": u.email, "role": u.role,
+             "active_assignments": workload.get(u.pk, 0)}
+            for u in User.objects.filter(role__in=("committee", "committee_chair"), is_active=True).order_by("role", "full_name")
+        ]
+        committee = {
+            "reviewers": reviewers,
+            "pending_reviews": len(in_review),
+            "unassigned": sum(1 for r in in_review if not r["assigned_reviewer_id"]),
+        }
+
+        activity = []
+        for log in CollegeAssessmentAuditLog.objects.select_related("actor", "assessment__college").order_by("-timestamp")[:15]:
+            activity.append({
+                "timestamp": log.timestamp, "action": log.action, "institution_type": "COLLEGE",
+                "institution_name": log.assessment.college.name, "assessment_id": log.assessment.assessment_id,
+                "actor": log.actor.full_name if log.actor else "System",
+                "from_status": log.previous_state, "to_status": log.new_state,
+            })
+        for log in UniversityAssessmentAuditLog.objects.select_related("actor", "assessment__university").order_by("-timestamp")[:15]:
+            activity.append({
+                "timestamp": log.timestamp, "action": log.action, "institution_type": "UNIVERSITY",
+                "institution_name": log.assessment.university.name, "assessment_id": log.assessment.assessment_id,
+                "actor": log.actor.full_name if log.actor else "System",
+                "from_status": log.previous_status, "to_status": log.new_status,
+            })
+        activity.sort(key=lambda x: x["timestamp"], reverse=True)
+
+        return {"summary": summary, "committee": committee, "institutions": rows, "recent_activity": activity[:15]}
