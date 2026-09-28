@@ -40,7 +40,9 @@ export default function EvidenceUploadModal({
   const [activeTab, setActiveTab] = useState("upload"); // 'upload' | 'existing'
   const [file, setFile] = useState(null);
   const [documentDate, setDocumentDate] = useState("2025-10-15");
-  const [academicYear, setAcademicYear] = useState("2025-26");
+  // Year-specific subcriteria (e.g. U4.A = 2024-25 targets) only accept evidence tagged with their year
+  const defaultAcademicYear = contract?.evidenceAcademicYear || "2025-26";
+  const [academicYear, setAcademicYear] = useState(defaultAcademicYear);
   const [evidenceType, setEvidenceType] = useState(defaultEvidenceType);
   const [pageStart, setPageStart] = useState("");
   const [pageEnd, setPageEnd] = useState("");
@@ -53,6 +55,7 @@ export default function EvidenceUploadModal({
 
   useEffect(() => {
     if (isOpen) {
+      setAcademicYear(defaultAcademicYear);
       setFile(null);
       setError(null);
       setPageStart("");
@@ -63,7 +66,7 @@ export default function EvidenceUploadModal({
       setEvidenceType(defaultEvidenceType);
       setActiveTab("upload");
     }
-  }, [isOpen, parameterCode, subcriterionCode, mandatoryEvidenceType, defaultEvidenceType]);
+  }, [isOpen, parameterCode, subcriterionCode, mandatoryEvidenceType, defaultEvidenceType, defaultAcademicYear]);
 
   if (!isOpen) return null;
 

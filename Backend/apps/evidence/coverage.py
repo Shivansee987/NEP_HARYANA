@@ -922,8 +922,12 @@ class EvidenceCoverageEvaluator:
 
         role = getattr(requesting_user, 'role', '')
 
-        # Superuser and state_admin have full oversight
-        if role in ('state_admin', 'superuser') or getattr(requesting_user, 'is_superuser', False):
+        # Superuser, staff and DHE admins have full oversight
+        if (
+            role in ('admin', 'state_admin', 'superuser')
+            or getattr(requesting_user, 'is_superuser', False)
+            or getattr(requesting_user, 'is_staff', False)
+        ):
             return
 
         # Institutional users: restrict to their own institution
@@ -938,8 +942,8 @@ class EvidenceCoverageEvaluator:
                     )
             return
 
-        # Committee reviewers: check framework scoping
-        if role == 'committee':
+        # Committee reviewers and chairs: check framework scoping
+        if role in ('committee', 'committee_chair'):
             has_auth = ReviewerAuthorization.objects.filter(
                 user=requesting_user,
                 is_active=True,
@@ -948,7 +952,7 @@ class EvidenceCoverageEvaluator:
             if has_auth:
                 match = ReviewerAuthorization.objects.filter(
                     user=requesting_user,
-                    framework=framework,
+                    framework__in=[framework, "ALL"],
                     is_active=True,
                 )
                 if institution_id:

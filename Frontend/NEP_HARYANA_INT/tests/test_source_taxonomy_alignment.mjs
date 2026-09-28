@@ -193,28 +193,25 @@ test('NEP 2026 Source Taxonomy Alignment Suite', async (t) => {
   });
 
   await t.test('6. Evidence Contract Layer & Source Ambiguity Preservations', () => {
-    // Source Silent verification (U6, C5, C9)
-    const silentParams = ['U6', 'C5', 'C9'];
+    // Source Silent verification (C5, C9) — mirrors apps.evidence.taxonomy.SOURCE_SILENT_PARAMETERS
+    const silentParams = ['C5', 'C9'];
     for (const p of silentParams) {
-      const fwData = p.startsWith('C') ? COLLEGE_FRAMEWORK_DATA : UNIVERSITY_FRAMEWORK_DATA;
-      for (const sub of fwData[p].subcriteria) {
+      for (const sub of COLLEGE_FRAMEWORK_DATA[p].subcriteria) {
         assert.equal(sub.isSourceSilent, true, `${sub.code} must be marked isSourceSilent: true`);
         assert.equal(sub.contractStatus, "SOURCE_SILENT");
       }
     }
 
-    // Unresolved metrics verification (U16.III, C19.III, U18.3)
-    const u16_3 = getSubcriterionContract('UNIVERSITY_2026', 'U16', 'U16.III');
-    assert.equal(u16_3?.isUnresolved, true, 'U16.III must be marked isUnresolved');
-    assert.equal(u16_3?.contractStatus, 'UNRESOLVED_MISSING');
-
-    const c19_3 = getSubcriterionContract('COLLEGE_2026', 'C19', 'C19.III');
-    assert.equal(c19_3?.isUnresolved, true, 'C19.III must be marked isUnresolved');
-    assert.equal(c19_3?.contractStatus, 'UNRESOLVED_MISSING');
-
+    // U6 and U18.3 carry active evidence contracts in the backend taxonomy
+    for (const sub of UNIVERSITY_FRAMEWORK_DATA.U6.subcriteria) {
+      assert.equal(sub.contractStatus, 'ACTIVE', `${sub.code} must accept evidence`);
+    }
     const u18_3 = getSubcriterionContract('UNIVERSITY_2026', 'U18', 'U18.3');
-    assert.equal(u18_3?.isUnresolved, true, 'U18.3 must be marked isUnresolved');
-    assert.equal(u18_3?.contractStatus, 'UNRESOLVED_MISSING');
+    assert.equal(u18_3?.canonicalEvidenceType, 'EVID_U18_RPL_FORMAT');
+
+    // The undefined Scopus metric is surfaced as a policy notice on C19 / U16
+    assert.ok(UNRESOLVED_SPEC_NOTICES.C19.includes('Scopus'), 'C19 Scopus notice must exist');
+    assert.ok(UNRESOLVED_SPEC_NOTICES.U16.includes('Scopus'), 'U16 Scopus notice must exist');
 
     // Canonical Evidence mappings
     const u1_contract = getSubcriterionContract('UNIVERSITY_2026', 'U1', 'U1.1');
@@ -236,8 +233,8 @@ test('NEP 2026 Source Taxonomy Alignment Suite', async (t) => {
   });
 
   await t.test('7. Helper Functions Compatibility', () => {
-    assert.equal(getSubcriterionTitle('C4.A'), 'Support and Mentorship Provided to Other Higher Education Institutes (2 Marks)');
-    assert.equal(getSubcriterionTitle('U7.1'), 'Formal Notification & Selection of Professor of Practice (PoP) (1 Mark)');
+    assert.ok(getSubcriterionTitle('C4.A').startsWith('Supporting other Institutes'));
+    assert.equal(getSubcriterionTitle('U7.1'), 'PoP appointed as per applicable norms');
     assert.equal(getSubcriterionTitle('UNKNOWN.99', 'Fallback Title'), 'Subcriterion UNKNOWN.99 — Fallback Title');
   });
 });

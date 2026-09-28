@@ -8,11 +8,7 @@ import {
   Layers,
   Sparkles,
 } from "lucide-react";
-import {
-  COLLEGE_FRAMEWORK_DATA,
-  UNIVERSITY_FRAMEWORK_DATA,
-  getSubcriterionTitle,
-} from "../../utils/nepTaxonomy";
+import { COLLEGE_FRAMEWORK_DATA, UNIVERSITY_FRAMEWORK_DATA, getSubcriterionTitle, formatFieldValue } from "../../utils/nepTaxonomy";
 
 /**
  * Format timestamp nicely (e.g., "27 Sep 2026, 7:03 PM")
@@ -220,7 +216,7 @@ export default function ParameterSubmittedDataViewer({
                               {f.label || humanizeKey(f.key)}
                             </span>
                             <div className="sm:text-right">
-                              {renderCleanValue(val, f.type)}
+                              {renderCleanValue(formatFieldValue(f, val), f.type)}
                             </div>
                           </div>
                         );

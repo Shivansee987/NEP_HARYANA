@@ -60,7 +60,7 @@ def can_user_view_assessment(user: Any, assessment: Any, framework: str) -> bool
         # Check framework-level ReviewerAuthorization binding
         has_binding = ReviewerAuthorization.objects.filter(
             user=user,
-            framework=framework,
+            framework__in=[framework, "ALL"],
             is_active=True,
         ).exists()
         return has_binding

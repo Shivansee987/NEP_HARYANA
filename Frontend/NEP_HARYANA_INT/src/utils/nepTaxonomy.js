@@ -16,6 +16,8 @@
  * - Subcriterion evidence mapped 1:1 to authoritative evidence contracts.
  */
 
+import { COLLEGE_FIELD_SCHEMA, POLICY_NOTICES, UNIVERSITY_FIELD_SCHEMA } from "./nepFrameworkSchema.generated.js";
+
 export const REJECTION_REASON_CODES = [
   {
     code: "INCOMPLETE_DOCUMENTATION",
@@ -113,22 +115,14 @@ export const COLLEGE_PARAMETER_TITLES = {
   "C22": "Governance, Student Feedback and Evidence-Based Improvement"
 };
 
+const SOURCE_SILENT_NOTICE =
+  "SOURCE_SILENT: Authoritative source specification specifies zero mandatory documentary evidence for this parameter.";
+
+// Open rubric questions come from the backend policy register (apps.scoring.policy) via the generated schema.
 export const UNRESOLVED_SPEC_NOTICES = {
-  // University Ambiguities preserved from source
-  U8: "SOURCE_HEADER_AMBIGUITY: Section text references 3 marks while component arithmetic allocates 4 marks + 2 marks (6 marks total). Handled closed under strict non-exceedance.",
-  U16: "UNRESOLVED_REQUIREMENT: Subcriterion U16.III references Scopus index requirement without published metric cutoff in source.",
-  U18: "UNRESOLVED_REQUIREMENT: Subcriterion U18.3 references RPL workshop metric without explicit evaluation rule in source.",
-  U20: "ARITHMETIC_GAP: Stated maximum is 4 marks while component sum (2+2+1) totals 5 marks. Capped at 4.0 marks invariant.",
-  U6: "SOURCE_SILENT: Authoritative source specification specifies zero mandatory documentary evidence for this parameter.",
-  
-  // College Ambiguities preserved from source
-  C5: "SOURCE_SILENT: Authoritative source specification specifies zero mandatory documentary evidence for this parameter.",
-  C7: "THRESHOLD_INCONSISTENCY: Boundary operator gap in source Sedg threshold table. Preserved without arbitrary normalization.",
-  C8: "UNRESOLVED_RULE: Applicable statutory evaluation rule is pending council resolution.",
-  C9: "SOURCE_SILENT: Authoritative source specification specifies zero mandatory documentary evidence for this parameter.",
-  C16: "ARITHMETIC_GAP: Stated parameter maximum is 4 marks while five 1-mark components total 5 marks. Capped at 4.0 marks invariant.",
-  C19: "UNRESOLVED_REQUIREMENT: Subcriterion C19.III references Scopus index requirement without published metric cutoff in source.",
-  C21: "COMPONENT_CAP: Stated parameter maximum is 4 marks with written component ceiling. Evaluated under strict non-exceedance.",
+  ...POLICY_NOTICES,
+  C5: [POLICY_NOTICES.C5, SOURCE_SILENT_NOTICE].filter(Boolean).join(" "),
+  C9: SOURCE_SILENT_NOTICE,
 };
 
 export const COLLEGE_FRAMEWORK_DATA = {
@@ -2915,4 +2909,119 @@ export function getSubcriterionContract(framework, parameterId, subcriterionId) 
   const pData = fwData[cleanP];
   if (!pData || !Array.isArray(pData.subcriteria)) return null;
   return pData.subcriteria.find((s) => s.code === cleanS) || null;
+}
+
+// ---------------------------------------------------------------------------
+// Backend schema overlay
+// Input fields, subcriterion titles and evidence contracts come from the backend's canonical schema
+// (nepFrameworkSchema.generated.js, produced by `manage.py export_nep_schema`), so the form submits exactly
+// the keys the backend validates and scores.
+// ---------------------------------------------------------------------------
+
+const UI_FIELD_TYPES = {
+  integer: "number",
+  currency: "number",
+  boolean: "checkbox",
+  enum: "select",
+  multi_enum: "multiselect",
+  text_list: "textlist",
+  date: "date",
+};
+
+function toUiField(f) {
+  return { ...f, schemaType: f.type, type: UI_FIELD_TYPES[f.type] || "text" };
+}
+
+function applyBackendSchema(frameworkData, fieldSchema) {
+  Object.entries(frameworkData).forEach(([pCode, param]) => {
+    const schemaParam = fieldSchema[pCode];
+    if (!schemaParam) return;
+    const mandatory = new Set();
+    (param.subcriteria || []).forEach((sub) => {
+      const schemaSub = schemaParam.subcriteria[sub.code];
+      if (!schemaSub) return;
+      sub.title = schemaSub.title;
+      sub.maxScore = schemaSub.max_score;
+      sub.periodBound = schemaSub.period_bound;
+      sub.note = schemaSub.note || "";
+      sub.evidenceAcademicYear = schemaSub.evidence_academic_year || null;
+      sub.fields = schemaSub.fields.map(toUiField);
+      const ev = schemaSub.evidence;
+      if (ev) {
+        sub.contractStatus = ev.status;
+        sub.canonicalEvidenceType = ev.canonical_type || "";
+        sub.allowedEvidenceTypes = ev.allowed_types;
+        sub.documentaryRequirement = ev.documentary_requirement || sub.documentaryRequirement;
+        sub.isSourceSilent = ev.is_source_silent;
+        sub.isUnresolved = ev.is_unresolved;
+        if (ev.canonical_type) mandatory.add(ev.canonical_type);
+      }
+    });
+    param.mandatoryEvidence = [...mandatory];
+  });
+}
+
+applyBackendSchema(COLLEGE_FRAMEWORK_DATA, COLLEGE_FIELD_SCHEMA);
+applyBackendSchema(UNIVERSITY_FRAMEWORK_DATA, UNIVERSITY_FIELD_SCHEMA);
+
+function isBlankValue(v) {
+  return v === undefined || v === null || (typeof v === "string" && v.trim() === "") || (Array.isArray(v) && v.length === 0);
+}
+
+/** True when the subcriterion claims something (any non-date field positive), mirroring apps.scoring.inputs. */
+export function hasPositiveClaim(sub, subVals = {}) {
+  return (sub.fields || []).some((f) => {
+    const v = subVals[f.key];
+    switch (f.schemaType) {
+      case "integer":
+      case "currency":
+        return !isBlankValue(v) && Number(v) > 0;
+      case "boolean":
+        return v === true;
+      case "enum":
+        return !isBlankValue(v) && v !== "NOT_ACCREDITED";
+      case "multi_enum":
+      case "text_list":
+        return !isBlankValue(v);
+      default:
+        return false;
+    }
+  });
+}
+
+/**
+ * Whether a field must be answered, mirroring the backend submission checks: numbers and single choices always
+ * (enter 0 if none); activity dates only when a period-bound subcriterion claims something. Checkboxes and lists
+ * are optional because "no" / "none" is a valid answer.
+ */
+export function isFieldRequired(sub, f, subVals = {}) {
+  if (f.schemaType === "date") return Boolean(sub.periodBound) && hasPositiveClaim(sub, subVals);
+  return f.schemaType === "integer" || f.schemaType === "currency" || f.schemaType === "enum";
+}
+
+export function isFieldMissing(sub, f, subVals = {}) {
+  return isFieldRequired(sub, f, subVals) && isBlankValue(subVals[f.key]);
+}
+
+/** Parameter input status used by the workspace navigation: NOT_STARTED | IN_PROGRESS | COMPLETE. */
+export function getParameterInputStatus(parameterDef, rawInputs = {}) {
+  const subcriteria = parameterDef?.subcriteria || [];
+  if (subcriteria.length === 0) return "NOT_STARTED";
+  const hasAny = Object.values(rawInputs || {}).some(
+    (vals) => vals && typeof vals === "object" && Object.values(vals).some((v) => !isBlankValue(v))
+  );
+  if (!hasAny) return "NOT_STARTED";
+  const complete = subcriteria.every((sub) =>
+    (sub.fields || []).every((f) => !isFieldMissing(sub, f, rawInputs[sub.code] || {}))
+  );
+  return complete ? "COMPLETE" : "IN_PROGRESS";
+}
+
+/** Display form of a stored field value: option labels for choice fields, one entry per line for text lists. */
+export function formatFieldValue(f, val) {
+  const labelOf = (v) => (f.options || []).find((o) => o.value === v)?.label || v;
+  if (f.type === "select" && typeof val === "string" && val !== "") return labelOf(val);
+  if (f.type === "multiselect" && Array.isArray(val)) return val.map(labelOf);
+  if (f.type === "textlist" && typeof val === "string") return val.split("\n").map((l) => l.trim()).filter(Boolean);
+  return val;
 }

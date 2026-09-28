@@ -51,15 +51,7 @@ import { useAuth } from "../../context/AuthContext.jsx";
 import { StatusBadge, DashboardSkeleton, EmptyState, ErrorState } from "../../components/common";
 import { formatGatingStatus, getGatingStatusExplanation } from "../../components/common/StatusBadge";
 import DocumentPreviewModal from "../../components/Institution/DocumentPreviewModal";
-import {
-  getParameterTitle,
-  getSubcriterionTitle,
-  REJECTION_REASON_CODES,
-  UNIVERSITY_PARAMETER_CODES,
-  COLLEGE_PARAMETER_CODES,
-  COLLEGE_FRAMEWORK_DATA,
-  UNIVERSITY_FRAMEWORK_DATA,
-} from "../../utils/nepTaxonomy";
+import { getParameterTitle, getSubcriterionTitle, REJECTION_REASON_CODES, UNIVERSITY_PARAMETER_CODES, COLLEGE_PARAMETER_CODES, COLLEGE_FRAMEWORK_DATA, UNIVERSITY_FRAMEWORK_DATA, formatFieldValue } from "../../utils/nepTaxonomy";
 
 export default function CheckerAssessmentReview() {
   const { assessmentId } = useParams();
@@ -1039,7 +1031,8 @@ export default function CheckerAssessmentReview() {
                                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 bg-slate-50/80 p-4 rounded-xl border border-slate-200/80">
                                     {subFields.length > 0 ? (
                                       subFields.map((f) => {
-                                        const rawVal = subRawInputs[f.key];
+                                        const formatted = formatFieldValue(f, subRawInputs[f.key]);
+                                        const rawVal = Array.isArray(formatted) ? formatted.join(", ") : formatted;
                                         const displayVal =
                                           f.type === "checkbox"
                                             ? Boolean(rawVal)

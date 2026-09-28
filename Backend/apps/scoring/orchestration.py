@@ -411,6 +411,30 @@ def submission_errors(param_data: Dict[str, Any], definitions: Dict[str, Dict[st
         stored = (param_data or {}).get(code) or {}
         raw = stored.get("raw_inputs", {}) if isinstance(stored, dict) else {}
         errors.extend(validate_parameter_payload(code, definitions, raw, stored.get("entities") if isinstance(stored, dict) else None))
+        if isinstance(raw, dict):
+            errors.extend(_cross_subcriterion_ratio_errors(code, definitions, raw))
+    return errors
+
+
+def _cross_subcriterion_ratio_errors(parameter_code: str, definitions: Dict[str, Dict[str, Any]],
+                                     raw: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """
+    A ratio whose base lives in a sibling subcriterion (e.g. C9.II placed / C9.I participating) cannot exceed it.
+    Checked at submission rather than on every draft save, so partially entered drafts still save.
+    """
+    from apps.scoring.inputs import normalize_subcriterion
+
+    errors: List[Dict[str, Any]] = []
+    for s_code, s_def in definitions[parameter_code]["subcriteria"].items():
+        metric = s_def.get("metric") or {}
+        if metric.get("kind") != "ratio" or not metric.get("den_from") or metric.get("allow_over"):
+            continue
+        base_sub, base_key = metric["den_from"]
+        num = normalize_subcriterion(parameter_code, s_code, raw.get(s_code)).values.get(metric["num"])
+        den = normalize_subcriterion(parameter_code, base_sub, raw.get(base_sub)).values.get(base_key)
+        if num is not None and den is not None and num > den:
+            errors.append({"parameter": parameter_code, "subcriterion": s_code, "field": metric["num"], "code": "EXCEEDS_FIELD",
+                           "message": f"'{metric['num']}' ({num}) cannot exceed {base_sub} '{base_key}' ({den})."})
     return errors
 
 

@@ -17,7 +17,12 @@ import {
   Eye,
 } from "lucide-react";
 import { StatusBadge } from "../common";
-import { UNRESOLVED_SPEC_NOTICES } from "../../utils/nepTaxonomy.js";
+import {
+  UNRESOLVED_SPEC_NOTICES,
+  getParameterInputStatus,
+  isFieldMissing,
+  isFieldRequired,
+} from "../../utils/nepTaxonomy.js";
 import DocumentPreviewModal from "./DocumentPreviewModal";
 
 export default function ParameterFormView({
@@ -180,13 +185,7 @@ export default function ParameterFormView({
       const subVals = data[sub.code] || {};
       const fields = sub.fields || [];
       fields.forEach((f) => {
-        const val = subVals[f.key];
-        const isEmpty =
-          val === undefined ||
-          val === null ||
-          val === "" ||
-          (f.type === "checkbox" && val !== true);
-        if (isEmpty) {
+        if (isFieldMissing(sub, f, subVals)) {
           missing.push({
             subCode: sub.code,
             subTitle: sub.title,
@@ -236,26 +235,9 @@ export default function ParameterFormView({
   };
 
   // Determine completion of this specific parameter from current formData
-  const isComplete =
-    subcriteria.length > 0 &&
-    subcriteria.every((sub) => {
-      const subVals = formData[sub.code];
-      if (!subVals || typeof subVals !== "object") return false;
-      const fields = sub.fields || [];
-      return (
-        fields.length > 0 &&
-        fields.every((f) => {
-          const v = subVals[f.key];
-          if (f.type === "checkbox") return v === true;
-          return v !== undefined && v !== "" && v !== null;
-        })
-      );
-    });
-
-  const hasAnyInput = Object.keys(formData).some((subCode) => {
-    const vals = formData[subCode];
-    return vals && Object.values(vals).some((v) => v !== "" && v !== null && v !== undefined);
-  });
+  const inputStatus = getParameterInputStatus(parameterDef, formData);
+  const isComplete = inputStatus === "COMPLETE";
+  const hasAnyInput = inputStatus !== "NOT_STARTED";
 
   return (
     <div className="space-y-6">
@@ -364,9 +346,12 @@ export default function ParameterFormView({
                   <span className="font-mono font-bold text-xs bg-slate-200 text-slate-800 px-2 py-0.5 rounded">
                     {sub.code}
                   </span>
-                  <h3 className="text-sm font-bold text-slate-900 tracking-tight">
-                    {sub.title}
-                  </h3>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900 tracking-tight">
+                      {sub.title}
+                    </h3>
+                    {sub.note && <p className="text-[11px] text-slate-500 mt-0.5">{sub.note}</p>}
+                  </div>
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0">
@@ -389,74 +374,119 @@ export default function ParameterFormView({
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {(sub.fields || []).map((f) => {
                       const val = subVals[f.key] !== undefined ? subVals[f.key] : "";
-                      const isFieldMissing =
-                        val === undefined ||
-                        val === null ||
-                        val === "" ||
-                        (f.type === "checkbox" && val !== true);
-                      const isInvalid = touchedFields[`${sub.code}_${f.key}`] && isFieldMissing;
+                      const required = isFieldRequired(sub, f, subVals);
+                      const isInvalid = touchedFields[`${sub.code}_${f.key}`] && isFieldMissing(sub, f, subVals);
+                      const inputClass = `w-full px-3.5 py-2 border rounded-lg text-xs font-medium text-slate-900 focus:outline-none disabled:bg-slate-50 disabled:text-slate-500 shadow-2xs transition-colors ${
+                        isInvalid
+                          ? "border-red-500 bg-red-50/40 focus:ring-1 focus:ring-red-500"
+                          : "border-slate-200 focus:ring-1 focus:ring-blue-500"
+                      }`;
 
                       if (f.type === "checkbox") {
                         return (
                           <div key={f.key} className="sm:col-span-2">
-                            <label
-                              data-invalid={isInvalid}
-                              className={`flex items-start gap-3 p-3 rounded-lg border transition-colors cursor-pointer ${
-                                isInvalid
-                                  ? "border-red-400 bg-red-50/50 hover:bg-red-50"
-                                  : "border-slate-200 bg-slate-50/70 hover:bg-slate-50"
-                              }`}
-                            >
+                            <label className="flex items-start gap-3 p-3 rounded-lg border transition-colors cursor-pointer border-slate-200 bg-slate-50/70 hover:bg-slate-50">
                               <input
                                 type="checkbox"
-                                checked={Boolean(val)}
+                                checked={val === true}
                                 disabled={isReadOnly}
                                 onChange={(e) =>
                                   handleInputChange(sub.code, f.key, e.target.checked, "checkbox")
                                 }
-                                className={`w-4 h-4 text-blue-600 rounded focus:ring-blue-500 mt-0.5 ${
-                                  isInvalid ? "border-red-400" : "border-slate-300"
-                                }`}
+                                className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 mt-0.5 border-slate-300"
                               />
-                              <div className="text-xs">
-                                <span className="font-semibold text-slate-800">{f.label}</span>
-                                <span className="text-red-500 font-bold ml-1">*</span>
-                                {isInvalid && (
-                                  <p className="text-[11px] text-red-600 mt-0.5 font-medium">
-                                    Required: must be checked to proceed.
-                                  </p>
-                                )}
-                              </div>
+                              <span className="text-xs font-semibold text-slate-800">{f.label}</span>
                             </label>
                           </div>
                         );
                       }
 
+                      if (f.type === "multiselect") {
+                        const selected = Array.isArray(val) ? val : [];
+                        return (
+                          <div key={f.key} className="sm:col-span-2 space-y-1.5">
+                            <span className="block text-xs font-semibold text-slate-700">{f.label}</span>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              {(f.options || []).map((opt) => (
+                                <label
+                                  key={opt.value}
+                                  className="flex items-center gap-2.5 p-2.5 rounded-lg border border-slate-200 bg-slate-50/70 hover:bg-slate-50 cursor-pointer text-xs text-slate-800"
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={selected.includes(opt.value)}
+                                    disabled={isReadOnly}
+                                    onChange={(e) =>
+                                      handleInputChange(
+                                        sub.code,
+                                        f.key,
+                                        e.target.checked
+                                          ? [...selected, opt.value]
+                                          : selected.filter((v) => v !== opt.value),
+                                        "multiselect"
+                                      )
+                                    }
+                                    className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 border-slate-300"
+                                  />
+                                  <span>{opt.label}</span>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      }
+
                       return (
-                        <div key={f.key} className="space-y-1">
+                        <div key={f.key} className={`space-y-1 ${f.type === "textlist" ? "sm:col-span-2" : ""}`}>
                           <label className="block text-xs font-semibold text-slate-700">
                             {f.label}{" "}
-                            <span className="text-red-500 font-bold">*</span>
+                            {required && <span className="text-red-500 font-bold">*</span>}
                           </label>
 
-                          <input
-                            type={f.type === "number" ? "number" : "text"}
-                            placeholder={f.placeholder || ""}
-                            value={val}
-                            disabled={isReadOnly}
-                            data-invalid={isInvalid}
-                            onChange={(e) =>
-                              handleInputChange(sub.code, f.key, e.target.value, f.type)
-                            }
-                            className={`w-full px-3.5 py-2 border rounded-lg text-xs font-medium text-slate-900 focus:outline-none disabled:bg-slate-50 disabled:text-slate-500 shadow-2xs transition-colors ${
-                              isInvalid
-                                ? "border-red-500 bg-red-50/40 focus:ring-1 focus:ring-red-500"
-                                : "border-slate-200 focus:ring-1 focus:ring-blue-500"
-                            }`}
-                          />
+                          {f.type === "select" ? (
+                            <select
+                              value={val}
+                              disabled={isReadOnly}
+                              data-invalid={isInvalid}
+                              onChange={(e) => handleInputChange(sub.code, f.key, e.target.value, f.type)}
+                              className={inputClass}
+                            >
+                              <option value="">Select…</option>
+                              {(f.options || []).map((opt) => (
+                                <option key={opt.value} value={opt.value}>
+                                  {opt.label}
+                                </option>
+                              ))}
+                            </select>
+                          ) : f.type === "textlist" ? (
+                            <textarea
+                              rows={3}
+                              value={Array.isArray(val) ? val.join("\n") : val}
+                              disabled={isReadOnly}
+                              onChange={(e) => handleInputChange(sub.code, f.key, e.target.value, f.type)}
+                              className={inputClass}
+                            />
+                          ) : (
+                            <input
+                              type={f.type === "number" ? "number" : f.type === "date" ? "date" : "text"}
+                              min={f.type === "date" ? f.min_date : f.min}
+                              max={f.type === "date" ? f.max_date : undefined}
+                              step={f.type === "number" ? (f.integer ? 1 : "any") : undefined}
+                              placeholder={f.placeholder || ""}
+                              value={val}
+                              disabled={isReadOnly}
+                              data-invalid={isInvalid}
+                              onChange={(e) =>
+                                handleInputChange(sub.code, f.key, e.target.value, f.type)
+                              }
+                              className={inputClass}
+                            />
+                          )}
                           {isInvalid && (
                             <p className="text-[11px] text-red-600 font-medium">
-                              This field is required.
+                              {f.type === "date"
+                                ? "Required when claiming activity in the assessment period."
+                                : "This field is required (enter 0 if none)."}
                             </p>
                           )}
                         </div>
