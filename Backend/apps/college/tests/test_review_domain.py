@@ -333,7 +333,7 @@ class CollegeReviewDomainTests(TestCase):
         with self.assertRaises(CertificationBlockedError):
             CollegeReviewService.certify_assessment(
                 assessment_id=self.assessment_a.assessment_id,
-                actor=self.admin_user,
+                actor=self.chair_user,
             )
 
     def test_certification_succeeds_for_chair_and_locks_assessment(self):
@@ -405,7 +405,7 @@ class CollegeReviewDomainTests(TestCase):
             with self.assertRaises(AssessmentAlreadyCertifiedError):
                 CollegeReviewService.certify_assessment(
                     assessment_id=self.assessment_a.assessment_id,
-                    actor=self.admin_user,
+                    actor=self.chair_user,
                 )
             with self.assertRaises(AssessmentAlreadyCertifiedError):
                 CollegeReviewService.start_review(
@@ -485,5 +485,5 @@ class CollegeReviewDomainTests(TestCase):
         with self.assertRaises(FrameworkMismatchError):
             CollegeReviewService.certify_assessment(
                 assessment_id=self.assessment_a.assessment_id,
-                actor=self.admin_user,
+                actor=self.chair_user,
             )

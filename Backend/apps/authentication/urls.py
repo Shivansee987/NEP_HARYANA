@@ -11,7 +11,8 @@ from .views import (
 )
 
 urlpatterns = [
-    path('colleges/', CollegeListView.as_view(), name='college-list'),
+    # Public list for the signup form; /api/colleges/ is the authenticated college API (apps.college).
+    path('auth/colleges/', CollegeListView.as_view(), name='college-list'),
     path('auth/signup/', RegisterView.as_view(), name='signup'),
     path('auth/register/', RegisterView.as_view(), name='register'),
     path('auth/login/', LoginView.as_view(), name='login'),

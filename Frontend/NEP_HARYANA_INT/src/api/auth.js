@@ -120,7 +120,7 @@ export async function registerCollege(payload) {
 }
 
 export function fetchColleges() {
-  return request("/colleges/");
+  return request("/auth/colleges/");
 }
 
 export async function loginCollege(payload) {

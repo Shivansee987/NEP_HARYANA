@@ -30,7 +30,7 @@ import {
   Check
 } from 'lucide-react';
 import { fetchAssessmentReviewDetail, fetchAssessmentScoring } from '../../api/checker';
-import { inspectAdminAssessment, assignAdminReviewer, certifyAdminAssessment, fetchAdminAuthorizations } from '../../api/admin';
+import { inspectAdminAssessment, assignAdminReviewer, fetchAdminAuthorizations } from '../../api/admin';
 import { useAuth } from '../../context/AuthContext.jsx';
 import DocumentPreviewModal from '../../components/Institution/DocumentPreviewModal';
 import ParameterSubmittedDataViewer from '../../components/Admin/ParameterSubmittedDataViewer';
@@ -74,10 +74,6 @@ export default function AdminAssessmentDetail() {
   const [assignReason, setAssignReason] = useState('');
   const [assignLoading, setAssignLoading] = useState(false);
 
-  // Certification Modal State
-  const [showCertifyModal, setShowCertifyModal] = useState(false);
-  const [certifyComments, setCertifyComments] = useState('');
-  const [certifyLoading, setCertifyLoading] = useState(false);
 
   // Evidence Preview Modal State
   const [previewModal, setPreviewModal] = useState({
@@ -158,24 +154,6 @@ export default function AdminAssessmentDetail() {
       alert(`Assignment failed: ${err.message || 'Unknown error'}`);
     } finally {
       setAssignLoading(false);
-    }
-  };
-
-  const handleCertify = async () => {
-    if (!window.confirm("Are you sure you want to certify this assessment? This will finalize the award score.")) {
-      return;
-    }
-    setCertifyLoading(true);
-    try {
-      await certifyAdminAssessment(assessmentId, certifyComments);
-      alert("Assessment successfully certified!");
-      setShowCertifyModal(false);
-      setCertifyComments('');
-      loadData();
-    } catch (err) {
-      alert(`Certification failed: ${err.message || 'Unknown error'}`);
-    } finally {
-      setCertifyLoading(false);
     }
   };
 
@@ -300,16 +278,7 @@ export default function AdminAssessmentDetail() {
             <span>Screening Console</span>
           </Link>
 
-          {/* Certify Button */}
-          {user?.role === 'admin' && status !== 'CERTIFIED' && (
-            <button
-              onClick={() => setShowCertifyModal(true)}
-              className="flex items-center gap-1.5 px-4 py-2 bg-[#600b0b] hover:bg-[#4a0808] text-white rounded-xl text-xs font-bold transition-all shadow-sm"
-            >
-              <Award className="w-4 h-4 text-[#c29b68]" />
-              <span>Certify Assessment</span>
-            </button>
-          )}
+          {/* Certification is the Committee Chair's decision; the State Admin only monitors it here. */}
         </div>
       </div>
 
@@ -922,56 +891,6 @@ export default function AdminAssessmentDetail() {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
-
-      {/* Certification Confirmation Modal */}
-      {showCertifyModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-fadeIn">
-          <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl border border-slate-200 overflow-hidden p-6 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-2 text-[#600b0b]">
-                <Award className="w-5 h-5" />
-                <h3 className="text-sm font-bold text-slate-800">Council Assessment Certification</h3>
-              </div>
-              <button onClick={() => setShowCertifyModal(false)} className="text-slate-400 hover:text-slate-600">
-                <XCircle className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 font-medium">
-              Certifying this application will lock all evaluator scores and mark the assessment as formally validated by the Council.
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-600 uppercase mb-1.5">Certification Comments & Citations</label>
-              <textarea
-                rows="4"
-                value={certifyComments}
-                onChange={(e) => setCertifyComments(e.target.value)}
-                placeholder="Enter council certification statement or commendation..."
-                className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-none focus:border-[#600b0b]"
-              />
-            </div>
-
-            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={() => setShowCertifyModal(false)}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleCertify}
-                disabled={certifyLoading}
-                className="px-5 py-2 bg-[#600b0b] hover:bg-[#4a0808] text-white font-bold text-xs rounded-xl transition-all shadow-sm disabled:opacity-50"
-              >
-                {certifyLoading ? 'Certifying...' : 'Certify & Issue Award'}
-              </button>
-            </div>
           </div>
         </div>
       )}

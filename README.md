@@ -70,7 +70,7 @@ The State Admin is the **eye on the whole state**, not a super-reviewer.
 | See each one's stage: *Not Started → Filling In → Submitted → Under Review → Awaiting Certification → Certified* (or *Returned*) | Approve or reject evidence (Committee's job) |
 | Open any assessment in **read-only** mode | Accept or change marks (Committee's job) |
 | Assign or reassign a reviewer (a reason is required when reassigning) | Quietly edit scores outside the workflow |
-| See committee workload: pending reviews, unassigned ones, open work per reviewer | |
+| See committee workload: pending reviews, unassigned ones, open work per reviewer | Certify an assessment — only the Committee Chair can (the server enforces this) |
 | Download a CSV of institutions and pull state reports | |
 | Read the recent audit trail (who did what, and when) | |
 
