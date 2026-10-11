@@ -248,7 +248,7 @@ export default function ParameterFormView({
         <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
           <div className="space-y-2">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-mono font-extrabold text-sm px-2.5 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200">
+              <span className="font-mono font-extrabold text-sm px-2.5 py-0.5 rounded-md bg-[#600b0b]/10 text-[#600b0b] border border-[#600b0b]/20">
                 {parameterCode}
               </span>
               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200 uppercase tracking-wider">
@@ -284,8 +284,8 @@ export default function ParameterFormView({
                 <span>Input Complete</span>
               </span>
             ) : hasAnyInput ? (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-blue-50 text-blue-800 border border-blue-200">
-                <Clock size={13} className="text-blue-600" />
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                <Clock size={13} className="text-amber-600" />
                 <span>Draft In Progress</span>
               </span>
             ) : (
@@ -299,11 +299,11 @@ export default function ParameterFormView({
 
         {/* Unresolved Specification Banner if applicable */}
         {unresolvedNotice && (
-          <div className="mt-4 p-3.5 bg-purple-50/90 border border-purple-200 rounded-lg text-xs text-purple-900 flex items-start gap-3">
-            <Ban size={16} className="text-purple-600 shrink-0 mt-0.5" />
+          <div className="mt-4 p-3.5 bg-amber-50/90 border border-amber-200 rounded-lg text-xs text-amber-900 flex items-start gap-3">
+            <Ban size={16} className="text-amber-600 shrink-0 mt-0.5" />
             <div className="flex-1">
-              <p className="font-bold text-purple-950 mb-0.5">Council Notice: Statutory Clarification Pending</p>
-              <p className="text-purple-800 leading-relaxed">{unresolvedNotice}</p>
+              <p className="font-bold text-amber-950 mb-0.5">Council Notice: Statutory Clarification Pending</p>
+              <p className="text-amber-800 leading-relaxed">{unresolvedNotice}</p>
             </div>
           </div>
         )}
@@ -395,7 +395,7 @@ export default function ParameterFormView({
                       const inputClass = `w-full px-3.5 py-2 border rounded-lg text-xs font-medium text-slate-900 focus:outline-none disabled:bg-slate-50 disabled:text-slate-500 shadow-2xs transition-colors ${
                         isInvalid
                           ? "border-red-500 bg-red-50/40 focus:ring-1 focus:ring-red-500"
-                          : "border-slate-200 focus:ring-1 focus:ring-blue-500"
+                          : "border-slate-200 focus:ring-1 focus:ring-[#600b0b]/30 focus:border-[#600b0b]"
                       }`;
 
                       if (f.type === "checkbox") {
@@ -409,7 +409,7 @@ export default function ParameterFormView({
                                 onChange={(e) =>
                                   handleInputChange(sub.code, f.key, e.target.checked, "checkbox")
                                 }
-                                className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 mt-0.5 border-slate-300"
+                                className="w-4 h-4 text-[#600b0b] rounded focus:ring-[#600b0b] mt-0.5 border-slate-300"
                               />
                               <span className="text-xs font-semibold text-slate-800">{f.label}</span>
                             </label>
@@ -442,7 +442,7 @@ export default function ParameterFormView({
                                         "multiselect"
                                       )
                                     }
-                                    className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 border-slate-300"
+                                    className="w-4 h-4 text-[#600b0b] rounded focus:ring-[#600b0b] border-slate-300"
                                   />
                                   <span>{opt.label}</span>
                                 </label>
@@ -451,6 +451,12 @@ export default function ParameterFormView({
                           </div>
                         );
                       }
+
+                      const isPercentageDropdown =
+                        f.type === "percentage" ||
+                        f.key === "percentage" ||
+                        (f.key.toLowerCase().endsWith("_percentage") && !f.max_field) ||
+                        (f.key.toLowerCase().endsWith("_pct") && !f.max_field);
 
                       return (
                         <div key={f.key} className={`space-y-1 ${f.type === "textlist" ? "sm:col-span-2" : ""}`}>
@@ -473,6 +479,34 @@ export default function ParameterFormView({
                                   {opt.label}
                                 </option>
                               ))}
+                            </select>
+                          ) : isPercentageDropdown ? (
+                            <select
+                              value={val === "" || val === null || val === undefined ? "" : String(val)}
+                              disabled={isReadOnly}
+                              data-invalid={isInvalid}
+                              onChange={(e) =>
+                                handleInputChange(
+                                  sub.code,
+                                  f.key,
+                                  e.target.value === "" ? "" : Number(e.target.value),
+                                  "number"
+                                )
+                              }
+                              className={inputClass}
+                            >
+                              <option value="">Select Percentage…</option>
+                              {[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((pct) => (
+                                <option key={pct} value={pct}>
+                                  {pct}%
+                                </option>
+                              ))}
+                              {val !== "" &&
+                                val !== null &&
+                                val !== undefined &&
+                                ![0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].includes(Number(val)) && (
+                                  <option value={val}>{val}% (Custom)</option>
+                                )}
                             </select>
                           ) : f.type === "textlist" ? (
                             <textarea
@@ -509,6 +543,47 @@ export default function ParameterFormView({
                       );
                     })}
                   </div>
+
+                  {(() => {
+                    const ratioField = (sub.fields || []).find((fld) => fld.max_field);
+                    if (!ratioField) return null;
+                    const baseField = (sub.fields || []).find((fld) => fld.key === ratioField.max_field);
+                    const numVal = subVals[ratioField.key];
+                    const denVal = subVals[ratioField.max_field];
+                    const hasValidValues =
+                      denVal !== undefined &&
+                      denVal !== "" &&
+                      Number(denVal) > 0 &&
+                      numVal !== undefined &&
+                      numVal !== "";
+                    const calcPct = hasValidValues
+                      ? Math.min(
+                          100,
+                          Math.max(0, Math.round((Number(numVal) / Number(denVal)) * 1000) / 10)
+                        )
+                      : null;
+
+                    return (
+                      <div className="mt-3 p-3 bg-amber-50/70 border border-amber-200/90 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-2xs">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] font-bold text-amber-900 uppercase tracking-wider">
+                            Calculation Assistance:
+                          </span>
+                          <span className="text-xs text-amber-900">
+                            {hasValidValues
+                              ? `${numVal} / ${denVal} (${ratioField.label} of ${baseField?.label || "base"})`
+                              : `Live percentage calculated from: ${ratioField.label} ÷ ${baseField?.label || "base"}`}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-xs font-semibold text-slate-600">Calculated Percentage:</span>
+                          <span className="px-2.5 py-0.5 rounded font-mono font-extrabold text-xs bg-[#600b0b] text-white shadow-2xs">
+                            {calcPct !== null ? `${calcPct}%` : "— %"}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {/* Subcriterion Evidence Attachment Section */}
@@ -525,7 +600,7 @@ export default function ParameterFormView({
                           </span>
                         )}
                         {sub.isUnresolved && (
-                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-50 text-purple-800 border border-purple-200">
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
                             Council Metric Unresolved
                           </span>
                         )}
@@ -539,7 +614,7 @@ export default function ParameterFormView({
                       <button
                         type="button"
                         onClick={() => onOpenEvidenceModal(sub.code, sub.canonicalEvidenceType || mandatoryEvidence[0] || "")}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-lg text-xs font-bold transition-colors cursor-pointer shrink-0"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#600b0b]/10 hover:bg-[#600b0b]/15 text-[#600b0b] border border-[#600b0b]/25 rounded-lg text-xs font-bold transition-colors cursor-pointer shrink-0"
                       >
                         <Upload size={13} />
                         <span>Attach Evidence for {sub.code}</span>
@@ -558,7 +633,7 @@ export default function ParameterFormView({
                           : `No documentary evidence linked to subcriterion ${sub.code} yet.`}
                       </p>
                       {sub.canonicalEvidenceType && (
-                        <p className="text-[11px] text-purple-700 mt-0.5 font-medium font-mono">
+                        <p className="text-[11px] text-[#600b0b] mt-0.5 font-medium font-mono">
                           Canonical Proof Type: {sub.canonicalEvidenceType}
                         </p>
                       )}
@@ -574,7 +649,7 @@ export default function ParameterFormView({
                             className="p-3 rounded-lg border border-slate-200 bg-slate-50/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
                           >
                             <div className="flex items-start gap-2.5 min-w-0">
-                              <FileText size={16} className="text-purple-600 shrink-0 mt-0.5" />
+                              <FileText size={16} className="text-[#600b0b] shrink-0 mt-0.5" />
                               <div className="min-w-0">
                                 <p className="font-bold text-slate-900 truncate">
                                   {doc.original_filename || "Documentary Proof"}
@@ -630,7 +705,7 @@ export default function ParameterFormView({
                                 <button
                                   type="button"
                                   onClick={() => handleOpenPreview(assoc)}
-                                  className="inline-flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-purple-50 text-purple-700 hover:text-purple-800 border border-purple-200 hover:border-purple-300 rounded-md text-[11px] font-bold transition-colors cursor-pointer shadow-2xs"
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-[#600b0b]/5 text-[#600b0b] hover:text-[#4a0707] border border-[#600b0b]/25 hover:border-[#600b0b]/50 rounded-md text-[11px] font-bold transition-colors cursor-pointer shadow-2xs"
                                   title="Open Document Preview"
                                 >
                                   <Eye size={12} />
@@ -677,7 +752,7 @@ export default function ParameterFormView({
               type="button"
               onClick={handleManualSave}
               disabled={saving}
-              className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs disabled:opacity-50 cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#600b0b] hover:bg-[#4a0707] text-white rounded-lg text-xs font-bold transition-all shadow-xs disabled:opacity-50 cursor-pointer"
             >
               <Save size={13} />
               <span>{saving ? "Saving..." : "Save Draft"}</span>

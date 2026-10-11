@@ -229,12 +229,33 @@ function NavbarV2() {
                 aria-label="Search"
               />
             </div>
-            <button
-              onClick={handlePortalLoginClick}
-              className="v2-login-btn"
-            >
-              {savedUser ? "Portal Dashboard" : "Portal Login"}
-            </button>
+            {savedUser ? (
+              <button
+                onClick={handlePortalLoginClick}
+                className="v2-login-btn"
+              >
+                Portal Dashboard
+              </button>
+            ) : (
+              <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                <button
+                  onClick={() => navigate("/auth/login")}
+                  className="v2-login-btn"
+                  style={{ background: "#600b0b", color: "#fff", borderColor: "#600b0b" }}
+                  title="University & College Applicant Portal"
+                >
+                  Applicant Login
+                </button>
+                <button
+                  onClick={() => navigate("/auth/admin/login")}
+                  className="v2-login-btn"
+                  style={{ background: "#eaded2", color: "#600b0b", borderColor: "#600b0b" }}
+                  title="State Admin & Committee Review Portal"
+                >
+                  Admin Login
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>

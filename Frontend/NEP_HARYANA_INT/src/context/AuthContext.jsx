@@ -1,7 +1,8 @@
 import { createContext, useContext, useState, useEffect } from "react";
-import { getCurrentUser, loginCollege, registerCollege, logoutCollege, getAccessToken } from "../api/auth";
+import { getCurrentUser, loginCollege, registerCollege, registerUniversity, logoutCollege, getAccessToken } from "../api/auth";
 
 const AuthContext = createContext(null);
+
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
@@ -86,6 +87,17 @@ export function AuthProvider({ children }) {
     }
   };
 
+  const registerUniversityAccount = async (userData) => {
+    try {
+      const res = await registerUniversity(userData);
+      setUser(res.user);
+      return res;
+    } catch (err) {
+      setUser(null);
+      throw err;
+    }
+  };
+
   const logout = async () => {
     try {
       await logoutCollege();
@@ -97,7 +109,7 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, fetchUser }}>
+    <AuthContext.Provider value={{ user, loading, login, register, registerUniversityAccount, logout, fetchUser }}>
       {children}
     </AuthContext.Provider>
   );

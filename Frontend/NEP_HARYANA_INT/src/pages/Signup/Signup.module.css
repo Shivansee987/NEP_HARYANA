@@ -392,3 +392,343 @@
   max-width: 520px;
   width: 100%;
 }
+
+.centerFormWrapper .unifiedFormPanel {
+  max-width: 740px;
+  width: 100%;
+}
+
+/* =========================================================================
+   Unified Institution Type Selector & Conditional Form Enhancements
+   ========================================================================= */
+
+.typeSelectorSection {
+  margin-bottom: 2rem;
+  width: 100%;
+}
+
+.typeSelectorLabel {
+  display: block;
+  color: #475569;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 0.85rem;
+  text-align: center;
+}
+
+.typeSelectorGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.25rem;
+}
+
+.typeCard {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 1.35rem;
+  border-radius: 20px;
+  border: 2px solid #ebdcd0;
+  background: #ffffff;
+  cursor: pointer;
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  text-align: left;
+  user-select: none;
+}
+
+.typeCard:hover {
+  border-color: #c29b68;
+  background: #fdfaf6;
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px rgba(96, 11, 11, 0.07);
+}
+
+.typeCard:focus-within {
+  outline: none;
+  border-color: #600b0b;
+  box-shadow: 0 0 0 3px rgba(96, 11, 11, 0.15);
+}
+
+.typeCardSelected {
+  border-color: #600b0b;
+  background: #fdf7f4;
+  box-shadow: 0 12px 28px rgba(96, 11, 11, 0.1);
+  transform: translateY(-1px);
+}
+
+.typeCardRadio {
+  position: absolute;
+  top: 1.35rem;
+  right: 1.35rem;
+  accent-color: #600b0b;
+  width: 1.25rem;
+  height: 1.25rem;
+  cursor: pointer;
+}
+
+.typeIconWrapper {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(96, 11, 11, 0.06);
+  color: #600b0b;
+  margin-bottom: 0.85rem;
+  transition: all 0.2s ease;
+}
+
+.typeCardSelected .typeIconWrapper {
+  background: #600b0b;
+  color: #ffffff;
+}
+
+.typeTitle {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #111111;
+  margin: 0 0 0.3rem 0;
+  font-family: "Georgia", serif;
+  letter-spacing: -0.01em;
+}
+
+.typeCardSelected .typeTitle {
+  color: #600b0b;
+}
+
+.typeSubtitle {
+  font-size: 0.82rem;
+  color: #555555;
+  margin: 0 0 0.85rem 0;
+  line-height: 1.45;
+}
+
+.typeBadge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.3rem 0.65rem;
+  border-radius: 999px;
+  background: #f5eae0;
+  color: #600b0b;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  transition: all 0.2s ease;
+}
+
+.typeCardSelected .typeBadge {
+  background: #600b0b;
+  color: #ffffff;
+}
+
+.emptyPromptCard {
+  padding: 2.5rem 1.5rem;
+  text-align: center;
+  background: #faf6f0;
+  border: 1.5px dashed #d8c2b0;
+  border-radius: 20px;
+  color: #555555;
+  margin-top: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.emptyPromptIcon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: rgba(96, 11, 11, 0.08);
+  color: #600b0b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 0.25rem;
+}
+
+.emptyPromptTitle {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0;
+  font-family: "Georgia", serif;
+}
+
+.emptyPromptDesc {
+  font-size: 0.92rem;
+  color: #64748b;
+  max-width: 44ch;
+  line-height: 1.55;
+  margin: 0;
+}
+
+.fieldError {
+  color: #b91c1c;
+  font-size: 0.78rem;
+  font-weight: 600;
+  margin-top: 0.35rem;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+@media (max-width: 640px) {
+  .typeSelectorGrid {
+    grid-template-columns: 1fr;
+    gap: 0.85rem;
+  }
+}
+
+.phoneInputWrapper {
+  display: flex;
+  gap: 0.5rem;
+  align-items: stretch;
+}
+
+.countryCodePrefix {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0.85rem;
+  background: #fdfaf6;
+  border: 1.5px solid #ebdcd0;
+  border-radius: 12px;
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #600b0b;
+  user-select: none;
+}
+
+.otpActionBtn {
+  padding: 0 1.25rem;
+  background: #600b0b;
+  color: #ffffff;
+  border: none;
+  border-radius: 12px;
+  font-size: 0.88rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 50px;
+}
+
+.otpActionBtn:hover:not(:disabled) {
+  background: #7a0f0f;
+  transform: translateY(-1px);
+}
+
+.otpActionBtn:disabled {
+  background: #cbd5e1;
+  color: #64748b;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.otpBox {
+  margin-top: 0.5rem;
+  padding: 1rem;
+  background: #fbf7f4;
+  border: 1.5px dashed #d8c2b0;
+  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.otpRow {
+  display: flex;
+  gap: 0.5rem;
+  align-items: stretch;
+}
+
+.otpInput {
+  letter-spacing: 0.25em;
+  font-size: 1.1rem !important;
+  font-weight: 700 !important;
+  text-align: center;
+}
+
+.otpVerifyBtn {
+  padding: 0 1.25rem;
+  background: #047857;
+  color: #ffffff;
+  border: none;
+  border-radius: 12px;
+  font-size: 0.88rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 50px;
+}
+
+.otpVerifyBtn:hover:not(:disabled) {
+  background: #065f46;
+}
+
+.otpVerifyBtn:disabled {
+  background: #cbd5e1;
+  color: #64748b;
+  cursor: not-allowed;
+}
+
+.otpVerifiedBadge {
+  margin-top: 0.5rem;
+  padding: 0.75rem 1rem;
+  background: #ecfdf5;
+  border: 1.5px solid #a7f3d0;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.otpVerifiedBadgeText {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #065f46;
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.otpChangeBtn {
+  background: transparent;
+  border: none;
+  color: #047857;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0.2rem 0.4rem;
+}
+
+.otpChangeBtn:hover {
+  color: #065f46;
+}
+
+.otpDevHint {
+  font-size: 0.78rem;
+  color: #b45309;
+  background: #fef3c7;
+  padding: 0.35rem 0.65rem;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-weight: 500;
+}
+
+

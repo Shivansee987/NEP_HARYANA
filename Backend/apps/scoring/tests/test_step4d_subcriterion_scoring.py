@@ -228,7 +228,11 @@ class Step4DSubcriterionScoringTests(TestCase):
             subcriteria_inputs={
                 "U10.1": SubcriterionInput(subcriterion_code="U10.1", raw_inputs={"verified": True}, evidence_docs=[doc_reg]),
                 "U10.2": SubcriterionInput(subcriterion_code="U10.2", raw_inputs={"verified": False}, evidence_docs=[]),
-                "U10.3": SubcriterionInput(subcriterion_code="U10.3", raw_inputs={"funding_amount": 1.5}, evidence_docs=[doc_reg]),  # Leaked reg cert!
+                "U10.3": SubcriterionInput(
+                    subcriterion_code="U10.3",
+                    raw_inputs={"funding_amount": 1.5, "activity_period_start": "2025-08-01", "activity_period_end": "2026-05-01"},
+                    evidence_docs=[doc_reg],
+                ),  # Leaked reg cert!
                 "U10.4": SubcriterionInput(subcriterion_code="U10.4", raw_inputs={"verified": False}, evidence_docs=[]),
             }
         )
@@ -415,7 +419,7 @@ class Step4DSubcriterionScoringTests(TestCase):
         self.assertEqual(res_inv.subcriteria_results["U6.A"].evidence_gated_score, 0.0)
         self.assertEqual(res_inv.subcriteria_results["U6.A"].gating_status, GatingStatus.FAILED_EVIDENCE_ABSENT)
 
-        # 3. College C5: empty evidence -> 0.0
+        # 3. College C5: source-silent -> NO_EVIDENCE_REQUIRED, full score earned
         eval_fn_c5 = COLLEGE_EVALUATORS["C5"]
         p_in_c5_empty = ParameterInput(
             parameter_code="C5",
@@ -425,8 +429,8 @@ class Step4DSubcriterionScoringTests(TestCase):
         )
         res_c5 = eval_fn_c5(p_in_c5_empty, self.college_context, self.validator)
         self.assertEqual(res_c5.subcriteria_results["C5.1"].raw_score, 2.0)
-        self.assertEqual(res_c5.subcriteria_results["C5.1"].evidence_gated_score, 0.0)
-        self.assertEqual(res_c5.subcriteria_results["C5.1"].gating_status, GatingStatus.FAILED_EVIDENCE_ABSENT)
+        self.assertEqual(res_c5.subcriteria_results["C5.1"].evidence_gated_score, 2.0)
+        self.assertEqual(res_c5.subcriteria_results["C5.1"].gating_status, GatingStatus.NO_EVIDENCE_REQUIRED)
 
 
     # =========================================================================
@@ -435,7 +439,7 @@ class Step4DSubcriterionScoringTests(TestCase):
     def test_scenario_k_unresolved_missing_cannot_be_satisfied(self):
         """
         U16.III (Scopus publications per faculty) and C19.III (Scopus metric)
-        are marked UNRESOLVED_MISSING in taxonomy and UNRESOLVED_RULE in definitions.
+        are marked UNRESOLVED_MISSING in taxonomy and POLICY_UNRESOLVED in definitions.
         They cannot be satisfied by evidence under any circumstances.
         """
         eval_fn_u16 = UNIVERSITY_EVALUATORS["U16"]
@@ -443,11 +447,19 @@ class Step4DSubcriterionScoringTests(TestCase):
         p_in = ParameterInput(
             parameter_code="U16",
             subcriteria_inputs={
-                "U16.III": SubcriterionInput(subcriterion_code="U16.III", raw_inputs={"scopus_ratio": 2.5}, evidence_docs=[doc]),
+                "U16.III": SubcriterionInput(
+                    subcriterion_code="U16.III",
+                    raw_inputs={
+                        "scopus_index": 250,
+                        "activity_period_start": "2025-08-01",
+                        "activity_period_end": "2026-05-01",
+                    },
+                    evidence_docs=[doc],
+                ),
             }
         )
         res = eval_fn_u16(p_in, self.univ_context, self.validator)
-        self.assertEqual(res.subcriteria_results["U16.III"].resolution_status, ResolutionStatus.UNRESOLVED_RULE)
+        self.assertEqual(res.subcriteria_results["U16.III"].resolution_status, ResolutionStatus.POLICY_UNRESOLVED)
         self.assertEqual(res.subcriteria_results["U16.III"].evidence_gated_score, 0.0)
 
     # =========================================================================

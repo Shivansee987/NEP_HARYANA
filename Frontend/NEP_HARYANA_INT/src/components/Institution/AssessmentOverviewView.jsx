@@ -61,7 +61,7 @@ export default function AssessmentOverviewView({
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 mb-2 flex-wrap">
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-800 border border-blue-200 uppercase tracking-wider">
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#600b0b]/10 text-[#600b0b] border border-[#600b0b]/20 uppercase tracking-wider">
                 {frameworkName}
               </span>
               <span className="text-slate-300">•</span>
@@ -81,7 +81,7 @@ export default function AssessmentOverviewView({
           <div className="flex items-center gap-3 shrink-0">
             <button
               onClick={() => onNavigateToParam(nextPendingParam)}
-              className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-[#600b0b] hover:bg-[#4a0707] text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
             >
               <span>{completedCount === 0 ? "Start Assessment" : "Continue Assessment"}</span>
               <ChevronRight size={14} />
@@ -126,7 +126,7 @@ export default function AssessmentOverviewView({
               <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
                 Parameters Completed
               </span>
-              <span className="text-[11px] font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full">
+              <span className="text-[11px] font-bold text-[#600b0b] bg-[#600b0b]/10 border border-[#600b0b]/20 px-2 py-0.5 rounded-full">
                 {percentComplete}%
               </span>
             </div>
@@ -140,7 +140,7 @@ export default function AssessmentOverviewView({
           <div className="mt-3 pt-3 border-t border-slate-100">
             <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
               <div
-                className="h-full bg-blue-600 rounded-full transition-all duration-300"
+                className="h-full bg-[#600b0b] rounded-full transition-all duration-300"
                 style={{ width: `${percentComplete}%` }}
               />
             </div>
@@ -210,8 +210,8 @@ export default function AssessmentOverviewView({
               <CheckCircle2 size={13} /> {completedCount} Complete
             </span>
             <span className="text-slate-300">•</span>
-            <span className="flex items-center gap-1 text-blue-700 font-semibold">
-              <Clock size={13} /> {inProgressCount} In Progress
+            <span className="flex items-center gap-1 text-amber-800 font-semibold">
+              <Clock size={13} className="text-amber-600" /> {inProgressCount} In Progress
             </span>
             <span className="text-slate-300">•</span>
             <span className="flex items-center gap-1 text-slate-500 font-semibold">
@@ -233,12 +233,12 @@ export default function AssessmentOverviewView({
                 className="p-4 hover:bg-slate-50/80 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer group"
               >
                 <div className="flex items-start gap-3 min-w-0">
-                  <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-800 border border-blue-200 font-mono font-bold text-xs flex items-center justify-center shrink-0 mt-0.5 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                  <div className="w-8 h-8 rounded-lg bg-[#600b0b]/10 text-[#600b0b] border border-[#600b0b]/20 font-mono font-bold text-xs flex items-center justify-center shrink-0 mt-0.5 group-hover:bg-[#600b0b] group-hover:text-white transition-colors">
                     {code}
                   </div>
 
                   <div className="min-w-0">
-                    <h4 className="text-xs sm:text-sm font-bold text-slate-900 group-hover:text-blue-700 transition-colors">
+                    <h4 className="text-xs sm:text-sm font-bold text-slate-900 group-hover:text-[#600b0b] transition-colors">
                       {title}
                     </h4>
                     <div className="flex items-center gap-3 mt-1 text-[11px] text-slate-500">
@@ -265,8 +265,8 @@ export default function AssessmentOverviewView({
                     </span>
                   )}
                   {status === "IN_PROGRESS" && (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-blue-50 text-blue-800 border border-blue-200">
-                      <Clock size={11} className="text-blue-600" />
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-amber-50 text-amber-800 border border-amber-200">
+                      <Clock size={11} className="text-amber-600" />
                       <span>In Progress</span>
                     </span>
                   )}
@@ -277,7 +277,7 @@ export default function AssessmentOverviewView({
                     </span>
                   )}
 
-                  <span className="text-slate-400 group-hover:text-blue-600 transition-colors">
+                  <span className="text-slate-400 group-hover:text-[#600b0b] transition-colors">
                     <ChevronRight size={16} />
                   </span>
                 </div>

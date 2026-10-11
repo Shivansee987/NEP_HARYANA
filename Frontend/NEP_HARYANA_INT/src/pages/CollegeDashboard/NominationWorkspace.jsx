@@ -1330,11 +1330,8 @@ export default function NominationWorkspace({ formId, onBack }) {
                                 {ind.pctLabel}
                               </label>
                               <div className={styles.percentageInputWrapper}>
-                                <input
-                                  type="number"
+                                <select
                                   disabled={isFieldLocked(ind.num)}
-                                  min="0"
-                                  max="100"
                                   value={data.percentage || ""}
                                   onChange={(e) =>
                                     updateIndicatorValue(
@@ -1343,8 +1340,28 @@ export default function NominationWorkspace({ formId, onBack }) {
                                       e.target.value,
                                     )
                                   }
-                                  placeholder="e.g. 80"
-                                />
+                                  style={{
+                                    width: "100%",
+                                    padding: "8px 12px",
+                                    borderRadius: "8px",
+                                    border: "1px solid #cbd5e1",
+                                    fontSize: "0.875rem",
+                                    fontWeight: "600",
+                                    background: "#fff",
+                                    color: "#0f172a",
+                                    cursor: "pointer",
+                                  }}
+                                >
+                                  <option value="">Select %</option>
+                                  {[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((p) => (
+                                    <option key={p} value={p}>
+                                      {p}%
+                                    </option>
+                                  ))}
+                                  {data.percentage && ![0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].includes(Number(data.percentage)) && (
+                                    <option value={data.percentage}>{data.percentage}%</option>
+                                  )}
+                                </select>
                               </div>
                             </div>
 
@@ -1409,11 +1426,8 @@ export default function NominationWorkspace({ formId, onBack }) {
                           style={{ maxWidth: "160px" }}
                         >
                           <div className={styles.percentageInputWrapper}>
-                            <input
-                              type="number"
+                            <select
                               disabled={isFieldLocked(ind.num)}
-                              min="0"
-                              max="100"
                               value={data.percentage || ""}
                               onChange={(e) => {
                                 const val = e.target.value;
@@ -1428,8 +1442,28 @@ export default function NominationWorkspace({ formId, onBack }) {
                                   val !== "" ? "Yes" : "",
                                 );
                               }}
-                              placeholder="e.g. 65"
-                            />
+                              style={{
+                                width: "100%",
+                                padding: "8px 12px",
+                                borderRadius: "8px",
+                                border: "1px solid #cbd5e1",
+                                fontSize: "0.875rem",
+                                fontWeight: "600",
+                                background: "#fff",
+                                color: "#0f172a",
+                                cursor: "pointer",
+                              }}
+                            >
+                              <option value="">Select %</option>
+                              {[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((p) => (
+                                <option key={p} value={p}>
+                                  {p}%
+                                </option>
+                              ))}
+                              {data.percentage && ![0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].includes(Number(data.percentage)) && (
+                                <option value={data.percentage}>{data.percentage}%</option>
+                              )}
+                            </select>
                           </div>
                         </div>
 

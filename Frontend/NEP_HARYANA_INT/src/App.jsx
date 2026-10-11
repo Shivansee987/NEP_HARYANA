@@ -8,7 +8,9 @@ import Notifications from "./pages/Notifications/Notifications";
 import Schemes from "./components/Schemes/Schemes";
 import ContactUs from "./pages/ContactUs/ContactUs";
 import Signup from "./pages/Signup/Signup";
+import UniversitySignup from "./pages/University/UniversitySignup";
 import Signin from "./pages/Signin/Signin";
+import AdminSignin from "./pages/Signin/AdminSignin";
 import ForgotPassword from "./pages/ForgotPassword/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword/ResetPassword";
 import CollegeDashboard from "./pages/CollegeDashboard/CollegeDashboard";
@@ -78,10 +80,38 @@ function App() {
           }
         />
         <Route
+          path="/auth/university/signup"
+          element={
+            <GuestRoute>
+              <UniversitySignup />
+            </GuestRoute>
+          }
+        />
+        <Route
+          path="/auth/signup/university"
+          element={<Navigate to="/auth/university/signup" replace />}
+        />
+        <Route
           path="/auth/login"
           element={
             <GuestRoute>
               <Signin />
+            </GuestRoute>
+          }
+        />
+        <Route
+          path="/auth/applicant/login"
+          element={
+            <GuestRoute>
+              <Signin />
+            </GuestRoute>
+          }
+        />
+        <Route
+          path="/auth/admin/login"
+          element={
+            <GuestRoute>
+              <AdminSignin />
             </GuestRoute>
           }
         />

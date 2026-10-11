@@ -80,7 +80,7 @@ export default function ReviewSubmitView({
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 mb-2 flex-wrap">
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-800 border border-blue-200 uppercase tracking-wider">
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#600b0b]/10 text-[#600b0b] border border-[#600b0b]/20 uppercase tracking-wider">
                 {frameworkName}
               </span>
               <span className="text-slate-300">•</span>
@@ -216,7 +216,7 @@ export default function ReviewSubmitView({
 
                 return (
                   <tr key={code} className="hover:bg-slate-50/60 transition-colors">
-                    <td className="py-3 px-4 font-mono font-bold text-blue-700 whitespace-nowrap">
+                    <td className="py-3 px-4 font-mono font-bold text-[#600b0b] whitespace-nowrap">
                       {code}
                     </td>
                     <td className="py-3 px-4 font-medium text-slate-900 max-w-xs sm:max-w-md">
@@ -232,8 +232,8 @@ export default function ReviewSubmitView({
                           <span>Complete</span>
                         </span>
                       ) : status === "IN_PROGRESS" ? (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-blue-50 text-blue-800 border border-blue-200">
-                          <Clock size={10} className="text-blue-600" />
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-amber-50 text-amber-800 border border-amber-200">
+                          <Clock size={10} className="text-amber-600" />
                           <span>In Progress</span>
                         </span>
                       ) : (
@@ -255,7 +255,7 @@ export default function ReviewSubmitView({
                     <td className="py-3 px-4 text-center whitespace-nowrap">
                       <button
                         onClick={() => onNavigateToParam(code)}
-                        className="text-xs font-bold text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
+                        className="text-xs font-bold text-[#600b0b] hover:text-[#4a0707] hover:underline cursor-pointer"
                       >
                         {isSubmitted ? "View Data" : "Edit Inputs"}
                       </button>
@@ -301,7 +301,7 @@ export default function ReviewSubmitView({
                 type="checkbox"
                 checked={declared}
                 onChange={(e) => setDeclared(e.target.checked)}
-                className="mt-0.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                className="mt-0.5 rounded border-slate-300 text-[#600b0b] focus:ring-[#600b0b] cursor-pointer"
               />
               <span className="leading-relaxed">
                 I hereby certify on behalf of the institution that all data submitted across parameters{" "}
@@ -317,7 +317,7 @@ export default function ReviewSubmitView({
 
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-2">
             <div className="flex items-center gap-2 text-xs text-slate-500">
-              <ShieldCheck size={14} className="text-blue-600 shrink-0" />
+              <ShieldCheck size={14} className="text-[#600b0b] shrink-0" />
               <span>Submission uses the modern Phase W2 direct submission pipeline.</span>
             </div>
 
@@ -325,7 +325,7 @@ export default function ReviewSubmitView({
               type="button"
               onClick={handleSubmit}
               disabled={submitting || !declared || blockedByBackend}
-              className="inline-flex items-center justify-center gap-2 px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+              className="inline-flex items-center justify-center gap-2 px-6 py-2.5 bg-[#600b0b] hover:bg-[#4a0707] text-white rounded-lg text-xs font-bold transition-all shadow-xs disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
             >
               <Send size={14} />
               <span>

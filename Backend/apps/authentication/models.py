@@ -52,6 +52,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='principal')
     college = models.ForeignKey(College, on_delete=models.SET_NULL, null=True, blank=True, related_name='users')
     university = models.ForeignKey('university.University', on_delete=models.SET_NULL, null=True, blank=True, related_name='users')
+    phone_number = models.CharField(max_length=20, blank=True, default='')
     
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
@@ -74,4 +75,19 @@ class RefreshToken(models.Model):
 
     def __str__(self):
         return f"RefreshToken({self.user.email}, revoked={self.is_revoked})"
+
+
+class OTPVerification(models.Model):
+    phone_number = models.CharField(max_length=20, db_index=True)
+    otp_code = models.CharField(max_length=10)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    is_verified = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"OTP({self.phone_number}, verified={self.is_verified})"
+
 
