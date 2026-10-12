@@ -336,14 +336,14 @@ class P3_03_C20_1_NAACRepresentationTests(TestCase):
 
     def test_1_valid_naac_grade_string(self):
         # Tier 1 grades -> 2.0 marks
-        for g in ["A++", "A+", "A", "B++", " a+ ", "A"]:
+        for g in ["A++", "A+", "A", " a+ ", "A"]:
             res = self._eval_c20_with_c20_1({"naac_grade": g})
             sub = res.subcriteria_results["C20.1"]
             self.assertEqual(sub.raw_score, 2.0)
             self.assertEqual(sub.resolution_status, ResolutionStatus.CALCULABLE)
 
-        # Tier 2 grades -> 1.0 mark
-        for g in ["B+", "B", "b+"]:
+        # Tier 2 grades -> 1.0 mark (per authoritative PDF: B++/B+/B grade - 1 mark)
+        for g in ["B++", "B+", "B", "b+"]:
             res = self._eval_c20_with_c20_1({"naac_grade": g})
             sub = res.subcriteria_results["C20.1"]
             self.assertEqual(sub.raw_score, 1.0)

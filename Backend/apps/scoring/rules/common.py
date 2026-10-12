@@ -24,9 +24,10 @@ from apps.scoring.domain import (
     SubcriterionInput,
     SubcriterionResult,
 )
-from apps.scoring.enums import DoubleCountingRule, GatingStatus, ResolutionStatus, ThresholdOperator
+from apps.scoring.enums import DoubleCountingRule, GatingStatus, PeriodRule, ResolutionStatus, ThresholdOperator
 from apps.scoring.evaluators.double_counting import DoubleCountingValidator
 from apps.scoring.evaluators.evidence_gating import evaluate_subcriterion_contract_evidence
+from apps.scoring.evaluators.periods import validate_period
 from apps.scoring.evaluators.thresholds import evaluate_threshold
 from apps.scoring.inputs import NormalizedInput, normalize_subcriterion
 
@@ -147,6 +148,103 @@ def _metric_value(metric: Dict[str, Any], vals: Dict[str, Any], sibling_vals: Di
     raise ValueError(f"Unknown metric kind {kind}")
 
 
+def _evaluate_naac(
+    raw: Dict[str, Any], vals: Dict[str, Any], metric: Dict[str, Any]
+) -> Tuple[Optional[float], ResolutionStatus, Dict[str, Any]]:
+    # 1. Extract grade string candidate
+    g_raw = None
+    for k in ("naac_grade", "grade"):
+        if k in raw and raw[k] is not None:
+            g_raw = raw[k]
+            break
+    if g_raw is None and "naac_grade" in vals and vals["naac_grade"] is not None:
+        g_raw = vals["naac_grade"]
+
+    # 2. Extract numeric score candidate
+    num_raw = None
+    for k in ("naac_score", "score", "naac_points"):
+        if k in raw and raw[k] is not None:
+            num_raw = raw[k]
+            break
+
+    # If neither provided:
+    if g_raw is None and num_raw is None:
+        return 0.0, ResolutionStatus.CALCULABLE, {"status": "MISSING_VALUE", "reason": "No NAAC grade or score provided"}
+
+    tier_1 = ("A++", "A+", "A")
+    tier_2 = ("B++", "B+", "B")
+    tier_0 = ("C", "D", "UNACCREDITED")
+
+    string_score = None
+    clean_grade = None
+    if g_raw is not None:
+        clean_grade = str(g_raw).strip().upper()
+        if clean_grade in tier_1:
+            string_score = 2.0
+        elif clean_grade in tier_2:
+            string_score = 1.0
+        elif clean_grade in tier_0:
+            string_score = 0.0
+        else:
+            return 0.0, ResolutionStatus.INVALID_INPUT, {
+                "status": "MALFORMED_INPUT",
+                "grade": clean_grade,
+                "reason": f"Malformed or unsupported NAAC grade string '{g_raw}'",
+            }
+
+    num_score = None
+    if num_raw is not None:
+        try:
+            num_val = float(num_raw)
+            if num_val in (2.0, 1.0, 0.0):
+                num_score = num_val
+            else:
+                return 0.0, ResolutionStatus.INVALID_INPUT, {
+                    "status": "MALFORMED_INPUT",
+                    "numeric_score": num_val,
+                    "reason": f"Invalid NAAC numeric score {num_raw}",
+                }
+        except (ValueError, TypeError):
+            return 0.0, ResolutionStatus.INVALID_INPUT, {
+                "status": "MALFORMED_INPUT",
+                "numeric_score": num_raw,
+                "reason": f"Malformed NAAC numeric score '{num_raw}'",
+            }
+
+    # If both provided:
+    if string_score is not None and num_score is not None:
+        if abs(string_score - num_score) < 1e-6:
+            return string_score, ResolutionStatus.CALCULABLE, {
+                "status": "EQUIVALENT",
+                "grade": clean_grade,
+                "score": string_score,
+            }
+        else:
+            return 0.0, ResolutionStatus.INVALID_INPUT, {
+                "status": "CONTRADICTORY",
+                "grade": clean_grade,
+                "numeric_score": num_score,
+                "reason": f"Contradictory NAAC representations: grade '{clean_grade}' ({string_score}) != score {num_score}",
+            }
+
+    # If only string:
+    if string_score is not None:
+        return string_score, ResolutionStatus.CALCULABLE, {
+            "status": "VALID_STRING",
+            "grade": clean_grade,
+            "score": string_score,
+        }
+
+    # If only numeric:
+    if num_score is not None:
+        return num_score, ResolutionStatus.CALCULABLE, {
+            "status": "VALID_NUMERIC",
+            "score": num_score,
+        }
+
+    return 0.0, ResolutionStatus.CALCULABLE, {"status": "MISSING_VALUE"}
+
+
 def _result(sub_code, max_score, raw_score, gated, status, gating, trace, matched=None) -> SubcriterionResult:
     raw_score = max(0.0, min(float(raw_score), max_score))
     gated = max(0.0, min(float(gated), max_score))
@@ -183,6 +281,18 @@ def evaluate_subcriterion(
     trace["inputs"] = {k: (v.isoformat() if hasattr(v, "isoformat") else v) for k, v in norm.values.items()}
     sibling_vals[sub_code] = norm.values
 
+    # Double counting evaluated early so entity conflicts are tracked regardless of input format
+    v_ents, r_ents, dc_trace = validator.validate_subcriterion_input(
+        sub_code, sub_in, param_def.get("double_counting_rule", DoubleCountingRule.FORBIDDEN_REUSE),
+        allow_sibling_reuse=bool(param_def.get("sibling_entity_reuse")),
+    )
+    if dc_trace.get("total_entities_submitted", 0) > 0 or r_ents:
+        trace["double_counting"] = dc_trace
+    if r_ents:
+        for k in ("activities_count", "startups_count", "patents_filed", "patents_granted", "mous_count", "programmes_count"):
+            if k in norm.values and norm.values[k] is not None:
+                norm.values[k] = max(0, int(norm.values[k]) - len(r_ents))
+
     # Evidence gating is evaluated for every subcriterion so the reviewer sees its state
     uploaded_docs = list(sub_in.evidence_docs) if sub_in else []
     for doc in uploaded_docs:
@@ -203,6 +313,42 @@ def evaluate_subcriterion(
         sub_def=sub_def,
     )
     trace["evidence_gating"] = eg_trace
+
+    # Temporal / HOI fallback validation
+    hoi_cert = raw.get("hoi_certification_date") if isinstance(raw, dict) else getattr(sub_in, "hoi_certification_date", None)
+    act_date = getattr(sub_in, "activity_date", None) or (raw.get("activity_date") if isinstance(raw, dict) else None)
+    if hoi_cert is not None or act_date is not None:
+        period_obj = getattr(context, "assessment_period", None)
+        if period_obj is not None:
+            period_rule = sub_def.get("period_rule", PeriodRule.PERIOD_SENSITIVE)
+            is_valid_period, p_reason = validate_period(
+                record_date=act_date,
+                period_rule=period_rule,
+                assessment_period=period_obj,
+                target_academic_year=sub_def.get("evidence_academic_year"),
+                hoi_certification_date=hoi_cert,
+            )
+            trace["period_validation"] = {"valid": is_valid_period, "reason": p_reason}
+            if not is_valid_period:
+                trace["period_ineligible"] = True
+                trace["scoring_note"] = p_reason
+                return _result(sub_code, max_score, 0.0, 0.0, ResolutionStatus.CALCULABLE, gating, trace), norm
+
+    # Special handling for C20.1 NAAC representation
+    if sub_code == "C20.1" or metric.get("kind") == "grade":
+        naac_score, naac_status, naac_info = _evaluate_naac(raw if isinstance(raw, dict) else {}, norm.values, metric)
+        trace["naac_evaluation"] = naac_info
+        if naac_status == ResolutionStatus.INVALID_INPUT:
+            trace["validation_errors"] = [{
+                "field": "naac_grade",
+                "code": naac_info.get("status", "INVALID_INPUT"),
+                "message": naac_info.get("reason", "Invalid NAAC grade"),
+            }]
+            return _result(sub_code, max_score, 0.0, 0.0, ResolutionStatus.INVALID_INPUT, gating, trace), norm
+        raw_score = naac_score or 0.0
+        gated = raw_score * multiplier
+        matched = {"operator": ThresholdOperator.OP_EQ, "score": raw_score}
+        return _result(sub_code, max_score, raw_score, gated, ResolutionStatus.CALCULABLE, gating, trace, matched), norm
 
     if norm.errors:
         trace["validation_errors"] = norm.errors
@@ -236,13 +382,7 @@ def evaluate_subcriterion(
 
     value = mv.value
 
-    # 4. Double counting — only a count is reduced by duplicate entities rejected in other parameters
-    v_ents, r_ents, dc_trace = validator.validate_subcriterion_input(
-        sub_code, sub_in, param_def.get("double_counting_rule", DoubleCountingRule.FORBIDDEN_REUSE),
-        allow_sibling_reuse=bool(param_def.get("sibling_entity_reuse")),
-    )
-    if dc_trace.get("total_entities_submitted", 0) > 0:
-        trace["double_counting"] = dc_trace
+    # 4. Double counting adjustments
     if r_ents and metric["kind"] in _COUNT_KINDS and value is not None:
         adjusted = max(0, int(value) - len(r_ents))
         trace["double_counting_adjustment"] = {"declared": value, "rejected_duplicates": len(r_ents), "counted": adjusted}
@@ -313,6 +453,20 @@ def evaluate_parameter(param_def: Dict[str, Any], param_input: ParameterInput, c
         "items_sum_gated": gated_sum,
         "capped_at_maximum": gated_sum > max_marks or raw_sum > max_marks,
     }
+
+    # Elevate subcriterion duplicate entity conflicts to parameter trace
+    dup_conflicts = [
+        conf
+        for r in sub_results.values()
+        for conf in r.trace.get("double_counting", {}).get("duplicates_detected", [])
+    ]
+    if dup_conflicts:
+        trace["duplicates_detected"] = dup_conflicts
+        trace["double_counting_conflicts"] = dup_conflicts
+
+    if any(r.trace.get("naac_evaluation", {}).get("status") == "CONTRADICTORY" for r in sub_results.values()):
+        trace["naac_contradiction"] = True
+
     notices = []
     if param_def.get("advisory_policy"):
         notices.append(policy_registry.policy_notice(

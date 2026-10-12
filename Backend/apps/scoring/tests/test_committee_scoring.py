@@ -372,33 +372,55 @@ class CommitteeScoringComplianceTests(TestCase):
 
     # 18. Unresolved criteria remain fail-closed
     def test_18_unresolved_criteria_remain_fail_closed(self):
-        # University U20 is marked SOURCE_INCONSISTENCY in authoritative definitions
+        # University U16 with claimed Scopus index has an unresolved policy metric (SCOPUS_METRIC)
+        self.u_assessment.parameter_data["U16"] = {
+            "U16.III": {
+                "scopus_index": 250,
+                "activity_period_start": "2025-08-01",
+                "activity_period_end": "2026-05-01",
+            }
+        }
+        self.u_assessment.save()
         eval_data = UniversityAssessmentService.get_assessment_scoring_evaluation(self.u_assessment.assessment_id)
-        u20_res = eval_data["parameter_results"]["U20"]
-        self.assertTrue(u20_res["is_unresolved"])
-        self.assertEqual(u20_res["resolution_status"], "SOURCE_INCONSISTENCY")
-        self.assertIn("Source items sum to 5 marks against declared 4 marks maximum", u20_res["unresolved_reason"])
+        u16_res = eval_data["parameter_results"]["U16"]
+        self.assertTrue(u16_res["is_unresolved"])
+        self.assertEqual(u16_res["resolution_status"], "POLICY_UNRESOLVED")
 
         # Attempting to accept unresolved parameter must be blocked
         with self.assertRaises(UniversityValidationError):
             UniversityAssessmentService.accept_parameter_score(
-                self.u_assessment.assessment_id, "U20", self.reviewer
+                self.u_assessment.assessment_id, "U16", self.reviewer
             )
 
-        # College C16 and C21 are unresolved in authoritative definitions
+        # College C19 with claimed Scopus metric and C21 with boundary void (1 activity)
+        self.c_assessment.parameter_data["C19"] = {
+            "C19.III": {
+                "scopus_index": 100,
+                "activity_period_start": "2025-08-01",
+                "activity_period_end": "2026-05-01",
+            }
+        }
+        self.c_assessment.parameter_data["C21"] = {
+            "C21.1": {
+                "activities_count": 1,
+                "activity_period_start": "2025-08-01",
+                "activity_period_end": "2026-05-01",
+            }
+        }
+        self.c_assessment.save()
         c_eval = CollegeAssessmentService.get_assessment_scoring_evaluation(self.c_assessment.assessment_id)
-        c16_res = c_eval["parameter_results"]["C16"]
-        self.assertTrue(c16_res["is_unresolved"])
-        self.assertIn("C16 has declared maximum 4 marks but lists 5 distinct 1-mark items", c16_res["unresolved_reason"])
+        c19_res = c_eval["parameter_results"]["C19"]
+        self.assertTrue(c19_res["is_unresolved"])
+        self.assertEqual(c19_res["resolution_status"], "POLICY_UNRESOLVED")
 
         with self.assertRaises(CollegeValidationError):
             CollegeAssessmentService.accept_parameter_score(
-                self.c_assessment.assessment_id, "C16", self.reviewer
+                self.c_assessment.assessment_id, "C19", self.reviewer
             )
 
         c21_res = c_eval["parameter_results"]["C21"]
         self.assertTrue(c21_res["is_unresolved"])
-        self.assertIn("Source items sum to 3 marks against declared 4 marks maximum", c21_res["unresolved_reason"])
+        self.assertEqual(c21_res["resolution_status"], "BOUNDARY_UNRESOLVED")
 
         with self.assertRaises(CollegeValidationError):
             CollegeAssessmentService.accept_parameter_score(
@@ -515,8 +537,9 @@ class UniversityAndCollegeAcceptanceRunTests(TestCase):
         self.assertEqual(final_eval["running_total"], cumulative_running_total)
         self.assertEqual(final_eval["max_available"], 100.0)
 
-        # Check that unresolved parameter U20 remains unresolved and fail-closed
-        self.assertTrue(final_eval["parameter_results"]["U20"]["is_unresolved"])
+        # Check that advisory parameter U20 carries policy notices and is calculable
+        self.assertFalse(final_eval["parameter_results"]["U20"]["is_unresolved"])
+        self.assertIn("U20_ITEMS_EXCEED_MAXIMUM", [p["policy_id"] for p in final_eval["parameter_results"]["U20"]["policy_notices"]])
 
         # Check award classification structure
         self.assertIn("award_classification", final_eval)
@@ -582,6 +605,7 @@ class UniversityAndCollegeAcceptanceRunTests(TestCase):
         self.assertEqual(final_eval["running_total"], cumulative_running_total)
         self.assertEqual(final_eval["max_available"], 100.0)
 
-        # Confirm unresolved parameters remain unresolved
-        self.assertTrue(final_eval["parameter_results"]["C16"]["is_unresolved"])
-        self.assertTrue(final_eval["parameter_results"]["C21"]["is_unresolved"])
+        # Confirm advisory parameters C16 and C21 carry policy notices and are calculable
+        self.assertFalse(final_eval["parameter_results"]["C16"]["is_unresolved"])
+        self.assertIn("C16_ITEMS_EXCEED_MAXIMUM", [p["policy_id"] for p in final_eval["parameter_results"]["C16"]["policy_notices"]])
+        self.assertIn("C21_MAXIMUM", [p["policy_id"] for p in final_eval["parameter_results"]["C21"]["policy_notices"]])

@@ -338,7 +338,7 @@ class CollegeReviewAPITests(TestCase):
         self.client.force_authenticate(user=self.reviewer)
         url = f"/api/v1/college/assessments/{self.assessment_a.assessment_id}/review/complete/"
 
-        with patch.object(CollegeAssessmentService, "check_assessment_readiness", return_value=(True, [], None)), \
+        with patch.object(CollegeAssessmentService, "get_review_readiness", return_value=(True, None, None)), \
              patch.object(CollegeAssessmentService, "evaluate_assessment_scoring", return_value=mock_result):
             response = self.client.post(url, {"remarks": "Review complete and fully verified"}, format="json")
             self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -451,7 +451,7 @@ class CollegeReviewAPITests(TestCase):
             institution_id=self.college_a.aishe_code,
             calculation_id="calc-col-cert-01",
             version_index=1,
-            timestamp=date(2026, 3, 1),
+            timestamp="2026-03-01T00:00:00Z",
             raw_total=91.5,
             evidence_gated_total=91.5,
             final_certified_total=91.5,
@@ -461,7 +461,7 @@ class CollegeReviewAPITests(TestCase):
             parameter_results={},
         )
 
-        def mock_eval(aid):
+        def mock_eval(aid, *args, **kwargs):
             self.assessment_a.certified_score = 91.5
             self.assessment_a.certification_status = "FINALIZABLE"
             self.assessment_a.save(update_fields=["certified_score", "certification_status"])

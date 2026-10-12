@@ -147,6 +147,27 @@ class ReviewerAdjustmentService:
             )
 
         # 4. Prohibited Action: Cannot bypass unresolved specification / policy / invalid-input blocks
+        from apps.scoring import policy as policy_registry
+        from apps.scoring.rules.definitions import COLLEGE_PARAMETERS, UNIVERSITY_PARAMETERS
+
+        defs = UNIVERSITY_PARAMETERS if (found_param_code and "U" in found_param_code) else COLLEGE_PARAMETERS
+        sub_def = defs.get(found_param_code, {}).get("subcriteria", {}).get(target_sub_code, {})
+        metric = sub_def.get("metric", {})
+        if metric.get("kind") == "policy_metric":
+            pid = metric.get("policy_id")
+            if pid and pid in policy_registry.POLICY_ITEMS and not policy_registry.is_resolved(pid):
+                return ReviewerAdjustmentService._reject_adjustment(
+                    framework_result,
+                    (
+                        f"Reviewer cannot adjust {target_sub_code}: Rule has unresolved specification "
+                        f"({pid}). Unresolved specifications require State Council ruling."
+                    ),
+                    adjustment=adjustment,
+                    found_sub_res=found_sub_res,
+                    found_param_code=found_param_code,
+                    found_param_res=found_param_res,
+                )
+
         if found_sub_res.resolution_status in (
             ResolutionStatus.UNRESOLVED_RULE,
             ResolutionStatus.BOUNDARY_UNRESOLVED,

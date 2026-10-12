@@ -130,8 +130,7 @@ MULTI_SUBCRITERION_PARAMETERS: Set[str] = {
 }
 
 # Source-silent parameters where the authoritative source specifies no documentary evidence.
-# U6 is NOT source-silent: the University PDF's general instructions require documentary evidence for all marks.
-SOURCE_SILENT_PARAMETERS: Set[str] = {"C5", "C9"}
+SOURCE_SILENT_PARAMETERS: Set[str] = {"U6", "C5", "C9"}
 
 # Legacy coarse evidence types that must be quarantined from unlocking multi-subcriterion requirements
 LEGACY_COARSE_EVIDENCE_TYPES: Set[str] = {
@@ -292,7 +291,7 @@ _register_contract(
 )
 
 # U4 (2 subcriteria: U4.A = 2024-25 targets, U4.B = 2025-26 targets; one canonical code each)
-for sub_id in ("U4.A", "U4.B"):
+for sub_id, alias in [("U4.A", "U4.1"), ("U4.B", "U4.2")]:
     _register_contract(
         framework="UNIVERSITY_2026",
         parameter_id="U4",
@@ -301,6 +300,7 @@ for sub_id in ("U4.A", "U4.B"):
         canonical_evidence_type="EVID_U4_PROGRESS_REPORT",
         score_unlock_requirement="Verified approved progress report or IDP target sheet",
         allowed_evidence_types=("EVID_U4_PROGRESS_REPORT", "EVID_U4_IDP", "EVID_U4_TARGET_SHEET"),
+        aliases=(alias,),
     )
 
 # U5 (2 subcriteria)
@@ -316,28 +316,21 @@ for sub_id, alias in [("U5.A", "U5.1"), ("U5.B", "U5.2")]:
         aliases=(alias,),
     )
 
-# U6 (2 subcriteria). The U6 row has no evidence line, but the University PDF's general instructions
-# require documentary evidence for all marks, so evidence must be uploadable and verified.
-_register_contract(
-    framework="UNIVERSITY_2026",
-    parameter_id="U6",
-    subcriterion_id="U6.A",
-    source_documentary_requirement="Amended Examination Ordinance for assessing learning outcomes (general instruction: documentary evidence required)",
-    canonical_evidence_type="EVID_U6_ORDINANCE_GAZETTE",
-    score_unlock_requirement="Verified amended examination ordinance",
-    allowed_evidence_types=("EVID_U6_ORDINANCE_GAZETTE",),
-    aliases=("U6.1",),
-)
-_register_contract(
-    framework="UNIVERSITY_2026",
-    parameter_id="U6",
-    subcriterion_id="U6.B",
-    source_documentary_requirement="Records of experiential-learning / problem-solving interventions implemented (general instruction: documentary evidence required)",
-    canonical_evidence_type="EVID_U6_PEDAGOGY_RECORDS",
-    score_unlock_requirement="Verified records of implemented pedagogical interventions",
-    allowed_evidence_types=("EVID_U6_PEDAGOGY_RECORDS",),
-    aliases=("U6.2",),
-)
+# U6 (2 subcriteria: U6.A, U6.B: SOURCE_SILENT)
+for sub_id, alias in [("U6.A", "U6.1"), ("U6.B", "U6.2")]:
+    _register_contract(
+        framework="UNIVERSITY_2026",
+        parameter_id="U6",
+        subcriterion_id=sub_id,
+        source_documentary_requirement=None,
+        canonical_evidence_type=None,
+        score_unlock_requirement="SOURCE_SILENT_UNRESOLVED_NO_UNLOCK",
+        status=ContractStatus.SOURCE_SILENT,
+        allowed_evidence_types=(),
+        is_source_silent=True,
+        notes="Authoritative NEP 2026 specification has no documentary evidence clause for U6. Fails closed.",
+        aliases=(alias,),
+    )
 
 # U7 (4 subcriteria: Independent, no sibling leakage)
 _register_contract(
@@ -608,10 +601,13 @@ _register_contract(
     framework="UNIVERSITY_2026",
     parameter_id="U18",
     subcriterion_id="U18.3",
-    source_documentary_requirement="RPL format for students circulated with guidelines (approval records; applications assessed / credits awarded)",
-    canonical_evidence_type="EVID_U18_RPL_FORMAT",
-    score_unlock_requirement="Verified circulated RPL format and guidelines",
-    allowed_evidence_types=("EVID_U18_RPL_FORMAT", "EVID_U18_LEARNER_CERTS"),
+    source_documentary_requirement=None,
+    canonical_evidence_type=None,
+    score_unlock_requirement="UNRESOLVED_MISSING_NO_UNLOCK",
+    status=ContractStatus.UNRESOLVED_MISSING,
+    allowed_evidence_types=(),
+    is_unresolved=True,
+    notes="Authoritative PDF specifies metric but evidence table is silent on required documentation. Fails closed.",
 )
 
 # U19 (2 subcriteria: U19.A, U19.B)

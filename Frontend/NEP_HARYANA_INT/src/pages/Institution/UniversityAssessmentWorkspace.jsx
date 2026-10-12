@@ -271,7 +271,7 @@ export default function UniversityAssessmentWorkspace() {
           <span className="font-bold text-xs text-slate-800">
             University Assessment ({activeStep.toUpperCase()})
           </span>
-          <span className="text-[10px] font-mono font-bold bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-200">
+          <span className="text-[10px] font-mono font-bold bg-[#600b0b]/10 text-[#600b0b] px-2 py-0.5 rounded border border-[#600b0b]/20">
             U1–U20
           </span>
         </header>

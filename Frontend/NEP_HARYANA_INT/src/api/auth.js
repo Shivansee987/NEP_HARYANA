@@ -119,8 +119,44 @@ export async function registerCollege(payload) {
   return data;
 }
 
+export async function verifyUniversityAishe(aisheCode) {
+  const code = encodeURIComponent(String(aisheCode || "").trim());
+  return request(`/auth/university/lookup/?aishe_code=${code}`);
+}
+
+export async function verifyCollegeAishe(aisheCode) {
+  const code = encodeURIComponent(String(aisheCode || "").trim());
+  return request(`/auth/college/lookup/?aishe_code=${code}`);
+}
+
+export async function sendPhoneOtp(phoneNumber) {
+  return request("/auth/otp/send/", {
+    method: "POST",
+    body: JSON.stringify({ phone_number: phoneNumber }),
+  });
+}
+
+export async function verifyPhoneOtp(phoneNumber, otp) {
+  return request("/auth/otp/verify/", {
+    method: "POST",
+    body: JSON.stringify({ phone_number: phoneNumber, otp }),
+  });
+}
+
+export async function registerUniversity(payload) {
+  const data = await request("/auth/university/register/", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  if (data.tokens) {
+    setAccessToken(data.tokens.access);
+    setRefreshToken(data.tokens.refresh);
+  }
+  return data;
+}
+
 export function fetchColleges() {
-  return request("/colleges/");
+  return request("/auth/colleges/");
 }
 
 export async function loginCollege(payload) {

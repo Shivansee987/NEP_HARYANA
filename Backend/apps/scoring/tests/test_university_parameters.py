@@ -680,9 +680,9 @@ class UniversityParametersTests(TestCase):
         )
         res = eval_fn(p_in, self.context, self.validator)
         self.assertEqual(res.raw_score, 4.0)
-        # U18.3 (2 marks) is unlockable by its own evidence contract
-        self.assertEqual(res.subcriteria_results["U18.3"].evidence_gated_score, 2.0)
-        self.assertEqual(res.evidence_gated_score, 4.0)
+        # U18.3 (2 marks) is UNRESOLVED_MISSING under Step 4C evidence taxonomy (source PDF silent on documentation)
+        self.assertEqual(res.subcriteria_results["U18.3"].evidence_gated_score, 0.0)
+        self.assertEqual(res.evidence_gated_score, 2.0)
 
     # -------------------------------------------------------------
     # U19: Adoption of Outcome-Based Education (OBE) (Max: 8)

@@ -164,3 +164,14 @@ class JWTAuthTests(APITestCase):
         hashed = hash_token(refresh_token)
         db_token = RefreshToken.objects.get(token=hashed)
         self.assertTrue(db_token.is_revoked)
+
+
+class PublicCollegeListTests(APITestCase):
+    """The signup form loads colleges from /api/auth/colleges/ before the user has an account."""
+
+    def test_anonymous_user_can_list_colleges(self):
+        College.objects.create(name="Govt College Jind", aishe_code="C-PUB-1")
+        res = self.client.get("/api/auth/colleges/")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertIn({"id": College.objects.get(aishe_code="C-PUB-1").id, "name": "Govt College Jind",
+                       "aishe_code": "C-PUB-1"}, res.json())

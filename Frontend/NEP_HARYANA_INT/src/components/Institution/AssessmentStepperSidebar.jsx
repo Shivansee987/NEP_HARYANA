@@ -56,7 +56,7 @@ export default function AssessmentStepperSidebar({
     if (s === "IN_PROGRESS") {
       return (
         <span
-          className="w-4 h-4 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center shrink-0 font-bold text-[10px]"
+          className="w-4 h-4 rounded-full bg-amber-100 text-amber-800 flex items-center justify-center shrink-0 font-bold text-[10px]"
           title="In progress"
         >
           ◐
@@ -100,7 +100,7 @@ export default function AssessmentStepperSidebar({
                   NEP Excellence 2026
                 </h1>
                 <div className="flex items-center gap-1.5 mt-0.5">
-                  <span className="text-[10px] font-bold text-blue-700 uppercase tracking-wider">
+                  <span className="text-[10px] font-bold text-[#600b0b] uppercase tracking-wider">
                     {frameworkLabel}
                   </span>
                   <span className="text-slate-300 text-[10px]">•</span>
@@ -129,7 +129,7 @@ export default function AssessmentStepperSidebar({
                 className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider border ${
                   status === "SUBMITTED"
                     ? "bg-purple-50 text-purple-800 border-purple-200"
-                    : "bg-blue-50 text-blue-800 border-blue-200"
+                    : "bg-amber-50 text-amber-800 border-amber-200"
                 }`}
               >
                 {status}
@@ -140,12 +140,12 @@ export default function AssessmentStepperSidebar({
               <span className="text-xs font-bold text-slate-900">
                 {completedCount} / {totalCount} completed
               </span>
-              <span className="text-xs font-mono font-bold text-blue-700">{percentComplete}%</span>
+              <span className="text-xs font-mono font-bold text-[#600b0b]">{percentComplete}%</span>
             </div>
 
             <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
               <div
-                className="h-full bg-blue-600 rounded-full transition-all duration-300"
+                className="h-full bg-[#600b0b] rounded-full transition-all duration-300"
                 style={{ width: `${percentComplete}%` }}
               />
             </div>
@@ -161,12 +161,12 @@ export default function AssessmentStepperSidebar({
               }}
               className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
                 activeStep === "overview"
-                  ? "bg-blue-50 text-blue-900 font-bold border border-blue-200"
+                  ? "bg-[#fbf7f4] text-[#600b0b] font-bold border border-[#eaded2]"
                   : "text-slate-700 hover:bg-slate-100/80"
               }`}
             >
               <div className="flex items-center gap-2 min-w-0">
-                <LayoutDashboard size={14} className={activeStep === "overview" ? "text-blue-600" : "text-slate-400"} />
+                <LayoutDashboard size={14} className={activeStep === "overview" ? "text-[#600b0b]" : "text-slate-400"} />
                 <span>Assessment Overview</span>
               </div>
             </button>
@@ -201,7 +201,7 @@ export default function AssessmentStepperSidebar({
                     <div className="flex items-center gap-2 min-w-0 flex-1">
                       <span
                         className={`font-mono text-[11px] font-bold shrink-0 ${
-                          isActive ? "text-blue-300" : "text-blue-700"
+                          isActive ? "text-amber-300" : "text-[#600b0b]"
                         }`}
                       >
                         {code}

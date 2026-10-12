@@ -6,7 +6,7 @@ import hshecLogo from "../../assets/hshec_logo.jpeg";
 import styles from "../Signup/Signup.module.css";
 import devStyles from "./Signin.module.css";
 import {
-  GraduationCap,
+  School,
   Landmark,
   Building2,
   ShieldCheck,
@@ -17,66 +17,46 @@ import {
   Loader2,
 } from "lucide-react";
 
-const DEV_ACCOUNTS = [
+const APPLICANT_DEV_ACCOUNTS = [
   {
-    key: "principal",
-    role: "College Principal",
-    badge: "College",
-    description: "C1–C22 Institutional Forms & Nominations",
-    email: "principal@dev.local",
-    password: "DevPrincipal@123",
-    icon: GraduationCap,
+    key: "demo_college",
+    role: "Dyal Singh College, Karnal",
+    badge: "College Applicant",
+    description: "Full data · All 22 forms filled · C1–C22 Workspace",
+    email: "principal.karnal@demo.local",
+    password: "Demo@1234",
+    icon: School,
     themeClass: devStyles.themeAmber,
   },
   {
-    key: "nodal",
-    role: "University Nodal Officer",
-    badge: "University",
-    description: "U1–U20 Forms & College Oversight",
-    email: "nodal@dev.local",
-    password: "DevNodal@123",
+    key: "demo_university",
+    role: "GJU, Hisar",
+    badge: "University Nodal Officer",
+    description: "Full data · All 20 forms filled · U1–U20 Workspace",
+    email: "nodal.gju@demo.local",
+    password: "Demo@1234",
     icon: Landmark,
     themeClass: devStyles.themeIndigo,
   },
   {
-    key: "univadmin",
-    role: "University Admin",
-    badge: "Uni Admin",
-    description: "University Console & Settings",
-    email: "univadmin@dev.local",
-    password: "DevUnivAdmin@123",
-    icon: Building2,
-    themeClass: devStyles.themeBlue,
+    key: "principal",
+    role: "Dev Test College",
+    badge: "College · Blank",
+    description: "Blank assessment · Show fresh C1–C22 forms",
+    email: "principal@dev.local",
+    password: "DevPrincipal@123",
+    icon: School,
+    themeClass: devStyles.themeSlate,
   },
   {
-    key: "admin",
-    role: "State Admin",
-    badge: "HSHEC State",
-    description: "Council Control Plane & Reports",
-    email: "admin@dev.local",
-    password: "DevAdmin@123",
-    icon: ShieldCheck,
-    themeClass: devStyles.themeMaroon,
-  },
-  {
-    key: "chair",
-    role: "Committee Chair",
-    badge: "Chairperson",
-    description: "Screening Committee Certification",
-    email: "chair@dev.local",
-    password: "DevChair@123",
-    icon: Award,
-    themeClass: devStyles.themeEmerald,
-  },
-  {
-    key: "committee",
-    role: "Committee Member",
-    badge: "Reviewer",
-    description: "Evaluation, Verification & Scoring",
-    email: "committee@dev.local",
-    password: "DevCommittee@123",
-    icon: Users,
-    themeClass: devStyles.themePurple,
+    key: "nodal",
+    role: "Dev Test University",
+    badge: "University · Blank",
+    description: "Blank assessment · Show fresh U1–U20 forms",
+    email: "nodal@dev.local",
+    password: "DevNodal@123",
+    icon: Landmark,
+    themeClass: devStyles.themeSlate,
   },
 ];
 
@@ -106,6 +86,19 @@ function Signin() {
 
     try {
       const response = await login(formData);
+      const role = String(response.user?.role || "").toLowerCase();
+
+      // Enforce strict role boundary: Applicant vs Admin
+      if (["admin", "committee", "committee_chair"].includes(role)) {
+        setStatus({
+          type: "error",
+          message:
+            "This portal is reserved for College and University applicants. Please use the State Admin & Committee Portal.",
+        });
+        setIsSubmitting(false);
+        return;
+      }
+
       setStatus({
         type: "success",
         message: response.message || "Signed in successfully.",
@@ -164,10 +157,13 @@ function Signin() {
             <div className={styles.logoWrapper}>
               <img src={hshecLogo} alt="HSHEC Logo" className={styles.logoImage} />
             </div>
-            <span className={styles.formBadge}>Sign in</span>
+            <span className={styles.formBadge}>Institutional Applicant Portal</span>
             <h2 id="signin-title" className={styles.formTitle}>
-              Access your portal dashboard using your registered credentials.
+              University & College Applicant Workspace Login
             </h2>
+            <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
+              Sign in to manage your institutional submission for University (U1–U20) or College (C1–C22) NEP Awards.
+            </p>
           </div>
 
           {status.message && (
@@ -291,12 +287,23 @@ function Signin() {
                 {isSubmitting && !activeDevRole ? "Signing In..." : "Sign In"}
               </button>
 
-              <p className={styles.loginPrompt}>
-                Don't have an account?{" "}
-                <Link to="/auth/signup" className={styles.loginLink}>
-                  Register here
+              <div className="flex items-center justify-center pt-2 text-xs text-center">
+                <p className={styles.loginPrompt}>
+                  New Institutional Applicant?{" "}
+                  <Link to="/auth/signup" className={styles.loginLink}>
+                    Create Applicant Account (University / College) →
+                  </Link>
+                </p>
+              </div>
+
+              <div className="flex flex-col items-center justify-center pt-3 text-xs text-center border-t border-slate-100 mt-2 space-y-1">
+                <p className="text-slate-600">
+                  Are you a State Administrator or Committee Member?
+                </p>
+                <Link to="/auth/admin/login" className="font-bold text-[#600b0b] hover:underline">
+                  Go to State Admin & Committee Portal →
                 </Link>
-              </p>
+              </div>
             </div>
           </form>
 
@@ -305,15 +312,15 @@ function Signin() {
             <div className={devStyles.devHeader}>
               <span className={devStyles.devBadge}>
                 <Sparkles size={13} className={devStyles.devBadgeIcon} />
-                Quick Dev Login
+                Quick Applicant Dev Login
               </span>
               <p className={devStyles.devSubtitle}>
-                Click any role to sign in & enter instantly
+                Institutional applicant roles (University & College)
               </p>
             </div>
 
             <div className={devStyles.devGrid}>
-              {DEV_ACCOUNTS.map((account) => {
+              {APPLICANT_DEV_ACCOUNTS.map((account) => {
                 const IconComponent = account.icon;
                 const isActive = activeDevRole === account.key;
                 return (

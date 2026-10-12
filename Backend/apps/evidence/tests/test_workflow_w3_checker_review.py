@@ -201,10 +201,10 @@ class WorkflowW3CheckerReviewTests(TestCase):
             assessment_id=assessment.assessment_id,
             parameter_code="U7",
             raw_inputs={
-                "U7.1": {"appointed": True},
-                "U7.2": {"completed_modules": 4},
-                "U7.3": {"engagement_hours": 120},
-                "U7.4": {"outcome_certified": True},
+                "U7.1": {"verified": True},
+                "U7.2": {"verified": True},
+                "U7.3": {"verified": True},
+                "U7.4": {"verified": True},
             },
             activity_date=date(2025, 10, 15),
         )
@@ -224,7 +224,7 @@ class WorkflowW3CheckerReviewTests(TestCase):
         CollegeAssessmentService.update_parameter_inputs(
             assessment_id=assessment.assessment_id,
             parameter_code="C1",
-            raw_inputs={"C1.1": {"programmes": 5}},
+            raw_inputs={"C1.1": {"achieved_targets_2024_25": 5, "fixed_targets_2024_25": 5}},
             activity_date=date(2025, 10, 15),
         )
         return CollegeAssessmentService.submit_assessment(

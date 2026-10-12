@@ -57,10 +57,9 @@ class ScoringEnginePipelineTests(TestCase):
 
         self.assertEqual(result.raw_total, 0.0)
         self.assertEqual(result.evidence_gated_total, 0.0)
-        self.assertIsNone(result.final_certified_total)
-        # Final certification must be blocked because U16 and U20 have unresolved source specifications
-        self.assertEqual(result.certification_status, CertificationStatus.BLOCKED_BY_SPECIFICATION)
-        self.assertTrue(len(result.blocking_reasons) > 0)
+        self.assertEqual(result.final_certified_total, 0.0)
+        self.assertEqual(result.certification_status, CertificationStatus.FINALIZABLE)
+        self.assertEqual(len(result.blocking_reasons), 0)
 
     def test_pending_evidence_blocks_earned_score_and_certification(self):
         """CRITICAL RULE #2: EVIDENCE_PENDING must not be treated as earned score."""
@@ -218,7 +217,7 @@ class ScoringEnginePipelineTests(TestCase):
 
         # U5.A status must be BOUNDARY_UNRESOLVED
         self.assertEqual(result.parameter_results["U5"].resolution_status, ResolutionStatus.BOUNDARY_UNRESOLVED)
-        self.assertEqual(result.certification_status, CertificationStatus.BLOCKED_BY_SPECIFICATION)
+        self.assertEqual(result.certification_status, CertificationStatus.BLOCKED_BY_BOUNDARY)
 
     def test_reviewer_adjustment_within_bounds(self):
         """A valid reviewer adjustment updates score and preserves audit trail."""
@@ -552,39 +551,50 @@ class ScoringEnginePipelineTests(TestCase):
             assessment_period=self.period,
         )
         doc1 = EvidenceDocument(
-            document_id="doc-u16-1",
-            document_type="EVID_U16_PATENTS",
+            document_id="doc-u8-1",
+            document_type="EVID_U8_INCUBATION",
             status=EvidenceState.EVIDENCE_VERIFIED
         )
         doc2 = EvidenceDocument(
-            document_id="doc-u16-2",
-            document_type="EVID_U16_PATENTS",
+            document_id="doc-u9-1",
+            document_type="EVID_U9_MOU_COPIES",
             status=EvidenceState.EVIDENCE_VERIFIED
         )
-        # Attempt to claim the same patent ID "PAT-2026-001" in U16.I and U16.II
-        p_in = ParameterInput(
-            parameter_code="U16",
+        # Claim raw scalar startup_id in U8.A, then attempt duplicate claim in U9.B
+        p_u8 = ParameterInput(
+            parameter_code="U8",
             subcriteria_inputs={
-                "U16.I": SubcriterionInput(
-                    subcriterion_code="U16.I",
-                    raw_inputs={"patent_id": "PAT-2026-001", "patents_filed": 10},
+                "U8.A": SubcriterionInput(
+                    subcriterion_code="U8.A",
+                    raw_inputs={"startup_id": "VENTURE-2026-001", "startups_count": 1},
                     evidence_docs=[doc1]
                 ),
-                "U16.II": SubcriterionInput(
-                    subcriterion_code="U16.II",
-                    raw_inputs={"patent_id": "PAT-2026-001", "patents_granted": 2},
+            }
+        )
+        p_u9 = ParameterInput(
+            parameter_code="U9",
+            subcriteria_inputs={
+                "U9.A": SubcriterionInput(
+                    subcriterion_code="U9.A",
+                    raw_inputs={"total_mous": 10, "active_mous": 8},
+                    evidence_docs=[doc2]
+                ),
+                "U9.B": SubcriterionInput(
+                    subcriterion_code="U9.B",
+                    raw_inputs={"startup_id": "VENTURE-2026-001", "activities_count": 1,
+                                "activity_period_start": "2025-08-01", "activity_period_end": "2026-05-01"},
                     evidence_docs=[doc2]
                 ),
             }
         )
-        assessment_input = AssessmentInput(context=context, parameters={"U16": p_in})
+        assessment_input = AssessmentInput(context=context, parameters={"U8": p_u8, "U9": p_u9})
         result = self.engine.score_assessment(assessment_input)
 
-        # U16.I was evaluated first, entity registered. U16.II evaluates duplicate -> rejected!
-        u16_res = result.parameter_results["U16"]
-        u16_ii = u16_res.subcriteria_results["U16.II"]
-        self.assertIn("double_counting", u16_ii.trace)
-        self.assertEqual(u16_ii.trace["double_counting"]["rejected_entities_count"], 1)
+        # U8.A was evaluated first, entity registered. U9.B evaluates duplicate -> rejected!
+        u9_res = result.parameter_results["U9"]
+        u9_b = u9_res.subcriteria_results["U9.B"]
+        self.assertIn("double_counting", u9_b.trace)
+        self.assertEqual(u9_b.trace["double_counting"]["rejected_entities_count"], 1)
 
     def test_pipeline_p2_05_fractional_count_rejection_blocks_certification(self):
         """

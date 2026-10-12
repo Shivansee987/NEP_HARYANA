@@ -869,23 +869,15 @@ class CollegeReviewService:
     def validate_certification_authority(cls, actor: Any, assessment: CollegeAssessment) -> bool:
         """
         Validates that an actor has explicit certification authority.
-        Only DHE Admins, Superusers, and Screening Committee Chairs can certify assessments.
+        Only the Screening Committee Chair can certify assessments.
         Standard committee reviewers and institutional users are blocked.
         """
         if not actor or not getattr(actor, "is_authenticated", False):
             raise CertificationNotAuthorizedError("Authentication required to certify assessments.")
 
-        role = getattr(actor, "role", "")
-        is_admin = (
-            getattr(actor, "is_superuser", False)
-            or getattr(actor, "is_staff", False)
-            or role in ("admin", "state_admin")
-        )
-        is_chair = role == "committee_chair"
-
-        if not (is_admin or is_chair):
+        if getattr(actor, "role", "") != "committee_chair":
             raise CertificationNotAuthorizedError(
-                "Certification authority required. Only DHE Administrators and Committee Chairs can certify assessments."
+                "Certification authority required. Only the Screening Committee Chair can certify assessments."
             )
 
         # Institutional conflict of interest check

@@ -200,7 +200,7 @@ def review_progress(param_data: Dict[str, Any], result: FrameworkResult, param_c
 def build_certified_snapshot(result: FrameworkResult, definitions: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
     return {
         "calculation_id": result.calculation_id,
-        "timestamp": result.timestamp,
+        "timestamp": result.timestamp.isoformat() if hasattr(result.timestamp, "isoformat") else str(result.timestamp),
         "certified_total": result.final_certified_total,
         "raw_total": result.raw_total,
         "evidence_gated_total": result.evidence_gated_total,
@@ -306,6 +306,13 @@ def build_scoring_evaluation(
             "trace": p_res.trace if p_res is not None else {},
         }
 
+    if is_certified:
+        running_total = authoritative_total
+    else:
+        running_total = round(sum(
+            float(param_results[c]["evidence_gated_score"]) for c in progress["approved"]
+        ), 2)
+
     return {
         "framework": framework_code,
         "assessment_id": assessment.assessment_id,
@@ -317,10 +324,10 @@ def build_scoring_evaluation(
         "evidence_gated_total": authoritative_total,
         "authoritative_total": authoritative_total,
         "final_certified_total": authoritative_total if is_certified else result.final_certified_total,
-        # Legacy field names kept for the committee UI; all equal the authoritative backend total.
-        "running_total": authoritative_total,
-        "current_awarded": authoritative_total,
-        "expected_total_display": f"{_fmt_total(authoritative_total)} / 100",
+        # Legacy field names kept for the committee UI; live running total of approved parameters.
+        "running_total": running_total,
+        "current_awarded": running_total,
+        "expected_total_display": f"{_fmt_total(running_total)} / 100",
         "max_available": 100.0,
         "max_marks": 100.0,
         "max_marks_by_parameter": {c: float(definitions[c]["max_marks"]) for c in param_codes},

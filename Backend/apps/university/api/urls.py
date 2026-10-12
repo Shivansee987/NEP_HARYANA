@@ -24,9 +24,12 @@ from .views import (
     UniversityListCreateView,
     UniversityReviewQueueView,
 )
+from apps.authentication.views import UniversityAisheLookupView
 
 urlpatterns = [
     # University Institution Endpoints
+    path('lookup/', UniversityAisheLookupView.as_view(), name='university-lookup'),
+    path('universities/lookup/', UniversityAisheLookupView.as_view(), name='university-lookup-alt'),
     path('universities/', UniversityListCreateView.as_view(), name='university-list-create'),
     path('universities/<str:pk>/', UniversityDetailView.as_view(), name='university-detail'),
 

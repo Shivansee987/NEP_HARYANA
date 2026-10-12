@@ -306,7 +306,7 @@ class IsCommitteeReviewer(BasePermission):
 class IsCertificationAuthority(BasePermission):
     """
     Authorizes certification operations.
-    Restricted strictly to DHE Administrators, Superusers, and Screening Committee Chairs.
+    Restricted to the Screening Committee Chair.
     Regular committee reviewers and institutional users are denied with CERTIFICATION_NOT_AUTHORIZED.
     """
     def has_permission(self, request, view):
@@ -314,15 +314,12 @@ class IsCertificationAuthority(BasePermission):
         if not (user and user.is_authenticated):
             raise NotAuthenticated()
 
-        if getattr(user, 'is_superuser', False) or getattr(user, 'is_staff', False):
-            return True
-
-        role = getattr(user, 'role', '')
-        if role in ('admin', 'state_admin', 'committee_chair'):
+        # Certification is the Chair's decision alone; State Admin / superusers oversee but do not certify.
+        if getattr(user, 'role', '') == 'committee_chair':
             return True
 
         raise AssessmentPermissionDenied(
-            "Certification authority required. Only DHE Administrators and Committee Chairs can certify assessments.",
+            "Certification authority required. Only the Screening Committee Chair can certify assessments.",
             code="CERTIFICATION_NOT_AUTHORIZED"
         )
 
@@ -331,13 +328,9 @@ class IsCertificationAuthority(BasePermission):
         if not (user and user.is_authenticated):
             raise NotAuthenticated()
 
-        if getattr(user, 'is_superuser', False) or getattr(user, 'is_staff', False):
-            return True
-
-        role = getattr(user, 'role', '')
-        if role not in ('admin', 'state_admin', 'committee_chair'):
+        if getattr(user, 'role', '') != 'committee_chair':
             raise AssessmentPermissionDenied(
-                "Certification authority required. Only DHE Administrators and Committee Chairs can certify assessments.",
+                "Certification authority required. Only the Screening Committee Chair can certify assessments.",
                 code="CERTIFICATION_NOT_AUTHORIZED"
             )
 
