@@ -12,7 +12,9 @@ from .views import (
     RefreshTokenView,
     MeView,
     SendOTPView,
-    VerifyOTPView
+    VerifyOTPView,
+    AccountActivationVerifyView,
+    AccountActivationConfirmView,
 )
 
 urlpatterns = [
@@ -38,7 +40,11 @@ urlpatterns = [
     path('auth/refresh/', RefreshTokenView.as_view(), name='refresh'),
     path('auth/me/', MeView.as_view(), name='me'),
     path('auth/forgot-password/', PasswordResetRequestView.as_view(), name='password-reset-request'),
+    path('auth/password/reset/', PasswordResetRequestView.as_view(), name='password-reset-request-alias'),
     path('auth/reset-password/', PasswordResetConfirmView.as_view(), name='password-reset-confirm'),
+    path('auth/password/reset/confirm/', PasswordResetConfirmView.as_view(), name='password-reset-confirm-alias'),
+    path('auth/activate/verify/', AccountActivationVerifyView.as_view(), name='account-activation-verify'),
+    path('auth/activate/confirm/', AccountActivationConfirmView.as_view(), name='account-activation-confirm'),
 ]
 
 

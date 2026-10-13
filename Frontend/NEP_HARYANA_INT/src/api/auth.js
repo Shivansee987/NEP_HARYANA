@@ -231,6 +231,20 @@ export function confirmPasswordReset(payload) {
   });
 }
 
+export function verifyAccountActivation(token) {
+  return request(`/auth/activate/verify/?token=${encodeURIComponent(token)}`, {
+    method: "GET",
+  });
+}
+
+export function confirmAccountActivation(payload) {
+  return request("/auth/activate/confirm/", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+
 export function getDashboardPathForUser(user) {
   const role = String(user?.role || "").toLowerCase();
 
@@ -246,15 +260,20 @@ export function getDashboardPathForUser(user) {
     return `/institution/${nameSlug}/${codeSlug}/dashboard`;
   }
 
-  if (role === "admin") {
+  if (role === "admin" || role === "head_admin" || role === "sub_admin" || role === "state_admin" || role === "council_admin") {
     return "/admin";
   }
 
-  // Both committee members and the committee chair use the committee console.
-  // The backend enforces chair-level authority (certification, assignment) separately.
-  if (role === "committee" || role === "committee_chair") {
+  // Committee members and chairs use the checker console.
+  if (
+    role === "committee" ||
+    role === "committee_chair" ||
+    role === "empowered_committee" ||
+    role === "empowered_committee_chair"
+  ) {
     return "/checker/queue";
   }
+
 
   // University roles: nodal officers and university admins use the university console.
   if (role === "nodal_officer" || role === "university_admin") {

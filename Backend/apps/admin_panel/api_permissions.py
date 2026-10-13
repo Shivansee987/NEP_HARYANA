@@ -52,7 +52,11 @@ class IsControlPlaneAuthorized(BasePermission):
             return True
 
         role = getattr(user, 'role', '')
-        if role in ('admin', 'state_admin', 'committee', 'committee_chair'):
+        if role in (
+            'head_admin', 'sub_admin', 'admin', 'state_admin',
+            'committee', 'committee_chair',
+            'empowered_committee', 'empowered_committee_chair'
+        ):
             return True
 
         raise AdminPermissionDenied(
@@ -63,7 +67,7 @@ class IsControlPlaneAuthorized(BasePermission):
 
 class IsAdminOrCommitteeChair(BasePermission):
     """
-    Restricted to Administrators (DHE Admin, State Admin, Superuser) and Committee Chairs.
+    Restricted to Administrators (Head Admin, Sub-Admin, DHE Admin, Superuser) and Committee Chairs.
     Used for reviewer assignment, reassignment, and queue management.
     Standard committee reviewers and institutional users are denied.
     """
@@ -72,11 +76,20 @@ class IsAdminOrCommitteeChair(BasePermission):
         if not (user and user.is_authenticated):
             raise NotAuthenticated()
 
-        if getattr(user, 'is_superuser', False) or getattr(user, 'is_staff', False):
+        role = getattr(user, 'role', '')
+        if role == 'council_admin':
+            raise AdminPermissionDenied(
+                "Reviewer assignment requires Committee Chair or Administrator authority. Council Admin Overseer is restricted.",
+                code="ASSIGNMENT_NOT_AUTHORIZED"
+            )
+
+        if getattr(user, 'is_superuser', False):
             return True
 
-        role = getattr(user, 'role', '')
-        if role in ('admin', 'state_admin', 'committee_chair'):
+        if getattr(user, 'is_staff', False) and role not in ('council_admin', 'committee'):
+            return True
+
+        if role in ('head_admin', 'sub_admin', 'admin', 'state_admin', 'committee_chair', 'empowered_committee_chair'):
             return True
 
         raise AdminPermissionDenied(
@@ -87,8 +100,61 @@ class IsAdminOrCommitteeChair(BasePermission):
 
 class IsAdminOnly(BasePermission):
     """
-    Restricted strictly to DHE Administrators, State Admins, and Superusers.
+    Restricted to Head Admins, Sub-Admins, DHE Administrators, and Superusers.
     Used for platform authorizations and global configuration.
+    """
+    def has_permission(self, request, view):
+        user = request.user
+        if not (user and user.is_authenticated):
+            raise NotAuthenticated()
+
+        role = getattr(user, 'role', '')
+        if role == 'council_admin':
+            raise AdminPermissionDenied(
+                "Platform administration authority required. Council Admin Overseer is restricted.",
+                code="ADMIN_REQUIRED"
+            )
+
+        if getattr(user, 'is_superuser', False):
+            return True
+
+        if getattr(user, 'is_staff', False) and role not in ('council_admin', 'committee'):
+            return True
+
+        if role in ('head_admin', 'sub_admin', 'admin', 'state_admin'):
+            return True
+
+        raise AdminPermissionDenied(
+            "Platform administration authority required.",
+            code="ADMIN_REQUIRED"
+        )
+
+
+class IsHeadAdminOnly(BasePermission):
+    """
+    Restricted strictly to the Head Administrator or Django Superuser.
+    Required for privileged role assignments, sub-admin creation, and committee governance.
+    """
+    def has_permission(self, request, view):
+        user = request.user
+        if not (user and user.is_authenticated):
+            raise NotAuthenticated()
+
+        if getattr(user, 'is_superuser', False):
+            return True
+
+        if getattr(user, 'role', '') == 'head_admin':
+            return True
+
+        raise AdminPermissionDenied(
+            "Head Administrator authority required for this operation.",
+            code="HEAD_ADMIN_REQUIRED"
+        )
+
+
+class IsAnyAdminUserManagement(BasePermission):
+    """
+    Allows read-access or restricted management access to any administrator (Head Admin, Sub-Admin, Admin).
     """
     def has_permission(self, request, view):
         user = request.user
@@ -99,11 +165,11 @@ class IsAdminOnly(BasePermission):
             return True
 
         role = getattr(user, 'role', '')
-        if role in ('admin', 'state_admin'):
+        if role in ('head_admin', 'sub_admin', 'admin', 'state_admin', 'council_admin'):
             return True
 
         raise AdminPermissionDenied(
-            "Platform administration authority required.",
+            "Administrator authority required to access user management.",
             code="ADMIN_REQUIRED"
         )
 
@@ -119,7 +185,7 @@ class IsControlPlaneCertificationAuthority(BasePermission):
         if not (user and user.is_authenticated):
             raise NotAuthenticated()
 
-        # Certification is the Chair's decision alone; State Admin / superusers oversee but do not certify.
+        # Certification is the Chair's decision alone; Head Admin, State Admin, and superusers oversee but do not certify.
         if getattr(user, 'role', '') == 'committee_chair':
             return True
 
@@ -129,6 +195,7 @@ class IsControlPlaneCertificationAuthority(BasePermission):
         )
 
 
+
 def validate_reviewer_framework_and_coi(user, assessment):
     """
     Enforces framework authorization and institutional conflict-of-interest for an assessment.
@@ -136,8 +203,8 @@ def validate_reviewer_framework_and_coi(user, assessment):
     """
     is_admin = (
         getattr(user, "is_superuser", False)
-        or getattr(user, "is_staff", False)
-        or getattr(user, "role", "") in ("admin", "state_admin")
+        or getattr(user, "role", "") in ("admin", "state_admin", "head_admin", "sub_admin")
+        or (getattr(user, "is_staff", False) and getattr(user, "role", "") not in ("council_admin", "committee"))
     )
 
     framework = getattr(assessment, "framework", "")
@@ -169,7 +236,12 @@ def validate_reviewer_framework_and_coi(user, assessment):
     # Framework authorization check (non-admin)
     if not is_admin:
         user_auths = ReviewerAuthorization.objects.filter(user=user, is_active=True)
-        if user_auths.exists():
+        if not user_auths.exists():
+            if getattr(assessment, "assigned_reviewer_id", None) != user.pk:
+                raise FrameworkMismatchError(
+                    f"Reviewer has no active committee authorizations and is not assigned to this assessment."
+                )
+        else:
             matching_fw = user_auths.filter(framework__in=[framework, "ALL"])
             if not matching_fw.exists():
                 raise FrameworkMismatchError(

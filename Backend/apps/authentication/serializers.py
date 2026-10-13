@@ -56,11 +56,24 @@ class CollegeSerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'aishe_code']
 
 
+class CollegeDetailSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = College
+        fields = [
+            'id', 'name', 'institute_code', 'aishe_code', 'department',
+            'district', 'institute_type', 'institute_category',
+            'affiliation_body_1', 'affiliation_body_2', 'is_verified'
+        ]
+
+
 class UniversityPublicSerializer(serializers.ModelSerializer):
     """Safe public university representation for lookup and registration."""
     class Meta:
         model = University
-        fields = ['id', 'name', 'aishe_code', 'university_type', 'state', 'address', 'contact_email', 'contact_phone']
+        fields = [
+            'id', 'name', 'institute_code', 'aishe_code', 'university_type',
+            'district', 'state', 'address', 'contact_email', 'contact_phone'
+        ]
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -98,9 +111,9 @@ class UserSerializer(serializers.ModelSerializer):
             return obj.college.name
         if obj.university:
             return obj.university.name
-        if obj.role == 'admin':
+        if obj.role in ('head_admin', 'sub_admin', 'admin'):
             return "Higher Education Department"
-        if obj.role == 'committee':
+        if 'committee' in obj.role:
             return "Screening Committee"
         return "Govt College Example"
 
@@ -125,9 +138,9 @@ class UserSerializer(serializers.ModelSerializer):
             return obj.university.name
         if obj.college:
             return obj.college.name
-        if obj.role == 'admin':
+        if obj.role in ('head_admin', 'sub_admin', 'admin'):
             return "Higher Education Department"
-        if obj.role == 'committee':
+        if 'committee' in obj.role:
             return "Screening Committee"
         return ""
 
@@ -136,11 +149,12 @@ class UserSerializer(serializers.ModelSerializer):
             return obj.college.aishe_code
         if obj.university:
             return obj.university.aishe_code
-        if obj.role == 'admin':
+        if obj.role in ('head_admin', 'sub_admin', 'admin'):
             return "DHE-HR"
-        if obj.role == 'committee':
+        if 'committee' in obj.role:
             return "SC-HR"
         return ""
+
 
 
 class RegisterSerializer(serializers.Serializer):
@@ -166,11 +180,18 @@ class RegisterSerializer(serializers.Serializer):
 
     def validate_role(self, value):
         # Disallow privilege escalation: public signup cannot request privileged roles
-        if value in ['admin', 'committee', 'committee_chair', 'university_admin']:
+        privileged = [
+            'head_admin', 'sub_admin', 'admin',
+            'committee', 'committee_chair',
+            'empowered_committee', 'empowered_committee_chair',
+            'university_admin'
+        ]
+        if value in privileged:
             raise serializers.ValidationError("Privileged roles cannot be requested during public registration.")
         if value not in ['principal', 'nodal_officer']:
             raise serializers.ValidationError(f"Invalid registration role '{value}'.")
         return value
+
 
     def validate_collegeId(self, value):
         if value is not None:

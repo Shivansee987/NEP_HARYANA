@@ -24,6 +24,10 @@ import StateInstitutions from "./pages/Admin/StateInstitutions";
 import AdminAssessmentDetail from "./pages/Admin/AdminAssessmentDetail";
 import Reports from "./pages/Admin/Reports";
 import Settings from "./pages/Admin/Settings";
+import UserManagement from "./pages/Admin/UserManagement";
+import CommitteeManagement from "./pages/Admin/CommitteeManagement";
+import AccountActivation from "./pages/AuthRecovery/AccountActivation";
+
 
 import {
   ProtectedRoute,
@@ -131,6 +135,22 @@ function App() {
             </GuestRoute>
           }
         />
+        <Route
+          path="/auth/activate/:token"
+          element={
+            <GuestRoute>
+              <AccountActivation />
+            </GuestRoute>
+          }
+        />
+        <Route
+          path="/auth/activate"
+          element={
+            <GuestRoute>
+              <AccountActivation />
+            </GuestRoute>
+          }
+        />
 
         {/* Protected Routes - College Dashboard & Assessment Workspace */}
         <Route
@@ -162,13 +182,15 @@ function App() {
         {/* Protected Routes - DHE Admin Console */}
         <Route
           element={
-            <ProtectedRoute allowedRoles={["admin"]}>
+            <ProtectedRoute allowedRoles={["admin", "head_admin", "sub_admin", "state_admin", "council_admin"]}>
               <AdminLayout />
             </ProtectedRoute>
           }
         >
           <Route path="/admin" element={<AdminOverview />} />
           <Route path="/admin/institutions" element={<StateInstitutions />} />
+          <Route path="/admin/users" element={<UserManagement />} />
+          <Route path="/admin/committees" element={<CommitteeManagement />} />
           <Route path="/admin/colleges/*" element={<Navigate to="/admin/institutions?type=COLLEGE" replace />} />
           <Route path="/admin/reviews" element={<Navigate to="/admin/institutions?stage=SUBMITTED" replace />} />
           <Route path="/admin/scoring" element={<Navigate to="/admin/institutions" replace />} />
@@ -180,11 +202,12 @@ function App() {
         {/* Protected Routes - Modern Screening Committee / Checker Console (Phase W4) */}
         <Route
           element={
-            <ProtectedRoute allowedRoles={["committee", "committee_chair", "admin"]}>
+            <ProtectedRoute allowedRoles={["committee", "committee_chair", "admin", "head_admin", "sub_admin", "state_admin"]}>
               <CheckerLayout />
             </ProtectedRoute>
           }
         >
+
           <Route path="/checker" element={<Navigate to="/checker/queue" replace />} />
           <Route path="/checker/queue" element={<CheckerQueue />} />
           <Route path="/checker/assessment/:assessmentId" element={<CheckerAssessmentReview />} />
