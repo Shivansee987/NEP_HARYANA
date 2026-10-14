@@ -111,6 +111,13 @@ class CollegeReviewDomainTests(TestCase):
             parameter_code="C1",
             raw_inputs={"C1.1": {"approved": True}},
         )
+        # Review scope is explicit (COM-01): committee users without a scoped authorization get framework-wide scope.
+        from apps.authentication.models import User as _ScopeUser
+        from apps.evidence.models import ReviewerAuthorization as _ScopeAuth
+        from apps.scoring.test_support import grant_review_scope as _grant_scope
+        for _reviewer in _ScopeUser.objects.filter(role__in=("committee", "committee_chair")):
+            if not _ScopeAuth.objects.filter(user=_reviewer).exists():
+                _grant_scope(_reviewer)
 
     # =========================================================================
     # Category A: Review Lifecycle & State Machine
@@ -177,11 +184,13 @@ class CollegeReviewDomainTests(TestCase):
         CollegeAssessmentService.update_parameter_inputs(
             assessment_id=self.assessment_a.assessment_id,
             parameter_code="C1",
-            raw_inputs={"C1.1": {"approved": True, "correction": "applied"}},
+            raw_inputs={"C1.1": {"fixed_targets_2024_25": 20, "achieved_targets_2024_25": 19}},
         )
 
-        # College resubmits
-        resubmitted = CollegeAssessmentService.submit_assessment(
+        # College resubmits (every parameter must be answered for submission)
+        from apps.scoring.test_support import submit_complete
+        resubmitted = submit_complete(
+            CollegeAssessmentService,
             assessment_id=self.assessment_a.assessment_id,
             submitting_user=self.principal_a,
         )
@@ -256,6 +265,7 @@ class CollegeReviewDomainTests(TestCase):
         self.assessment_a.save()
 
         # Register university-only authorization
+        ReviewerAuthorization.objects.filter(user=self.reviewer_user).delete()  # only the mismatched grant below
         ReviewerAuthorization.objects.create(
             user=self.reviewer_user,
             framework="UNIVERSITY_2026",
@@ -384,7 +394,13 @@ class CollegeReviewDomainTests(TestCase):
             parameter_results={},
         )
 
-        def mock_eval_scoring(aid):
+        # Certification requires the committee's recorded "Complete Review" for this submission.
+        CollegeReviewRecord.objects.create(
+            assessment=self.assessment_a, reviewer=self.reviewer_user, action=CollegeReviewAction.COMPLETE_REVIEW,
+            status_before=self.assessment_a.status, status_after=self.assessment_a.status, comments="Review complete",
+        )
+
+        def mock_eval_scoring(aid, **kwargs):
             self.assessment_a.certified_score = 85.0
             self.assessment_a.certification_status = "FINALIZABLE"
             self.assessment_a.save(update_fields=["certified_score", "certification_status"])

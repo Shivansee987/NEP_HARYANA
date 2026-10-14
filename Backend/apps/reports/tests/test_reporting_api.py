@@ -104,6 +104,13 @@ class ReportingAPITests(TestCase):
             certification_status="CERTIFIED",
             parameter_data={},
         )
+        # Review scope is explicit (COM-01): committee users without a scoped authorization get framework-wide scope.
+        from apps.authentication.models import User as _ScopeUser
+        from apps.evidence.models import ReviewerAuthorization as _ScopeAuth
+        from apps.scoring.test_support import grant_review_scope as _grant_scope
+        for _reviewer in _ScopeUser.objects.filter(role__in=("committee", "committee_chair")):
+            if not _ScopeAuth.objects.filter(user=_reviewer).exists():
+                _grant_scope(_reviewer)
 
     # ──────────────────────────────────────────────────────────────────────────
     # 1. AUTHENTICATION

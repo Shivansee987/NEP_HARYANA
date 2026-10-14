@@ -315,12 +315,9 @@ class AdminControlPlaneService:
         if not user or not getattr(user, "is_authenticated", False):
             raise AdminPermissionDenied("Authentication required to access review queue.")
 
+        from apps.evidence import access_policy as policy
         role = getattr(user, "role", "")
-        is_admin = (
-            getattr(user, "is_superuser", False)
-            or getattr(user, "is_staff", False)
-            or role in ("admin", "state_admin")
-        )
+        is_admin = policy.is_oversight(user)
 
         if not is_admin and role not in ("committee", "committee_chair"):
             raise AdminPermissionDenied(
@@ -344,7 +341,7 @@ class AdminControlPlaneService:
                     if auth.framework in (COLLEGE_FRAMEWORK_CODE, "ALL"):
                         authorized_frameworks.add(COLLEGE_FRAMEWORK_CODE)
             else:
-                # Default committee role has access to both if no explicit granular restrictions exist
+                # No authorization rows: only explicitly assigned assessments (the domain queues filter on that)
                 authorized_frameworks = {UNIVERSITY_FRAMEWORK_CODE, COLLEGE_FRAMEWORK_CODE}
 
         if requested_framework:
@@ -449,33 +446,25 @@ class AdminControlPlaneService:
 
         framework, assessment = cls.resolve_assessment(assessment_id)
 
+        from apps.evidence import access_policy as policy
         role = getattr(user, "role", "")
-        is_admin = (
-            getattr(user, "is_superuser", False)
-            or getattr(user, "is_staff", False)
-            or role in ("admin", "state_admin")
-        )
 
-        # 1. Tenancy Enforcement for Institutional Users
-        if role in ("principal", "nodal_officer", "university_admin"):
-            if framework == UNIVERSITY_FRAMEWORK_CODE:
-                user_uni = getattr(user, "university", None)
-                if not user_uni or (user_uni.pk != assessment.university.pk and user_uni.aishe_code != assessment.university.aishe_code):
-                    raise AdminPermissionDenied(
-                        "Institution users cannot inspect assessments belonging to external institutions.",
-                        code="TENANCY_VIOLATION"
-                    )
-            elif framework == COLLEGE_FRAMEWORK_CODE:
-                user_col = getattr(user, "college", None)
-                if not user_col or (user_col.pk != assessment.college.pk and user_col.aishe_code != assessment.college.aishe_code):
-                    raise AdminPermissionDenied(
-                        "Institution users cannot inspect assessments belonging to external institutions.",
-                        code="TENANCY_VIOLATION"
-                    )
-
-        # 2. Framework & COI Enforcement for Committee Reviewers
-        if role in ("committee", "committee_chair") and not is_admin:
+        if policy.is_oversight(user):
+            pass  # read-only oversight of every assessment
+        elif role in policy.INSTITUTION_ROLES:
+            # 1. Tenancy: institution users only inspect their own institution's assessment (by binding)
+            if not policy.institution_owns_assessment(user, assessment):
+                raise AdminPermissionDenied(
+                    "Institution users cannot inspect assessments belonging to external institutions.",
+                    code="TENANCY_VIOLATION"
+                )
+        elif policy.is_reviewer(user):
+            # 2. Reviewers: submitted assessments in their scope, without conflict of interest
             validate_reviewer_framework_and_coi(user, assessment)
+            if assessment.status in policy.INSTITUTION_EDITING_STATES:
+                raise AdminPermissionDenied("This assessment has not been submitted for review.", code="NOT_SUBMITTED")
+        else:
+            raise AdminPermissionDenied("You are not authorized to inspect assessments.", code="INSPECT_NOT_AUTHORIZED")
 
         # 3. Assemble Institution Metadata
         if framework == UNIVERSITY_FRAMEWORK_CODE:
@@ -714,7 +703,6 @@ class AdminControlPlaneService:
         is_admin = (
             getattr(actor, "is_superuser", False)
             or actor_role in ("admin", "state_admin", "head_admin", "sub_admin")
-            or (getattr(actor, "is_staff", False) and actor_role not in ("council_admin", "committee"))
         )
         is_chair = actor_role == "committee_chair"
 
@@ -749,9 +737,9 @@ class AdminControlPlaneService:
             )
 
         target_role = getattr(target_reviewer, "role", "")
-        if target_role not in ("committee", "committee_chair", "admin", "state_admin") and not getattr(target_reviewer, "is_staff", False):
+        if target_role not in ("committee", "committee_chair"):
             raise AdminValidationError(
-                f"User '{target_reviewer.email}' does not possess a committee or administrator role.",
+                f"User '{target_reviewer.email}' is not a Screening Committee member and cannot review assessments.",
                 code="INVALID_REVIEWER_ROLE"
             )
 
@@ -770,12 +758,7 @@ class AdminControlPlaneService:
                 )
 
         # Framework authorization check for target reviewer (non-admin)
-        target_is_admin = (
-            getattr(target_reviewer, "is_superuser", False)
-            or getattr(target_reviewer, "is_staff", False)
-            or target_role in ("admin", "state_admin")
-        )
-        if not target_is_admin:
+        if True:  # target is always a Screening Committee member here
             auth_qs = ReviewerAuthorization.objects.filter(user=target_reviewer, is_active=True)
             if auth_qs.exists():
                 fw_match = auth_qs.filter(framework__in=[framework, "ALL"])
@@ -1039,7 +1022,15 @@ class AdminUserManagementService:
             raise AdminPermissionDenied("Administrative authority required.", code="ADMIN_REQUIRED")
 
         filters = filters or {}
-        qs = User.objects.select_related('college', 'university').all()
+        from django.db.models import Exists, OuterRef
+        from django.utils import timezone as _tz
+        from apps.authentication.models import AccountActivationToken
+        pending = AccountActivationToken.objects.filter(
+            user=OuterRef('pk'), is_used=False, is_revoked=False, expires_at__gt=_tz.now())
+        qs = (User.objects.select_related('college', 'university', 'requested_college', 'requested_university')
+              .annotate(pending_invitation=Exists(pending)))
+        if filters and filters.get('institution_status'):
+            qs = qs.filter(institution_status=str(filters['institution_status']).upper())
 
         q = filters.get('q')
         if q and q.strip():
@@ -1119,52 +1110,62 @@ class AdminUserManagementService:
         audit_logs = list(UserAuditLog.objects.filter(target_user=target_user).select_related('actor')[:25])
         return target_user, audit_logs
 
+    # Roles that may approve a self-registered applicant's institution request (governance, not review).
+    INSTITUTION_APPROVER_ROLES = frozenset(['head_admin', 'state_admin', 'sub_admin', 'admin'])
+    INSTITUTION_ROLES = frozenset(['principal', 'nodal_officer', 'university_admin'])
+
+    @staticmethod
+    def _require_head_admin(actor, message):
+        from .api_permissions import AdminPermissionDenied
+        if not (getattr(actor, 'is_superuser', False) or getattr(actor, 'role', '') == 'head_admin'):
+            raise AdminPermissionDenied(message, code="HEAD_ADMIN_REQUIRED")
+
+    @classmethod
+    def _validate_institution_binding(cls, role, college, university):
+        if role == 'principal' and (not college or university):
+            raise AdminValidationError("A College Principal must be linked to exactly one College.", code="INSTITUTION_REQUIRED")
+        if role in ('nodal_officer', 'university_admin') and (not university or college):
+            raise AdminValidationError("A University account must be linked to exactly one University.", code="INSTITUTION_REQUIRED")
+        if role not in cls.INSTITUTION_ROLES and (college or university):
+            raise AdminValidationError("Administrative and committee accounts cannot be linked to an institution.", code="INSTITUTION_NOT_ALLOWED")
+
     @classmethod
     def create_user(cls, actor, validated_data, ip_address=None):
-        from .api_permissions import AdminPermissionDenied
-        import secrets, string
+        """
+        Head-Admin-only account provisioning. Every new account starts inactive with no usable password and
+        receives a single-use activation invitation by e-mail; the person sets their own password. Raw tokens
+        are never returned to the caller. `new_user._invitation_email_sent` reports real delivery.
+        """
+        cls._require_head_admin(actor, "Only the Head Administrator can create user accounts.")
+
+        if validated_data.get('password'):
+            raise AdminValidationError(
+                "Passwords cannot be set by an administrator. The user sets it through the activation link.",
+                code="PASSWORD_NOT_ALLOWED")
 
         role = validated_data.get('role', 'principal')
-        is_actor_head_admin = getattr(actor, 'is_superuser', False) or getattr(actor, 'role', '') == 'head_admin'
-
-        if role in cls.PRIVILEGED_ROLES and not is_actor_head_admin:
-            raise AdminPermissionDenied(
-                f"Only the Head Administrator can create accounts with privileged role '{role}'.",
-                code="HEAD_ADMIN_REQUIRED"
-            )
-
         email = validated_data['email'].strip().lower()
         if User.objects.filter(email__iexact=email).exists():
             raise AdminValidationError(f"A user with email '{email}' already exists.", code="USER_ALREADY_EXISTS")
 
-        password = validated_data.get('password')
-        send_invite = validated_data.get('send_invite', True)
-        is_pending_activation = not bool(password)
-
-        if not password:
-            alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
-            password = "".join(secrets.choice(alphabet) for _ in range(16))
-
-        full_name = validated_data.get('full_name', '').strip()
-        phone_number = validated_data.get('phone_number', '').strip()
         college = validated_data.get('college')
         university = validated_data.get('university')
+        cls._validate_institution_binding(role, college, university)
 
         new_user = User.objects.create_user(
             email=email,
-            full_name=full_name,
+            full_name=validated_data.get('full_name', '').strip(),
             role=role,
-            password=password,
+            password=None,
             college=college,
             university=university,
-            phone_number=phone_number,
+            phone_number=validated_data.get('phone_number', '').strip(),
             is_staff=bool(role in ('head_admin', 'state_admin', 'sub_admin', 'admin', 'council_admin')),
+            is_active=False,
+            institution_status='VERIFIED',
         )
-
-        if is_pending_activation:
-            new_user.is_active = False
-            new_user.set_unusable_password()
-            new_user.save(update_fields=['is_active', 'password'])
+        new_user.set_unusable_password()
+        new_user.save(update_fields=['password'])
 
         UserAuditLog.objects.create(
             actor=actor,
@@ -1172,45 +1173,34 @@ class AdminUserManagementService:
             action="USER_CREATED",
             details={
                 "role": role,
-                "email": email,
                 "created_by": actor.email if actor else "SYSTEM",
-                "is_pending_activation": is_pending_activation,
+                "is_pending_activation": True,
                 "institution": college.name if college else (university.name if university else None),
             },
             ip_address=ip_address,
         )
 
-        # Issue invitation token & send email
-        raw_token = None
-        if send_invite or is_pending_activation:
-            try:
-                from apps.authentication.activation_service import AccountActivationService
-                raw_token, token_obj = AccountActivationService.create_invitation(new_user, created_by=actor)
-                AccountActivationService.send_invitation_email(new_user, raw_token)
-            except Exception as e:
-                import logging
-                logging.getLogger(__name__).error("Failed to dispatch invitation for user %s: %s", new_user.email, str(e))
-        new_user._raw_activation_token = raw_token
+        email_sent = False
+        try:
+            from apps.authentication.activation_service import AccountActivationService
+            raw_token, _ = AccountActivationService.create_invitation(new_user, created_by=actor)
+            email_sent = AccountActivationService.send_invitation_email(new_user, raw_token)
+            del raw_token
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).error("Failed to issue invitation for user %s: %s", new_user.pk, type(exc).__name__)
+        if not email_sent:
+            UserAuditLog.objects.create(actor=actor, target_user=new_user, action="NOTIFICATION_FAILED",
+                                        details={"notification": "ACTIVATION_INVITATION"}, ip_address=ip_address)
+        new_user._invitation_email_sent = email_sent
 
-
-        # Optional committee framework assignment
         committee_framework = validated_data.get('committee_framework')
-        if committee_framework and role in ('committee', 'committee_chair', 'empowered_committee', 'empowered_committee_chair'):
+        if committee_framework and role in ('committee', 'committee_chair'):
             from apps.evidence.models import ReviewerAuthorization
-            ReviewerAuthorization.objects.create(
-                user=new_user,
-                framework=committee_framework,
-                is_active=True,
-                granted_by=actor,
-            )
+            ReviewerAuthorization.objects.create(user=new_user, framework=committee_framework, is_active=True, granted_by=actor)
             UserAuditLog.objects.create(
-                actor=actor,
-                target_user=new_user,
-                action="COMMITTEE_ASSIGNED",
-                details={
-                    "framework": committee_framework,
-                    "granted_by": actor.email if actor else "SYSTEM",
-                },
+                actor=actor, target_user=new_user, action="COMMITTEE_ASSIGNED",
+                details={"framework": committee_framework, "granted_by": actor.email if actor else "SYSTEM"},
                 ip_address=ip_address,
             )
 
@@ -1218,26 +1208,25 @@ class AdminUserManagementService:
 
     @classmethod
     def update_user(cls, actor, user_id, validated_data, ip_address=None):
-        from .api_permissions import AdminPermissionDenied
+        """
+        Head-Admin-only. Role, status and institution changes end the target's existing sessions.
+        An administrator cannot change their own role, status or institution binding (no self-promotion,
+        no accidental self-lockout, no self-binding to an institution).
+        """
+        cls._require_head_admin(actor, "Only the Head Administrator can modify user accounts.")
 
         try:
             target_user = User.objects.select_related('college', 'university').get(pk=user_id)
         except User.DoesNotExist:
             raise AdminValidationError(f"User with ID {user_id} does not exist.", code="USER_NOT_FOUND")
 
-        is_actor_head_admin = getattr(actor, 'is_superuser', False) or getattr(actor, 'role', '') == 'head_admin'
+        is_self = target_user.pk == actor.pk
         changes = []
+        revoke = False
 
         # 1. Role modification
         if 'role' in validated_data and validated_data['role'] != target_user.role:
             new_role = validated_data['role']
-            if not is_actor_head_admin:
-                raise AdminPermissionDenied(
-                    "Only the Head Administrator can assign or modify user roles.",
-                    code="HEAD_ADMIN_REQUIRED"
-                )
-
-            # Protect last active Head Admin
             if target_user.role == 'head_admin' and target_user.is_active:
                 remaining = User.objects.filter(role='head_admin', is_active=True).exclude(pk=target_user.pk).count()
                 if remaining == 0:
@@ -1245,21 +1234,18 @@ class AdminUserManagementService:
                         "Cannot demote the last active Head Administrator.",
                         code="LAST_HEAD_ADMIN_PROTECTED"
                     )
-
             old_role = target_user.role
             target_user.role = new_role
             target_user.is_staff = bool(new_role in ('head_admin', 'state_admin', 'sub_admin', 'admin', 'council_admin'))
             changes.append(("ROLE_CHANGED", {"old_role": old_role, "new_role": new_role}))
+            revoke = True
+            if new_role not in cls.INSTITUTION_ROLES and (target_user.college_id or target_user.university_id):
+                # Administrative/committee roles never keep an institution binding.
+                validated_data = {**validated_data, 'college': None, 'university': None}
 
         # 2. Status toggle (is_active)
         if 'is_active' in validated_data and validated_data['is_active'] != target_user.is_active:
             new_is_active = validated_data['is_active']
-            if not is_actor_head_admin:
-                raise AdminPermissionDenied(
-                    "Only the Head Administrator can activate or deactivate accounts.",
-                    code="HEAD_ADMIN_REQUIRED"
-                )
-
             if target_user.role == 'head_admin' and not new_is_active:
                 remaining = User.objects.filter(role='head_admin', is_active=True).exclude(pk=target_user.pk).count()
                 if remaining == 0:
@@ -1267,41 +1253,50 @@ class AdminUserManagementService:
                         "Cannot deactivate the last active Head Administrator.",
                         code="LAST_HEAD_ADMIN_PROTECTED"
                     )
-
+            if new_is_active and not target_user.has_usable_password():
+                raise AdminValidationError(
+                    "This account has not been activated yet. Resend the activation invitation instead.",
+                    code="ACTIVATION_PENDING")
             target_user.is_active = new_is_active
             action = "ACCOUNT_ACTIVATED" if new_is_active else "ACCOUNT_DEACTIVATED"
             changes.append((action, {"is_active": new_is_active}))
+            revoke = revoke or not new_is_active
 
         # 3. Profile details
         profile_details = {}
         if 'full_name' in validated_data and validated_data['full_name'] != target_user.full_name:
-            profile_details['old_full_name'] = target_user.full_name
-            profile_details['new_full_name'] = validated_data['full_name']
+            profile_details['full_name_changed'] = True
             target_user.full_name = validated_data['full_name']
 
         if 'phone_number' in validated_data and validated_data['phone_number'] != target_user.phone_number:
-            profile_details['old_phone'] = target_user.phone_number
-            profile_details['new_phone'] = validated_data['phone_number']
+            profile_details['phone_changed'] = True
             target_user.phone_number = validated_data['phone_number']
 
-        if 'college' in validated_data:
-            target_user.college = validated_data['college']
-            profile_details['college_id'] = target_user.college.pk if target_user.college else None
-
-        if 'university' in validated_data:
-            target_user.university = validated_data['university']
-            profile_details['university_id'] = target_user.university.pk if target_user.university else None
+        new_college = validated_data['college'] if 'college' in validated_data else target_user.college
+        new_university = validated_data['university'] if 'university' in validated_data else target_user.university
+        if new_college != target_user.college or new_university != target_user.university:
+            if is_self and (new_college or new_university):
+                raise AdminValidationError("You cannot bind your own account to an institution.", code="SELF_MODIFICATION_FORBIDDEN")
+            cls._validate_institution_binding(target_user.role, new_college, new_university)
+            target_user.college, target_user.university = new_college, new_university
+            target_user.institution_status = 'VERIFIED'
+            target_user.requested_college = target_user.requested_university = None
+            profile_details['college_id'] = new_college.pk if new_college else None
+            profile_details['university_id'] = new_university.pk if new_university else None
+            revoke = True
+        elif changes and changes[0][0] == "ROLE_CHANGED":
+            cls._validate_institution_binding(target_user.role, target_user.college, target_user.university)
 
         if profile_details:
             changes.append(("PROFILE_UPDATED", profile_details))
 
         target_user.save()
+        if revoke:
+            target_user.revoke_sessions()
 
         # 4. Committee framework update if supplied
-        if 'committee_framework' in validated_data and target_user.role in ('committee', 'committee_chair', 'empowered_committee', 'empowered_committee_chair'):
-            c_fw = validated_data['committee_framework']
-            if c_fw:
-                cls.manage_committee_assignment(actor, target_user.pk, framework=c_fw, action="assign", ip_address=ip_address)
+        if validated_data.get('committee_framework') and target_user.role in ('committee', 'committee_chair'):
+            cls.manage_committee_assignment(actor, target_user.pk, framework=validated_data['committee_framework'], action="assign", ip_address=ip_address)
 
         for action, details in changes:
             UserAuditLog.objects.create(
@@ -1316,61 +1311,56 @@ class AdminUserManagementService:
 
     @classmethod
     def reset_password(cls, actor, user_id, new_password=None, ip_address=None):
-        from .api_permissions import AdminPermissionDenied
-        import secrets, string
-
-        is_actor_head_admin = getattr(actor, 'is_superuser', False) or getattr(actor, 'role', '') == 'head_admin'
-        if not is_actor_head_admin:
-            raise AdminPermissionDenied("Only the Head Administrator can reset user account passwords.", code="HEAD_ADMIN_REQUIRED")
-
+        """
+        Head-Admin-initiated recovery: e-mails the user a single-use, expiring password-reset link. The
+        administrator never sees or sets the password. Returns (user, email_sent).
+        """
+        cls._require_head_admin(actor, "Only the Head Administrator can send password reset links.")
+        if new_password:
+            raise AdminValidationError("Administrators cannot set passwords. A reset link is e-mailed to the user instead.",
+                                       code="PASSWORD_NOT_ALLOWED")
         try:
             target_user = User.objects.get(pk=user_id)
         except User.DoesNotExist:
             raise AdminValidationError(f"User with ID {user_id} does not exist.", code="USER_NOT_FOUND")
+        if not target_user.has_usable_password():
+            raise AdminValidationError("This account has not been activated yet. Resend the activation invitation instead.",
+                                       code="ACTIVATION_PENDING")
+        if not target_user.is_active:
+            raise AdminValidationError("This account is deactivated. Reactivate it before sending a reset link.",
+                                       code="ACCOUNT_INACTIVE")
 
-        if not new_password:
-            alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
-            new_password = "".join(secrets.choice(alphabet) for _ in range(14))
-
-        target_user.set_password(new_password)
-        target_user.save()
-
+        from apps.authentication.password_reset import send_password_reset_email
+        email_sent = send_password_reset_email(target_user)
         UserAuditLog.objects.create(
             actor=actor,
             target_user=target_user,
-            action="PASSWORD_RESET",
-            details={
-                "target_email": target_user.email,
-                "reset_by": actor.email if actor else "SYSTEM",
-            },
+            action="PASSWORD_RESET_LINK_SENT" if email_sent else "NOTIFICATION_FAILED",
+            details={"notification": "PASSWORD_RESET_LINK", "delivery": "SENT" if email_sent else "FAILED"},
             ip_address=ip_address,
         )
-
-        return target_user
+        return target_user, email_sent
 
     @classmethod
     def delete_user(cls, actor, user_id, ip_address=None):
         """
-        Permanently remove a user account.
-        Strictly restricted to the Head Administrator.
-        Guards against deleting oneself or the last active Head Administrator.
+        Permanently remove a user account (Head Admin only). The deletion is audited and the user's existing
+        audit history is retained (UserAuditLog.target_user is SET_NULL with an identity snapshot). Accounts
+        that have authored review records cannot be deleted; deactivate them instead.
         """
-        from .api_permissions import AdminPermissionDenied
+        from django.db import transaction
+        from django.db.models import ProtectedError
 
-        is_actor_head_admin = getattr(actor, 'is_superuser', False) or getattr(actor, 'role', '') == 'head_admin'
-        if not is_actor_head_admin:
-            raise AdminPermissionDenied("Only the Head Administrator can remove user accounts.", code="HEAD_ADMIN_REQUIRED")
+        cls._require_head_admin(actor, "Only the Head Administrator can remove user accounts.")
 
         try:
             target_user = User.objects.get(pk=user_id)
         except User.DoesNotExist:
             raise AdminValidationError(f"User with ID {user_id} does not exist.", code="USER_NOT_FOUND")
 
-        # Guard: cannot delete oneself
         if target_user.pk == actor.pk:
             raise AdminValidationError("You cannot remove your own administrator account.", code="CANNOT_DELETE_SELF")
 
-        # Guard: cannot delete the last active head_admin
         if target_user.role == 'head_admin' and target_user.is_active:
             remaining = User.objects.filter(role='head_admin', is_active=True).exclude(pk=target_user.pk).count()
             if remaining == 0:
@@ -1386,8 +1376,63 @@ class AdminUserManagementService:
             "role": target_user.role,
         }
 
-        target_user.delete()
+        try:
+            with transaction.atomic():
+                UserAuditLog.objects.create(
+                    actor=actor,
+                    target_user=target_user,
+                    action="USER_DELETED",
+                    details={"role": target_user.role, "outcome": "DELETED"},
+                    ip_address=ip_address,
+                )
+                target_user.delete()
+        except ProtectedError:
+            raise AdminValidationError(
+                "This account is referenced by review or certification records and cannot be deleted. "
+                "Deactivate the account instead.",
+                code="USER_HAS_PROTECTED_RECORDS",
+            )
         return target_info
+
+    @classmethod
+    def decide_institution_access(cls, actor, user_id, approve, reason="", ip_address=None):
+        """
+        Approves or rejects a self-registered applicant's institution request. Approval binds the account to
+        the requested institution (granting assessment access); rejection leaves it unbound.
+        """
+        from .api_permissions import AdminPermissionDenied
+
+        if not (getattr(actor, 'is_superuser', False) or getattr(actor, 'role', '') in cls.INSTITUTION_APPROVER_ROLES):
+            raise AdminPermissionDenied("Administrator authority required to approve institution access.", code="ADMIN_REQUIRED")
+        try:
+            target_user = User.objects.select_related('requested_college', 'requested_university').get(pk=user_id)
+        except User.DoesNotExist:
+            raise AdminValidationError(f"User with ID {user_id} does not exist.", code="USER_NOT_FOUND")
+        if target_user.institution_status != 'PENDING':
+            raise AdminValidationError("This account has no pending institution request.", code="NO_PENDING_REQUEST")
+        if not approve and len((reason or "").strip()) < 10:
+            raise AdminValidationError("A reason of at least 10 characters is required to reject a request.", code="REASON_REQUIRED")
+
+        institution = target_user.requested_college or target_user.requested_university
+        if approve:
+            target_user.college = target_user.requested_college
+            target_user.university = target_user.requested_university
+            target_user.institution_status = 'VERIFIED'
+        else:
+            target_user.institution_status = 'REJECTED'
+        target_user.requested_college = target_user.requested_university = None
+        target_user.save(update_fields=['college', 'university', 'institution_status', 'requested_college', 'requested_university'])
+
+        UserAuditLog.objects.create(
+            actor=actor,
+            target_user=target_user,
+            action="INSTITUTION_ACCESS_APPROVED" if approve else "INSTITUTION_ACCESS_REJECTED",
+            details={"institution_name": institution.name if institution else None,
+                     "institution_id": institution.pk if institution else None,
+                     "reason": (reason or "").strip()[:500]},
+            ip_address=ip_address,
+        )
+        return target_user
 
     @classmethod
     def manage_committee_assignment(cls, actor, user_id, framework, action="assign", institution_id="", ip_address=None):

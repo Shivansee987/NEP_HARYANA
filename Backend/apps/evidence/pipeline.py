@@ -45,7 +45,8 @@ class EvidenceUploadPipeline:
     @classmethod
     def _authorize_assessment_target(cls, uploader, assessment_id: str, framework: str, institution_id: str) -> str:
         """
-        When the target assessment exists, the uploader must belong to its institution (admins excepted),
+        When the target assessment exists, the uploader must belong to its institution (administrators have
+        read-only oversight and never upload an institution's evidence),
         the assessment must still be editable, and the evidence is filed under the assessment's own
         institution rather than a client-supplied one. Returns the institution id to record.
         """
@@ -63,8 +64,7 @@ class EvidenceUploadPipeline:
         if assessment is None:
             return institution_id
 
-        is_admin = getattr(uploader, "is_superuser", False) or getattr(uploader, "role", "") in ("admin", "state_admin")
-        if not is_admin and not (user_inst and user_inst.pk == owner.pk):
+        if not (user_inst and user_inst.pk == owner.pk):
             raise UnauthorizedEvidenceActionError(
                 f"User '{getattr(uploader, 'email', '')}' cannot upload evidence to another institution's assessment."
             )

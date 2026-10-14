@@ -75,6 +75,13 @@ class EvidenceDomainTestCase(TestCase):
         )
         self.sample_bytes = b"%PDF-1.4 Mock NEP 2026 Evidence Document Content"
         self.sample_checksum = hashlib.sha256(self.sample_bytes).hexdigest()
+        # Review scope is explicit (COM-01): committee users without a scoped authorization get framework-wide scope.
+        from apps.authentication.models import User as _ScopeUser
+        from apps.evidence.models import ReviewerAuthorization as _ScopeAuth
+        from apps.scoring.test_support import grant_review_scope as _grant_scope
+        for _reviewer in _ScopeUser.objects.filter(role__in=("committee", "committee_chair")):
+            if not _ScopeAuth.objects.filter(user=_reviewer).exists():
+                _grant_scope(_reviewer)
 
 
 class TestEvidenceCreation(EvidenceDomainTestCase):
@@ -145,6 +152,13 @@ class TestStateTransitions(EvidenceDomainTestCase):
             file_bytes=self.sample_bytes,
             evidence_type="EVID_MOU",
         )
+        # Review scope is explicit (COM-01): committee users without a scoped authorization get framework-wide scope.
+        from apps.authentication.models import User as _ScopeUser
+        from apps.evidence.models import ReviewerAuthorization as _ScopeAuth
+        from apps.scoring.test_support import grant_review_scope as _grant_scope
+        for _reviewer in _ScopeUser.objects.filter(role__in=("committee", "committee_chair")):
+            if not _ScopeAuth.objects.filter(user=_reviewer).exists():
+                _grant_scope(_reviewer)
 
     def test_legal_transition_present_to_pending(self):
         updated = EvidenceService.submit_for_verification(self.doc.pk, self.principal_user)
@@ -257,6 +271,13 @@ class TestImmutability(EvidenceDomainTestCase):
             original_filename="original.pdf",
             file_bytes=self.sample_bytes,
         )
+        # Review scope is explicit (COM-01): committee users without a scoped authorization get framework-wide scope.
+        from apps.authentication.models import User as _ScopeUser
+        from apps.evidence.models import ReviewerAuthorization as _ScopeAuth
+        from apps.scoring.test_support import grant_review_scope as _grant_scope
+        for _reviewer in _ScopeUser.objects.filter(role__in=("committee", "committee_chair")):
+            if not _ScopeAuth.objects.filter(user=_reviewer).exists():
+                _grant_scope(_reviewer)
 
     def test_checksum_immutable(self):
         self.doc.file_checksum = "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"

@@ -19,6 +19,7 @@ from .api_views import (
     AdminUserResetPasswordView,
     AdminUserCommitteeView,
     AdminUserResendInvitationView,
+    AdminUserInstitutionDecisionView,
     AdminUserRevokeInvitationView,
     AdminCommitteeListCreateView,
     AdminCommitteeDetailView,
@@ -39,6 +40,7 @@ urlpatterns = [
     path('users/<int:user_id>/committee/', AdminUserCommitteeView.as_view(), name='admin-users-committee-assignment'),
     path('users/<int:user_id>/resend-invitation/', AdminUserResendInvitationView.as_view(), name='admin-users-resend-invitation'),
     path('users/<int:user_id>/revoke-invitation/', AdminUserRevokeInvitationView.as_view(), name='admin-users-revoke-invitation'),
+    path('users/<int:user_id>/institution-access/', AdminUserInstitutionDecisionView.as_view(), name='admin-users-institution-access'),
 
     # Committee Management
     path('committees/', AdminCommitteeListCreateView.as_view(), name='admin-committees-list-create'),

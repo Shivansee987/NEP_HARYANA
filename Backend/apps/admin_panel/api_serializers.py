@@ -174,10 +174,13 @@ class AdminUserListSerializer(serializers.ModelSerializer):
     aishe_code = serializers.SerializerMethodField()
     has_pending_invitation = serializers.SerializerMethodField()
     is_activated = serializers.SerializerMethodField()
+    requested_institution = serializers.SerializerMethodField()
 
     class Meta:
         model = User
         fields = [
+            "institution_status",
+            "requested_institution",
             "id",
             "email",
             "full_name",
@@ -195,7 +198,17 @@ class AdminUserListSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
+    def get_requested_institution(self, obj):
+        inst = obj.requested_college or obj.requested_university
+        if not inst:
+            return None
+        return {"type": "COLLEGE" if obj.requested_college_id else "UNIVERSITY", "id": inst.pk,
+                "name": inst.name, "aishe_code": inst.aishe_code}
+
     def get_has_pending_invitation(self, obj):
+        annotated = getattr(obj, "pending_invitation", None)
+        if annotated is not None:
+            return bool(annotated)
         from apps.authentication.models import AccountActivationToken
         from django.utils import timezone
         return AccountActivationToken.objects.filter(

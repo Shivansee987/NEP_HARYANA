@@ -28,6 +28,7 @@ from unittest.mock import patch
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
+from apps.scoring.test_support import submit_complete
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -208,8 +209,7 @@ class WorkflowW3CheckerReviewTests(TestCase):
             },
             activity_date=date(2025, 10, 15),
         )
-        return UniversityAssessmentService.submit_assessment(
-            assessment_id=assessment.assessment_id,
+        return submit_complete(UniversityAssessmentService, assessment_id=assessment.assessment_id,
             submitting_user=nodal,
         )
 
@@ -227,8 +227,7 @@ class WorkflowW3CheckerReviewTests(TestCase):
             raw_inputs={"C1.1": {"achieved_targets_2024_25": 5, "fixed_targets_2024_25": 5}},
             activity_date=date(2025, 10, 15),
         )
-        return CollegeAssessmentService.submit_assessment(
-            assessment_id=assessment.assessment_id,
+        return submit_complete(CollegeAssessmentService, assessment_id=assessment.assessment_id,
             submitting_user=principal,
         )
 

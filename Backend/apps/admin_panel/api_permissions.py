@@ -48,14 +48,14 @@ class IsControlPlaneAuthorized(BasePermission):
         if not (user and user.is_authenticated):
             raise NotAuthenticated()
 
-        if getattr(user, 'is_superuser', False) or getattr(user, 'is_staff', False):
+        # is_staff alone grants nothing: authority comes from the role.
+        if getattr(user, 'is_superuser', False):
             return True
 
         role = getattr(user, 'role', '')
         if role in (
-            'head_admin', 'sub_admin', 'admin', 'state_admin',
+            'head_admin', 'sub_admin', 'admin', 'state_admin', 'council_admin',
             'committee', 'committee_chair',
-            'empowered_committee', 'empowered_committee_chair'
         ):
             return True
 
@@ -86,10 +86,7 @@ class IsAdminOrCommitteeChair(BasePermission):
         if getattr(user, 'is_superuser', False):
             return True
 
-        if getattr(user, 'is_staff', False) and role not in ('council_admin', 'committee'):
-            return True
-
-        if role in ('head_admin', 'sub_admin', 'admin', 'state_admin', 'committee_chair', 'empowered_committee_chair'):
+        if role in ('head_admin', 'sub_admin', 'admin', 'state_admin', 'committee_chair'):
             return True
 
         raise AdminPermissionDenied(
@@ -116,9 +113,6 @@ class IsAdminOnly(BasePermission):
             )
 
         if getattr(user, 'is_superuser', False):
-            return True
-
-        if getattr(user, 'is_staff', False) and role not in ('council_admin', 'committee'):
             return True
 
         if role in ('head_admin', 'sub_admin', 'admin', 'state_admin'):
@@ -154,18 +148,19 @@ class IsHeadAdminOnly(BasePermission):
 
 class IsAnyAdminUserManagement(BasePermission):
     """
-    Allows read-access or restricted management access to any administrator (Head Admin, Sub-Admin, Admin).
+    Entry gate for every administrator (Head Admin, State/Sub/legacy Admin, Council Admin Overseer).
+    It grants read access only: account-management writes are enforced as Head-Admin-only in
+    AdminUserManagementService (which answers {"error": "HEAD_ADMIN_REQUIRED"}), and committee writes use
+    IsAdminOnly, which excludes the Council Admin.
     """
     def has_permission(self, request, view):
         user = request.user
         if not (user and user.is_authenticated):
             raise NotAuthenticated()
 
-        if getattr(user, 'is_superuser', False) or getattr(user, 'is_staff', False):
-            return True
-
+        is_head = getattr(user, 'is_superuser', False) or getattr(user, 'role', '') == 'head_admin'
         role = getattr(user, 'role', '')
-        if role in ('head_admin', 'sub_admin', 'admin', 'state_admin', 'council_admin'):
+        if is_head or role in ('sub_admin', 'admin', 'state_admin', 'council_admin'):
             return True
 
         raise AdminPermissionDenied(
@@ -204,7 +199,6 @@ def validate_reviewer_framework_and_coi(user, assessment):
     is_admin = (
         getattr(user, "is_superuser", False)
         or getattr(user, "role", "") in ("admin", "state_admin", "head_admin", "sub_admin")
-        or (getattr(user, "is_staff", False) and getattr(user, "role", "") not in ("council_admin", "committee"))
     )
 
     framework = getattr(assessment, "framework", "")

@@ -27,9 +27,10 @@ class CollegeAssessment(models.Model):
         db_index=True,
         help_text=_("Unique assessment identifier (e.g. ASSESS-2026-COL-001).")
     )
+    # PROTECT: deleting a College must never silently erase its assessments and their audit trail.
     college = models.ForeignKey(
         College,
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT,
         related_name="assessments",
         help_text=_("College institution under assessment.")
     )
@@ -95,6 +96,9 @@ class CollegeAssessment(models.Model):
         verbose_name = _("College Assessment")
         verbose_name_plural = _("College Assessments")
         ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["college", "academic_year"], name="unique_college_assessment_per_year"),
+        ]
 
     def __str__(self):
         return f"CollegeAssessment({self.assessment_id} - {self.college.name})"

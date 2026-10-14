@@ -70,7 +70,23 @@ class User(AbstractBaseUser, PermissionsMixin):
     college = models.ForeignKey(College, on_delete=models.SET_NULL, null=True, blank=True, related_name='users')
     university = models.ForeignKey('university.University', on_delete=models.SET_NULL, null=True, blank=True, related_name='users')
     phone_number = models.CharField(max_length=20, blank=True, default='')
-    
+
+    # Incremented whenever every outstanding session must end (password reset, deactivation, role change).
+    # Access and refresh JWTs carry it as "tv" and are rejected once it no longer matches.
+    token_version = models.PositiveIntegerField(default=0)
+
+    # Institution ownership. A self-registered applicant only *requests* an institution; the binding in
+    # `college` / `university` (which every assessment permission checks) is made when an administrator
+    # approves the request. Accounts created by the Head Admin are bound directly.
+    INSTITUTION_STATUS_CHOICES = (
+        ('VERIFIED', 'Verified'),
+        ('PENDING', 'Pending approval'),
+        ('REJECTED', 'Rejected'),
+    )
+    institution_status = models.CharField(max_length=10, choices=INSTITUTION_STATUS_CHOICES, default='VERIFIED')
+    requested_college = models.ForeignKey(College, on_delete=models.SET_NULL, null=True, blank=True, related_name='pending_users')
+    requested_university = models.ForeignKey('university.University', on_delete=models.SET_NULL, null=True, blank=True, related_name='pending_users')
+
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
     
@@ -99,6 +115,12 @@ class User(AbstractBaseUser, PermissionsMixin):
     def is_any_admin(self):
         return self.role in ('head_admin', 'state_admin', 'sub_admin', 'admin', 'council_admin') or self.is_superuser
 
+    def revoke_sessions(self):
+        """Ends every outstanding session: bumps the JWT token version and revokes stored refresh tokens."""
+        User.objects.filter(pk=self.pk).update(token_version=models.F('token_version') + 1)
+        self.refresh_from_db(fields=['token_version'])
+        RefreshToken.objects.filter(user=self, is_revoked=False).update(is_revoked=True)
+
     def delete(self, *args, **kwargs):
         if self.role == 'head_admin' and self.is_active:
             remaining = User.objects.filter(role='head_admin', is_active=True).exclude(pk=self.pk).count()
@@ -122,11 +144,23 @@ class RefreshToken(models.Model):
 
 
 class OTPVerification(models.Model):
+    """
+    One OTP challenge. The code itself is never stored: only an HMAC bound to the phone number and purpose.
+    A successful verification issues a single-use verification token (also stored as a hash) that the
+    follow-up operation (e.g. registration) must present.
+    """
+    PURPOSE_CHOICES = (('REGISTRATION', 'Registration'),)
+
     phone_number = models.CharField(max_length=20, db_index=True)
-    otp_code = models.CharField(max_length=10)
+    purpose = models.CharField(max_length=20, choices=PURPOSE_CHOICES, default='REGISTRATION')
+    otp_hash = models.CharField(max_length=64, default='')
+    attempt_count = models.PositiveSmallIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField()
     is_verified = models.BooleanField(default=False)
+    verified_at = models.DateTimeField(null=True, blank=True)
+    verification_token_hash = models.CharField(max_length=64, blank=True, default='', db_index=True)
+    consumed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ['-created_at']
@@ -159,6 +193,12 @@ class UserAuditLog(models.Model):
         ('COMMITTEE_CHAIR_ASSIGNED', 'Committee Chair Assigned'),
         ('COMMITTEE_MEMBER_ADDED', 'Committee Member Added'),
         ('COMMITTEE_MEMBER_REMOVED', 'Committee Member Removed'),
+        ('USER_DELETED', 'User Deleted'),
+        ('INSTITUTION_ACCESS_REQUESTED', 'Institution Access Requested'),
+        ('INSTITUTION_ACCESS_APPROVED', 'Institution Access Approved'),
+        ('INSTITUTION_ACCESS_REJECTED', 'Institution Access Rejected'),
+        ('PASSWORD_RESET_LINK_SENT', 'Password Reset Link Sent'),
+        ('NOTIFICATION_FAILED', 'Notification Delivery Failed'),
     )
 
     actor = models.ForeignKey(
@@ -168,11 +208,18 @@ class UserAuditLog(models.Model):
         blank=True,
         related_name='actor_user_audit_logs'
     )
+    # SET_NULL (not CASCADE) so a user's audit history survives the deletion of the account; the identity
+    # snapshot below keeps the entry attributable afterwards.
     target_user = models.ForeignKey(
         User,
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
         related_name='audit_logs'
     )
+    target_user_ref = models.PositiveIntegerField(null=True, blank=True, db_index=True)
+    target_email = models.EmailField(blank=True, default='')
+    target_role = models.CharField(max_length=50, blank=True, default='')
     action = models.CharField(max_length=50, choices=ACTION_CHOICES, db_index=True)
     details = models.JSONField(default=dict, blank=True)
     ip_address = models.GenericIPAddressField(null=True, blank=True)
@@ -185,12 +232,16 @@ class UserAuditLog(models.Model):
 
     def __str__(self):
         actor_email = self.actor.email if self.actor else "SYSTEM"
-        target_email = self.target_user.email if self.target_user else "UNKNOWN"
+        target_email = self.target_user.email if self.target_user else (self.target_email or "UNKNOWN")
         return f"{actor_email} -> {self.action} on {target_email} at {self.timestamp}"
 
     def save(self, *args, **kwargs):
         if self.pk:
             raise ValueError("UserAuditLog entries are append-only and cannot be modified.")
+        if self.target_user_id and not self.target_user_ref:
+            self.target_user_ref = self.target_user_id
+            self.target_email = self.target_email or getattr(self.target_user, 'email', '')
+            self.target_role = self.target_role or getattr(self.target_user, 'role', '')
         super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):

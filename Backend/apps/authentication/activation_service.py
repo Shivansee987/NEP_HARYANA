@@ -14,6 +14,14 @@ from .models import User, AccountActivationToken, UserAuditLog, RefreshToken
 logger = logging.getLogger(__name__)
 
 
+class InvitationNotAllowedError(Exception):
+    """Activation invitations are only for accounts that have never set a password."""
+
+
+def is_pending_activation(user) -> bool:
+    return not user.has_usable_password()
+
+
 class AccountActivationService:
     """
     Secure Account Activation Lifecycle Service.
@@ -30,7 +38,13 @@ class AccountActivationService:
         """
         Generates a cryptographically secure, single-use, expiring activation token.
         Stores only the SHA-256 hash. The raw token is returned once for email delivery.
+        Refused for accounts that already have a password: an invitation must never be a way to overwrite an
+        existing (active or deactivated) account's credentials. Those use the password-reset flow instead.
         """
+        if not is_pending_activation(user):
+            raise InvitationNotAllowedError(
+                "This account has already been activated. Use a password reset link instead of an invitation."
+            )
         # Revoke any outstanding unconsumed tokens for this user
         AccountActivationToken.objects.filter(
             user=user,
@@ -126,7 +140,7 @@ class AccountActivationService:
             msg.send()
             return True
         except Exception as e:
-            logger.error("Failed to deliver activation email to %s: %s", user.email, str(e))
+            logger.error("Failed to deliver activation email to user %s: %s", user.pk, type(e).__name__)
             return False
 
     @classmethod
@@ -177,6 +191,12 @@ class AccountActivationService:
             raise DRFValidationError({"detail": error_messages.get(reason, "Invalid or expired activation link.")})
 
         user = token_obj.user
+        if not is_pending_activation(user):
+            # Already activated (or deactivated after activation): an old or re-issued invitation must not reset
+            # the password or re-enable the account.
+            token_obj.is_revoked = True
+            token_obj.save(update_fields=['is_revoked'])
+            raise DRFValidationError({"detail": "This account has already been activated. Please sign in or use 'Forgot password'."})
 
         # Validate password using Django's configured password validators
         try:
@@ -200,8 +220,8 @@ class AccountActivationService:
             is_used=False
         ).exclude(pk=token_obj.pk).update(is_revoked=True)
 
-        # Clear refresh tokens
-        RefreshToken.objects.filter(user=user).update(is_revoked=True)
+        # End any stale sessions
+        user.revoke_sessions()
 
         # Log audit trail
         UserAuditLog.objects.create(

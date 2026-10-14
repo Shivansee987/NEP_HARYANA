@@ -7,6 +7,7 @@ from rest_framework.test import APITestCase
 
 from .models import College, RefreshToken
 from .utils import generate_access_token, decode_token, hash_token
+from .test_utils import verify_phone
 
 User = get_user_model()
 
@@ -52,10 +53,13 @@ class JWTAuthTests(APITestCase):
             "email": "newuser@college.edu.in",
             "collegeId": self.college.id,
             "role": "principal",
-            "password": "Password123!",
+            "password": "Unique!Password2026",
+            "phoneNumber": "9876500200",
+            "phoneVerificationToken": verify_phone(self.client, "9876500200"),
         }
         response = self.client.post(url, data, format="json")
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertEqual(response.data["user"]["institution_status"], "PENDING")
         self.assertIn("user", response.data)
         # Tokens are in the JSON body under the 'tokens' key
         self.assertIn("tokens", response.data)

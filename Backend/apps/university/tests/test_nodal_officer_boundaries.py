@@ -10,6 +10,7 @@ from datetime import date
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
+from apps.scoring.test_support import submit_complete
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -95,7 +96,7 @@ class NodalOfficerBoundaryTests(TestCase):
     # --- returned assessments can be corrected and resubmitted -----------------------------------
 
     def test_returned_assessment_can_be_resubmitted(self):
-        UniversityAssessmentService.submit_assessment(self.assessment_a.assessment_id, submitting_user=self.nodal_a)
+        submit_complete(UniversityAssessmentService, self.assessment_a.assessment_id, submitting_user=self.nodal_a)
         UniversityReviewService.return_for_correction(
             self.assessment_a.assessment_id, reviewer=self.reviewer,
             reason="U1 programme count does not match the syndicate approval document.",

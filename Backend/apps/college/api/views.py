@@ -163,7 +163,8 @@ def handle_college_exceptions(view_func):
         except Exception as exc:
             logger.error(f"Unexpected error in college API: {exc}", exc_info=True)
             return Response(
-                {"error": f"An unexpected error occurred during processing: {exc}", "code": "INTERNAL_SERVER_ERROR"},
+                # Details go to the server log only; clients never see internal exception text.
+                {"error": "An unexpected error occurred while processing the request.", "code": "INTERNAL_SERVER_ERROR"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
     return wrapper
@@ -195,8 +196,9 @@ class CollegeListCreateView(APIView):
 
     @handle_college_exceptions
     def get(self, request):
+        from apps.evidence import access_policy as policy
         user = request.user
-        if getattr(user, 'is_superuser', False) or getattr(user, 'role', '') in ('admin', 'state_admin', 'committee', 'committee_chair'):
+        if policy.is_oversight(user) or policy.is_reviewer(user):
             qs = College.objects.all().order_by('name')
         else:
             user_col = getattr(user, 'college', None)
@@ -217,7 +219,7 @@ class CollegeListCreateView(APIView):
     @handle_college_exceptions
     def post(self, request):
         user = request.user
-        if not (getattr(user, 'is_superuser', False) or getattr(user, 'role', '') in ('admin', 'state_admin')):
+        if not (getattr(user, 'is_superuser', False) or getattr(user, 'role', '') in ('head_admin', 'admin', 'state_admin')):
             raise CollegePermissionDenied(
                 "Only administrators can register new Colleges.",
                 code="COLLEGE_NOT_AUTHORIZED"
@@ -263,11 +265,20 @@ class CollegeAssessmentListCreateView(APIView):
         qs = CollegeAssessment.objects.select_related("college").order_by('-created_at')
 
         if pk:
+            from apps.evidence import access_policy as policy
             college = get_college_object(pk)
-            self.check_object_permissions(request, CollegeAssessment(college=college))
-            qs = qs.filter(college=college)
+            if policy.is_reviewer(user):
+                # Reviewers only ever see submitted assessments inside their review scope.
+                qs = CollegeReviewService.get_review_queue(user=user).filter(college=college).order_by('-created_at')
+            else:
+                self.check_object_permissions(request, CollegeAssessment(college=college))
+                qs = qs.filter(college=college)
         else:
-            if not (getattr(user, 'is_superuser', False) or getattr(user, 'role', '') in ('admin', 'state_admin', 'committee', 'committee_chair')):
+            from apps.evidence import access_policy as policy
+            if policy.is_reviewer(user):
+                # Reviewers see only submitted assessments inside their review scope (the review queue rules).
+                qs = CollegeReviewService.get_review_queue(user=user).order_by('-created_at')
+            elif not policy.is_oversight(user):
                 user_col = getattr(user, 'college', None)
                 if user_col:
                     qs = qs.filter(college=user_col)
@@ -362,6 +373,9 @@ class CollegeAssessmentDetailView(APIView):
                 )
 
         if "notes" in request.data:
+            notes = request.data["notes"]
+            if not isinstance(notes, str) or len(notes) > 5000:
+                raise CollegeValidationError("'notes' must be text of at most 5000 characters.", code="INVALID_INPUT")
             p_data = dict(assessment.parameter_data or {})
             p_data["_notes"] = request.data["notes"]
             assessment.parameter_data = p_data
@@ -469,6 +483,7 @@ class CollegeAssessmentParameterDetailView(APIView):
             raw_inputs=valid_data.get("raw_inputs", {}),
             entities=valid_data.get("entities", []),
             activity_date=valid_data.get("activity_date"),
+            actor=request.user,
         )
 
         resp_param_data = updated_assessment.parameter_data.get(param_clean, {})

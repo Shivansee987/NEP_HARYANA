@@ -24,6 +24,7 @@ import {
   isFieldRequired,
 } from "../../utils/nepTaxonomy.js";
 import DocumentPreviewModal from "./DocumentPreviewModal";
+import RubricOptionViewer from "./RubricOptionViewer";
 
 export default function ParameterFormView({
   framework = "COLLEGE_2026",
@@ -334,6 +335,23 @@ export default function ParameterFormView({
 
       {/* Subcriteria Sections */}
       <div className="space-y-6">
+        {subcriteria.length > 1 && (
+          <div className="p-3.5 bg-slate-50/80 border border-slate-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-slate-700 shadow-2xs">
+            <div className="flex items-center gap-2">
+              <Layers size={16} className="text-[#600b0b] shrink-0" />
+              <div>
+                <span className="font-bold text-slate-900">Composite Parameter Structure:</span>{" "}
+                <span>
+                  Composed of {subcriteria.length} distinct scored components totaling {maxMarks} marks.
+                </span>
+              </div>
+            </div>
+            <span className="text-[11px] font-semibold text-slate-500 shrink-0">
+              Each component has an individual official rubric below.
+            </span>
+          </div>
+        )}
+
         {subcriteria.map((sub, sIdx) => {
           const subVals = formData[sub.code] || {};
           const subAssocs = evidenceAssociations.filter(
@@ -356,7 +374,7 @@ export default function ParameterFormView({
                   </span>
                   <div>
                     <h3 className="text-sm font-bold text-slate-900 tracking-tight">
-                      {sub.title}
+                      {subcriteria.length > 1 ? `Part ${sIdx + 1}: ${sub.title}` : sub.title}
                     </h3>
                     {sub.note && <p className="text-[11px] text-slate-500 mt-0.5">{sub.note}</p>}
                   </div>
@@ -399,19 +417,37 @@ export default function ParameterFormView({
                       }`;
 
                       if (f.type === "checkbox") {
+                        const marks = sub.max_score || sub.maxMarks;
                         return (
                           <div key={f.key} className="sm:col-span-2">
-                            <label className="flex items-start gap-3 p-3 rounded-lg border transition-colors cursor-pointer border-slate-200 bg-slate-50/70 hover:bg-slate-50">
-                              <input
-                                type="checkbox"
-                                checked={val === true}
-                                disabled={isReadOnly}
-                                onChange={(e) =>
-                                  handleInputChange(sub.code, f.key, e.target.checked, "checkbox")
-                                }
-                                className="w-4 h-4 text-[#600b0b] rounded focus:ring-[#600b0b] mt-0.5 border-slate-300"
-                              />
-                              <span className="text-xs font-semibold text-slate-800">{f.label}</span>
+                            <label className={`flex items-start justify-between gap-3 p-3.5 rounded-lg border transition-all cursor-pointer ${
+                              val === true
+                                ? "border-[#600b0b] bg-[#600b0b]/5 ring-1 ring-[#600b0b]/20"
+                                : "border-slate-200 bg-slate-50/70 hover:bg-slate-50"
+                            }`}>
+                              <div className="flex items-start gap-3">
+                                <input
+                                  type="checkbox"
+                                  checked={val === true}
+                                  disabled={isReadOnly}
+                                  onChange={(e) =>
+                                    handleInputChange(sub.code, f.key, e.target.checked, "checkbox")
+                                  }
+                                  className="w-4 h-4 text-[#600b0b] rounded focus:ring-[#600b0b] mt-0.5 border-slate-300"
+                                />
+                                <span className="text-xs font-semibold text-slate-800">{f.label}</span>
+                              </div>
+                              {marks !== undefined && (
+                                <div className="shrink-0 flex items-center gap-1.5">
+                                  <span className={`text-[11px] font-mono font-bold px-2 py-0.5 rounded-full ${
+                                    val === true
+                                      ? "bg-[#600b0b] text-white"
+                                      : "bg-slate-100 text-slate-600 border border-slate-200"
+                                  }`}>
+                                    +{marks} {marks === 1 ? "Mark" : "Marks"}
+                                  </span>
+                                </div>
+                              )}
                             </label>
                           </div>
                         );
@@ -452,12 +488,6 @@ export default function ParameterFormView({
                         );
                       }
 
-                      const isPercentageDropdown =
-                        f.type === "percentage" ||
-                        f.key === "percentage" ||
-                        (f.key.toLowerCase().endsWith("_percentage") && !f.max_field) ||
-                        (f.key.toLowerCase().endsWith("_pct") && !f.max_field);
-
                       return (
                         <div key={f.key} className={`space-y-1 ${f.type === "textlist" ? "sm:col-span-2" : ""}`}>
                           <label className="block text-xs font-semibold text-slate-700">
@@ -480,34 +510,31 @@ export default function ParameterFormView({
                                 </option>
                               ))}
                             </select>
-                          ) : isPercentageDropdown ? (
-                            <select
-                              value={val === "" || val === null || val === undefined ? "" : String(val)}
-                              disabled={isReadOnly}
-                              data-invalid={isInvalid}
-                              onChange={(e) =>
-                                handleInputChange(
-                                  sub.code,
-                                  f.key,
-                                  e.target.value === "" ? "" : Number(e.target.value),
-                                  "number"
-                                )
-                              }
-                              className={inputClass}
-                            >
-                              <option value="">Select Percentage…</option>
-                              {[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((pct) => (
-                                <option key={pct} value={pct}>
-                                  {pct}%
-                                </option>
-                              ))}
-                              {val !== "" &&
-                                val !== null &&
-                                val !== undefined &&
-                                ![0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].includes(Number(val)) && (
-                                  <option value={val}>{val}% (Custom)</option>
-                                )}
-                            </select>
+                          ) : f.type === "percentage" ? (
+                            <div className="relative">
+                              <input
+                                type="number"
+                                min={0}
+                                max={100}
+                                step="any"
+                                placeholder={f.placeholder || "e.g. 75.0"}
+                                value={val}
+                                disabled={isReadOnly}
+                                data-invalid={isInvalid}
+                                onChange={(e) =>
+                                  handleInputChange(
+                                    sub.code,
+                                    f.key,
+                                    e.target.value === "" ? "" : Number(e.target.value),
+                                    "number"
+                                  )
+                                }
+                                className={`${inputClass} pr-8`}
+                              />
+                              <span className="absolute right-3 top-2 text-xs font-bold text-slate-400 pointer-events-none">
+                                %
+                              </span>
+                            </div>
                           ) : f.type === "textlist" ? (
                             <textarea
                               rows={3}
@@ -544,46 +571,16 @@ export default function ParameterFormView({
                     })}
                   </div>
 
-                  {(() => {
-                    const ratioField = (sub.fields || []).find((fld) => fld.max_field);
-                    if (!ratioField) return null;
-                    const baseField = (sub.fields || []).find((fld) => fld.key === ratioField.max_field);
-                    const numVal = subVals[ratioField.key];
-                    const denVal = subVals[ratioField.max_field];
-                    const hasValidValues =
-                      denVal !== undefined &&
-                      denVal !== "" &&
-                      Number(denVal) > 0 &&
-                      numVal !== undefined &&
-                      numVal !== "";
-                    const calcPct = hasValidValues
-                      ? Math.min(
-                          100,
-                          Math.max(0, Math.round((Number(numVal) / Number(denVal)) * 1000) / 10)
-                        )
-                      : null;
-
-                    return (
-                      <div className="mt-3 p-3 bg-amber-50/70 border border-amber-200/90 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-2xs">
-                        <div className="flex items-center gap-2">
-                          <span className="text-[11px] font-bold text-amber-900 uppercase tracking-wider">
-                            Calculation Assistance:
-                          </span>
-                          <span className="text-xs text-amber-900">
-                            {hasValidValues
-                              ? `${numVal} / ${denVal} (${ratioField.label} of ${baseField?.label || "base"})`
-                              : `Live percentage calculated from: ${ratioField.label} ÷ ${baseField?.label || "base"}`}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <span className="text-xs font-semibold text-slate-600">Calculated Percentage:</span>
-                          <span className="px-2.5 py-0.5 rounded font-mono font-extrabold text-xs bg-[#600b0b] text-white shadow-2xs">
-                            {calcPct !== null ? `${calcPct}%` : "— %"}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })()}
+                  {/* Official Rubric Options & Scoring Tiers */}
+                  <RubricOptionViewer
+                    parameterCode={parameterCode}
+                    subCode={sub.code}
+                    subDef={sub}
+                    subVals={subVals}
+                    allSubVals={formData}
+                    isReadOnly={isReadOnly}
+                    onFieldChange={handleInputChange}
+                  />
                 </div>
 
                 {/* Subcriterion Evidence Attachment Section */}

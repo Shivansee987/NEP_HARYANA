@@ -8,10 +8,9 @@ from django.utils import timezone
 import datetime
 
 import re
-import random
 from django.conf import settings
 from django.db import IntegrityError
-from .models import College, User, RefreshToken, OTPVerification
+from .models import College, User, RefreshToken
 from .serializers import (
     CollegeSerializer,
     CollegeDetailSerializer,
@@ -357,8 +356,11 @@ class LoginView(APIView):
     def post(self, request):
         serializer = LoginSerializer(data=request.data)
         if serializer.is_valid():
-            email = serializer.validated_data['email']
+            email = serializer.validated_data['email'].strip().lower()
             password = serializer.validated_data['password']
+            # E-mail addresses are stored lower-cased at registration; match legacy mixed-case rows too.
+            stored = User.objects.filter(email__iexact=email).values_list('email', flat=True).first()
+            login_email = stored or email
             
             # Brute-force protection / Account Lockout check
             lockout_key = f"lockout_{email}"
@@ -374,7 +376,7 @@ class LoginView(APIView):
                         'detail': f'Too many failed login attempts. Locked out. Try again in {time_left} seconds.'
                     }, status=status.HTTP_429_TOO_MANY_REQUESTS)
             
-            user = authenticate(request, username=email, password=password)
+            user = authenticate(request, username=login_email, password=password)
             if user is not None:
                 # Success: reset login attempt counts
                 cache.delete(attempts_key)
@@ -413,61 +415,25 @@ class PasswordResetRequestView(APIView):
         email = request.data.get('email')
         if not email:
             return Response({'detail': 'Email field is required.'}, status=status.HTTP_400_BAD_REQUEST)
-        
-        from django.utils.http import urlsafe_base64_encode
-        from django.utils.encoding import force_bytes
-        from django.contrib.auth.tokens import default_token_generator
-        from django.template.loader import render_to_string
-        from django.core.mail import EmailMultiAlternatives
-        from django.conf import settings
+
         from .models import UserAuditLog
-        import logging
+        from .password_reset import send_password_reset_email
 
-        logger = logging.getLogger(__name__)
-
-        user = User.objects.filter(email__iexact=email.strip()).first()
-        reset_url = None
-
-        if user and user.is_active:
-            uid = urlsafe_base64_encode(force_bytes(user.pk))
-            token = default_token_generator.make_token(user)
-            frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173').rstrip('/')
-            reset_url = f"{frontend_url}/auth/reset-password/{uid}/{token}"
-
-            context = {
-                'user': user,
-                'reset_url': reset_url,
-            }
-            try:
-                html_content = render_to_string('authentication/password_reset_email.html', context)
-                text_content = render_to_string('authentication/password_reset_email.txt', context)
-            except Exception:
-                html_content = f"<p>Reset link: <a href='{reset_url}'>{reset_url}</a></p>"
-                text_content = f"Reset your password at: {reset_url}"
-
-            subject = "Reset Your Password - HSHEC NEP Portal"
-            from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@haryana.gov.in')
-            
-            try:
-                msg = EmailMultiAlternatives(
-                    subject=subject,
-                    body=text_content,
-                    from_email=from_email,
-                    to=[user.email]
-                )
-                msg.attach_alternative(html_content, "text/html")
-                msg.send()
-            except Exception as e:
-                logger.error("Failed to send password reset email to %s: %s", user.email, str(e))
-
+        user = User.objects.filter(email__iexact=str(email).strip()).first()
+        # Per-account cooldown so the endpoint cannot be used to flood an inbox.
+        cooldown_key = f"pwd_reset_cooldown_{user.pk}" if user else None
+        if user and user.is_active and user.has_usable_password() and not cache.get(cooldown_key):
+            delivered = send_password_reset_email(user)
+            cache.set(cooldown_key, True, 60)
+            # The caller always receives the same generic answer (no account enumeration); operators see the
+            # delivery outcome in the audit trail.
             UserAuditLog.objects.create(
                 actor=None,
                 target_user=user,
                 action='PASSWORD_RESET_REQUESTED',
-                details={'method': 'EMAIL_RECOVERY_LINK'}
+                details={'method': 'EMAIL_RECOVERY_LINK', 'delivery': 'SENT' if delivered else 'FAILED'}
             )
-        
-        # Always return generic success message to prevent user enumeration
+
         return Response({
             'message': 'If an account exists for that email address, a password reset link has been sent.'
         }, status=status.HTTP_200_OK)
@@ -501,19 +467,19 @@ class PasswordResetConfirmView(APIView):
         except (TypeError, ValueError, OverflowError):
             user = None
             
-        if user is not None and default_token_generator.check_token(user, token):
+        if user is not None and user.is_active and default_token_generator.check_token(user, token):
             try:
                 validate_password(password, user)
             except ValidationError as e:
                 return Response({'detail': e.messages[0]}, status=status.HTTP_400_BAD_REQUEST)
-                
+
             user.set_password(password)
             user.save()
-            
-            # Clear all existing tokens for this user so they have to login again
+
+            # End every existing session: outstanding access and refresh JWTs stop working.
             from rest_framework.authtoken.models import Token
             Token.objects.filter(user=user).delete()
-            RefreshToken.objects.filter(user=user).update(is_revoked=True)
+            user.revoke_sessions()
             
             UserAuditLog.objects.create(
                 actor=user,
@@ -648,151 +614,58 @@ class MeView(APIView):
 
 class SendOTPView(APIView):
     """
-    Endpoint to request a 6-digit OTP for applicant mobile number verification.
-    Includes 30-second rate-limiting cooldown and temporary debug OTP exposure in dev mode.
+    Sends a 6-digit OTP to a mobile number through the configured SMS provider.
+    The code is never returned in the response. If no provider is configured, or the provider refuses the
+    message, the endpoint reports failure (503) rather than claiming the SMS was sent.
     """
     permission_classes = [AllowAny]
 
     def post(self, request):
-        phone = (
-            request.data.get('phone_number') or
-            request.data.get('phoneNumber') or
-            request.data.get('phone')
-        )
+        from .otp_service import OTPError, send_otp
+        phone = request.data.get('phone_number') or request.data.get('phoneNumber') or request.data.get('phone')
         if not phone:
-            return Response(
-                {"success": False, "detail": "Mobile number is required."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
+            return Response({"success": False, "detail": "Mobile number is required."}, status=status.HTTP_400_BAD_REQUEST)
         norm_phone = normalize_phone_number(phone)
         if len(norm_phone) != 10 or not norm_phone.isdigit():
-            return Response(
-                {"success": False, "detail": "Please enter a valid 10-digit mobile number."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        # Rate limiting: 30-second cooldown
-        cooldown_key = f"otp_cooldown_{norm_phone}"
-        if cache.get(cooldown_key):
-            return Response(
-                {"success": False, "detail": "An OTP was recently sent to this number. Please wait before requesting another."},
-                status=status.HTTP_429_TOO_MANY_REQUESTS
-            )
-
-        # Generate 6-digit OTP
-        otp_code = f"{random.randint(100000, 999999):06d}"
-        expires_at = timezone.now() + datetime.timedelta(minutes=10)
-
-        # Persist in DB
-        OTPVerification.objects.create(
-            phone_number=norm_phone,
-            otp_code=otp_code,
-            expires_at=expires_at,
-            is_verified=False
-        )
-
-        # Cache for fast verification & rate limiting
-        cache.set(f"otp_{norm_phone}", otp_code, 600)  # 10 minutes
-        cache.set(cooldown_key, True, 30)  # 30 seconds
-
-        response_data = {
+            return Response({"success": False, "detail": "Please enter a valid 10-digit mobile number."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            send_otp(norm_phone)
+        except OTPError as exc:
+            return Response({"success": False, "detail": exc.message, "code": exc.code}, status=exc.status)
+        return Response({
             "success": True,
-            "message": f"OTP successfully sent to mobile number ending in {norm_phone[-4:]}.",
-            "cooldown_seconds": 30,
-            "expires_in_minutes": 10
-        }
-
-        # Provide dev_otp in testing, development or non-production mode
-        import sys
-        is_dev_or_test = (
-            getattr(settings, 'DEBUG', False)
-            or 'test' in sys.argv
-            or getattr(settings, 'IS_TESTING', False)
-            or getattr(settings, 'ENABLE_DEV_OTP', True)
-        )
-        if is_dev_or_test:
-            response_data["dev_otp"] = otp_code
-
-        return Response(response_data, status=status.HTTP_200_OK)
+            "message": f"OTP sent to mobile number ending in {norm_phone[-4:]}.",
+            "cooldown_seconds": settings.OTP_RESEND_COOLDOWN_SECONDS,
+            "expires_in_minutes": settings.OTP_TTL_MINUTES,
+        }, status=status.HTTP_200_OK)
 
 
 class VerifyOTPView(APIView):
     """
-    Endpoint to verify a user-entered 6-digit OTP code against the cached or DB token.
-    On success, stores an authorization token in cache allowing registration for 30 minutes.
+    Verifies an OTP. On success returns a single-use `verification_token` that registration must present
+    together with the same phone number.
     """
     permission_classes = [AllowAny]
 
     def post(self, request):
-        phone = (
-            request.data.get('phone_number') or
-            request.data.get('phoneNumber') or
-            request.data.get('phone')
-        )
-        otp = (
-            request.data.get('otp') or
-            request.data.get('otp_code') or
-            request.data.get('otpCode')
-        )
-
+        from .otp_service import OTPError, verify_otp
+        phone = request.data.get('phone_number') or request.data.get('phoneNumber') or request.data.get('phone')
+        otp = request.data.get('otp') or request.data.get('otp_code') or request.data.get('otpCode')
         if not phone:
-            return Response(
-                {"verified": False, "detail": "Mobile number is required."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({"verified": False, "detail": "Mobile number is required."}, status=status.HTTP_400_BAD_REQUEST)
         if not otp:
-            return Response(
-                {"verified": False, "detail": "OTP code is required."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
+            return Response({"verified": False, "detail": "OTP code is required."}, status=status.HTTP_400_BAD_REQUEST)
         norm_phone = normalize_phone_number(phone)
-        otp_str = str(otp).strip()
-
-        cached_otp = cache.get(f"otp_{norm_phone}")
-        db_otp_record = OTPVerification.objects.filter(
-            phone_number=norm_phone,
-            expires_at__gte=timezone.now(),
-            is_verified=False
-        ).order_by('-created_at').first()
-
-        import sys
-        is_dev_or_test = (
-            getattr(settings, 'DEBUG', False)
-            or 'test' in sys.argv
-            or getattr(settings, 'IS_TESTING', False)
-            or getattr(settings, 'ENABLE_DEV_OTP', True)
-        )
-
-        is_valid = False
-        if cached_otp and cached_otp == otp_str:
-            is_valid = True
-        elif db_otp_record and db_otp_record.otp_code == otp_str:
-            is_valid = True
-        elif is_dev_or_test and otp_str in ["123456", "999999"]:
-            is_valid = True
-
-        if not is_valid:
-            return Response(
-                {"verified": False, "detail": "Invalid or expired OTP code. Please enter the correct OTP."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        # Mark OTP as verified in database
-        if db_otp_record:
-            db_otp_record.is_verified = True
-            db_otp_record.save(update_fields=['is_verified'])
-
-        # Store verification flag in cache for 30 minutes
-        cache.set(f"phone_verified_{norm_phone}", True, 1800)
-        cache.delete(f"otp_{norm_phone}")
-
+        try:
+            token = verify_otp(norm_phone, otp)
+        except OTPError as exc:
+            return Response({"verified": False, "detail": exc.message, "code": exc.code}, status=exc.status)
         return Response({
             "verified": True,
             "success": True,
             "message": "Mobile number verified successfully.",
-            "phone_number": norm_phone
+            "phone_number": norm_phone,
+            "verification_token": token,
+            "expires_in_minutes": settings.PHONE_VERIFICATION_TTL_MINUTES,
         }, status=status.HTTP_200_OK)
-
-

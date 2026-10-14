@@ -922,12 +922,9 @@ class EvidenceCoverageEvaluator:
 
         role = getattr(requesting_user, 'role', '')
 
-        # Superuser, staff and DHE admins have full oversight
-        if (
-            role in ('admin', 'state_admin', 'superuser')
-            or getattr(requesting_user, 'is_superuser', False)
-            or getattr(requesting_user, 'is_staff', False)
-        ):
+        # Oversight administrators have read-only visibility of every institution's coverage
+        from apps.evidence import access_policy as policy
+        if policy.is_oversight(requesting_user):
             return
 
         # Institutional users: restrict to their own institution

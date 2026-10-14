@@ -168,7 +168,6 @@ class CentralizedUserManagementAPITests(TestCase):
             "email": "new.subadmin@dhe.haryana.gov.in",
             "full_name": "New Sub Administrator",
             "role": "sub_admin",
-            "password": "SecurePassword123!",
         }
         res = self.client.post("/api/v1/admin/users/", payload, format="json")
         self.assertEqual(res.status_code, status.HTTP_201_CREATED)
@@ -186,7 +185,6 @@ class CentralizedUserManagementAPITests(TestCase):
                 "email": f"officer.{role}@haryana.gov.in",
                 "full_name": f"Officer {role}",
                 "role": role,
-                "password": "Password123!",
             }
             res = self.client.post("/api/v1/admin/users/", payload, format="json")
             self.assertEqual(res.status_code, status.HTTP_201_CREATED)
@@ -198,7 +196,6 @@ class CentralizedUserManagementAPITests(TestCase):
             "email": "rogue.chair@haryana.gov.in",
             "full_name": "Rogue Chair",
             "role": "committee_chair",
-            "password": "Password123!",
         }
         res = self.client.post("/api/v1/admin/users/", payload, format="json")
         self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
@@ -422,15 +419,17 @@ class FourAdminProfilesProvisioningTests(TestCase):
                 "email": email,
                 "full_name": name,
                 "role": role,
-                "password": "InitialSecurePassword123!",
-                "committee_framework": "COLLEGE_2026" if "committee" in role else "",
+                    "committee_framework": "COLLEGE_2026" if "committee" in role else "",
             }
             res = self.client.post("/api/v1/admin/users/", payload, format="json")
             self.assertEqual(res.status_code, status.HTTP_201_CREATED, f"Failed for {role}: {res.data}")
             self.assertEqual(res.data["role"], role)
             self.assertEqual(res.data["email"], email)
-            # Credential status is confirmed secure and no password leaked
-            self.assertEqual(res.data.get("credential_status"), "PROVISIONED_SECURELY")
+            # Activation link is e-mailed (never returned) and no password is set or leaked
+            self.assertEqual(res.data.get("credential_status"), "INVITATION_SENT")
+            self.assertTrue(res.data.get("invitation_email_sent"))
+            self.assertNotIn("activation_token", res.data)
+            self.assertNotIn("activation_url", res.data)
             self.assertNotIn("temporary_password", res.data)
             self.assertNotIn("password", res.data)
 
@@ -449,7 +448,6 @@ class FourAdminProfilesProvisioningTests(TestCase):
             "email": "state.admin.p1@hshec.gov.in",  # already exists
             "full_name": "Duplicate State Admin",
             "role": "state_admin",
-            "password": "Password123!",
         }
         res = self.client.post("/api/v1/admin/users/", payload, format="json")
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
@@ -501,26 +499,32 @@ class SecurePasswordResetEndpointTests(TestCase):
         )
 
     def test_head_admin_can_securely_reset_password(self):
+        """The Head Admin sends a single-use reset link; the password is never set by, or shown to, the admin."""
+        from django.core import mail
         self.client.force_authenticate(user=self.head_admin)
-        res = self.client.post(
-            f"/api/v1/admin/users/{self.target_user.id}/reset-password/",
-            {"password": "NewSecurePassword456!"},
-            format="json",
-        )
-        self.assertEqual(res.status_code, status.HTTP_200_OK)
-        self.assertEqual(res.data["credential_status"], "PROVISIONED_SECURELY")
-        # Ensure password not echoed back
+        res = self.client.post(f"/api/v1/admin/users/{self.target_user.id}/reset-password/", {}, format="json")
+        self.assertEqual(res.status_code, status.HTTP_200_OK, res.data)
+        self.assertTrue(res.data["email_sent"])
         self.assertNotIn("password", res.data)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn("/auth/reset-password/", mail.outbox[0].body)
 
-        # Verify password actually changed
+        # The existing password is untouched until the user follows the link.
         self.target_user.refresh_from_db()
-        self.assertTrue(self.target_user.check_password("NewSecurePassword456!"))
+        self.assertTrue(self.target_user.check_password("OldTargetPassword123!"))
 
-        # Verify audit log
-        audit = UserAuditLog.objects.filter(target_user=self.target_user, action="PASSWORD_RESET").first()
+        audit = UserAuditLog.objects.filter(target_user=self.target_user, action="PASSWORD_RESET_LINK_SENT").first()
         self.assertIsNotNone(audit)
         self.assertEqual(audit.actor, self.head_admin)
-        self.assertNotIn("password", str(audit.details))
+        self.assertNotIn("password", str(audit.details).replace("PASSWORD_RESET_LINK", ""))
+
+    def test_admin_cannot_choose_a_password(self):
+        self.client.force_authenticate(user=self.head_admin)
+        res = self.client.post(f"/api/v1/admin/users/{self.target_user.id}/reset-password/",
+                               {"password": "NewSecurePassword456!"}, format="json")
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.target_user.refresh_from_db()
+        self.assertFalse(self.target_user.check_password("NewSecurePassword456!"))
 
     def test_non_head_admin_cannot_reset_password(self):
         self.client.force_authenticate(user=self.council_admin)

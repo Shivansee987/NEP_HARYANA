@@ -251,9 +251,10 @@ class AdminStateInstitutionsView(APIView):
     """
     GET /api/v1/admin/institutions/
     State Admin overview: every University and College with its latest assessment stage, score and reviewer,
-    state totals, committee workload and recent audit activity. Read-only.
+    state totals, committee workload and recent audit activity. Read-only, so the Council Admin Overseer
+    may view it as well.
     """
-    permission_classes = [IsAuthenticatedUser, IsAdminOnly]
+    permission_classes = [IsAuthenticatedUser, IsAnyAdminUserManagement]
 
     def get(self, request):
         return Response(StateOverviewService.build(), status=status.HTTP_200_OK)
@@ -275,6 +276,7 @@ class AdminUserListCreateView(APIView):
             "institution_type": request.query_params.get("institution_type") or request.query_params.get("type"),
             "institution_id": request.query_params.get("institution_id") or request.query_params.get("aishe_code"),
             "ordering": request.query_params.get("ordering", "-id"),
+            "institution_status": request.query_params.get("institution_status"),
         }
         filters = {k: v for k, v in filters.items() if v is not None}
         page = int(request.query_params.get("page", 1))
@@ -311,13 +313,10 @@ class AdminUserListCreateView(APIView):
                 ip_address=ip,
             )
             response_data = AdminUserDetailSerializer(new_user).data
-            response_data["credential_status"] = "PROVISIONED_SECURELY"
-            raw_token = getattr(new_user, "_raw_activation_token", None)
-            if raw_token:
-                from django.conf import settings
-                frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173').rstrip('/')
-                response_data["activation_token"] = raw_token
-                response_data["activation_url"] = f"{frontend_url}/auth/activate/{raw_token}"
+            # The activation link is only ever delivered by e-mail; report whether that actually happened.
+            email_sent = bool(getattr(new_user, "_invitation_email_sent", False))
+            response_data["invitation_email_sent"] = email_sent
+            response_data["credential_status"] = "INVITATION_SENT" if email_sent else "INVITATION_PENDING_DISPATCH"
             return Response(response_data, status=status.HTTP_201_CREATED)
         except AdminPermissionDenied as e:
             return Response({"error": getattr(e, "code", "PERMISSION_DENIED"), "detail": str(e)}, status=status.HTTP_403_FORBIDDEN)
@@ -393,7 +392,8 @@ class AdminUserDetailView(APIView):
             return Response({"error": getattr(e, "code", "PERMISSION_DENIED"), "detail": str(e)}, status=status.HTTP_403_FORBIDDEN)
         except AdminValidationError as e:
             code = getattr(e, "code", "VALIDATION_ERROR")
-            http_status = status.HTTP_404_NOT_FOUND if code == "USER_NOT_FOUND" else status.HTTP_400_BAD_REQUEST
+            http_status = {"USER_NOT_FOUND": status.HTTP_404_NOT_FOUND,
+                           "USER_HAS_PROTECTED_RECORDS": status.HTTP_409_CONFLICT}.get(code, status.HTTP_400_BAD_REQUEST)
             return Response({"error": code, "detail": str(e)}, status=http_status)
 
 
@@ -468,41 +468,40 @@ class AdminGlobalUserAuditLogsView(APIView):
 class AdminUserResetPasswordView(APIView):
     """
     POST /api/v1/admin/users/<int:user_id>/reset-password/
-    Securely reset password for a user. Restricted strictly to Head Admin.
-    Does NOT leak password in response or logs.
+    Head Admin only. E-mails the user a single-use, expiring password-reset link; the administrator never
+    sets or sees the password. The response states whether the e-mail was actually accepted for delivery.
     """
     permission_classes = [IsAuthenticatedUser, IsHeadAdminOnly]
 
     def post(self, request, user_id):
-        new_password = request.data.get("password") or request.data.get("new_password")
-        if new_password and len(new_password) < 8:
-            return Response(
-                {"error": "VALIDATION_ERROR", "detail": "Password must be at least 8 characters long."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
         ip = request.META.get("HTTP_X_FORWARDED_FOR") or request.META.get("REMOTE_ADDR")
         if ip and "," in ip:
             ip = ip.split(",")[0].strip()
 
         try:
-            AdminUserManagementService.reset_password(
+            _, email_sent = AdminUserManagementService.reset_password(
                 actor=request.user,
                 user_id=user_id,
-                new_password=new_password,
+                new_password=request.data.get("password") or request.data.get("new_password"),
                 ip_address=ip,
             )
-            return Response({
-                "message": "User password reset successfully.",
-                "user_id": user_id,
-                "credential_status": "PROVISIONED_SECURELY",
-            }, status=status.HTTP_200_OK)
         except AdminPermissionDenied as e:
             return Response({"error": getattr(e, "code", "PERMISSION_DENIED"), "detail": str(e)}, status=status.HTTP_403_FORBIDDEN)
         except AdminValidationError as e:
             code = getattr(e, "code", "VALIDATION_ERROR")
             http_status = status.HTTP_404_NOT_FOUND if code == "USER_NOT_FOUND" else status.HTTP_400_BAD_REQUEST
             return Response({"error": code, "detail": str(e)}, status=http_status)
+        if not email_sent:
+            return Response({
+                "error": "EMAIL_DELIVERY_FAILED",
+                "detail": "The password reset e-mail could not be sent. Check the e-mail configuration and try again.",
+                "email_sent": False,
+            }, status=status.HTTP_502_BAD_GATEWAY)
+        return Response({
+            "message": "A password reset link has been e-mailed to the user.",
+            "user_id": user_id,
+            "email_sent": True,
+        }, status=status.HTTP_200_OK)
 
 
 class AdminUserCommitteeView(APIView):
@@ -559,29 +558,64 @@ class AdminUserCommitteeView(APIView):
 class AdminUserResendInvitationView(APIView):
     """
     POST /api/v1/admin/users/<int:user_id>/resend-invitation/
-    Resends activation invitation with a freshly generated single-use token.
+    Head Admin only. Re-sends the activation invitation for an account that has never been activated. The
+    token is delivered by e-mail only and is never included in the response.
     """
-    permission_classes = [IsAuthenticatedUser, IsAdminOnly]
+    permission_classes = [IsAuthenticatedUser, IsHeadAdminOnly]
 
     def post(self, request, user_id):
-        from apps.authentication.models import User
-        from apps.authentication.activation_service import AccountActivationService
+        from apps.authentication.models import User, UserAuditLog
+        from apps.authentication.activation_service import AccountActivationService, InvitationNotAllowedError
         try:
             target_user = User.objects.get(pk=user_id)
         except User.DoesNotExist:
             return Response({"error": "USER_NOT_FOUND", "detail": f"User with ID {user_id} does not exist."}, status=status.HTTP_404_NOT_FOUND)
 
-        raw_token, token_obj = AccountActivationService.create_invitation(target_user, created_by=request.user)
-        email_sent = AccountActivationService.send_invitation_email(target_user, raw_token)
-        from django.conf import settings
-        frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173').rstrip('/')
+        try:
+            email_sent = AccountActivationService.resend_invitation(target_user, actor=request.user)
+        except InvitationNotAllowedError as e:
+            return Response({"error": "ALREADY_ACTIVATED", "detail": str(e)}, status=status.HTTP_409_CONFLICT)
+        if not email_sent:
+            UserAuditLog.objects.create(actor=request.user, target_user=target_user, action="NOTIFICATION_FAILED",
+                                        details={"notification": "ACTIVATION_INVITATION"})
+            return Response({
+                "error": "EMAIL_DELIVERY_FAILED",
+                "detail": "The invitation e-mail could not be sent. Check the e-mail configuration and try again.",
+                "email_sent": False,
+                "credential_status": "INVITATION_PENDING_DISPATCH",
+            }, status=status.HTTP_502_BAD_GATEWAY)
         return Response({
-            "message": "Activation invitation resent successfully.",
-            "email_sent": email_sent,
-            "activation_token": raw_token,
-            "activation_url": f"{frontend_url}/auth/activate/{raw_token}",
-            "credential_status": "INVITATION_SENT" if email_sent else "INVITATION_PENDING_DISPATCH",
+            "message": "Activation invitation e-mailed to the user.",
+            "email_sent": True,
+            "credential_status": "INVITATION_SENT",
         }, status=status.HTTP_200_OK)
+
+
+class AdminUserInstitutionDecisionView(APIView):
+    """
+    POST /api/v1/admin/users/<int:user_id>/institution-access/  {"decision": "approve"|"reject", "reason": "..."}
+    Approves or rejects a self-registered applicant's request to act for an institution. Until approved the
+    account has no institution binding and therefore no access to any assessment.
+    Head Admin, State Admin, Sub-Admin and legacy Admin; the Council Admin Overseer is read-only.
+    """
+    permission_classes = [IsAuthenticatedUser, IsAdminOnly]
+
+    def post(self, request, user_id):
+        decision = str(request.data.get("decision", "")).lower()
+        if decision not in ("approve", "reject"):
+            return Response({"error": "VALIDATION_ERROR", "detail": "decision must be 'approve' or 'reject'."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            user = AdminUserManagementService.decide_institution_access(
+                actor=request.user, user_id=user_id, approve=decision == "approve",
+                reason=request.data.get("reason", ""), ip_address=request.META.get("REMOTE_ADDR"))
+        except AdminPermissionDenied as e:
+            return Response({"error": getattr(e, "code", "PERMISSION_DENIED"), "detail": str(e)}, status=status.HTTP_403_FORBIDDEN)
+        except AdminValidationError as e:
+            code = getattr(e, "code", "VALIDATION_ERROR")
+            http_status = status.HTTP_404_NOT_FOUND if code == "USER_NOT_FOUND" else status.HTTP_400_BAD_REQUEST
+            return Response({"error": code, "detail": str(e)}, status=http_status)
+        return Response(AdminUserDetailSerializer(user).data, status=status.HTTP_200_OK)
 
 
 class AdminUserRevokeInvitationView(APIView):
