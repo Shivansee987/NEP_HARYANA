@@ -7,7 +7,10 @@
 
 The browser session recording below captures the live platform in action across all modules, demonstrating the end-to-end journey from the public portal and unified applicant onboarding, through the newly updated institutional rubric workspace, to the screening committee console and head administrative centre:
 
-![NEP Excellence Awards 2026 Live Platform Walkthrough Video](C:/Users/Devansh%20Datta/.gemini/antigravity-ide/brain/c58d9a83-e44f-4724-96ca-90f5559f3623/nep_walkthrough_video_1791951321109.webp)
+![NEP Excellence Awards 2026 Live Platform Walkthrough Video](videos/nep_2026_entire_workflow.webp)
+
+> 🎬 **Broadcast-Quality Full Video**: [Watch / Download nep_2026_entire_workflow.mp4](file:///c:/Users/Devansh%20Datta/Desktop/PROECTS/haryana/videos/nep_2026_entire_workflow.mp4) (1080p, 69s, 34.8 MB)  
+> 🌐 **Interactive Player & Chapters**: [Open videos/video_player.html](file:///c:/Users/Devansh%20Datta/Desktop/PROECTS/haryana/videos/video_player.html)
 
 *Recording captures: Public Landing Page → Leadership & Framework Overview → Unified Applicant Registration (College & University switching) → Principal Authentication → College Assessment Workspace (Parameter C1 with corrected rubric tiers, C4 composite structure, C10 count criteria, C12 checklist badges, C16 policy notice) → Head Admin Control Centre (Statewide metrics, 1,154 institutions, user governance) → Screening Committee Review Console (Dual-pane evaluation, evidence inspection).*
 
