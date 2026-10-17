@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   verifyEmailToken,
@@ -29,13 +29,16 @@ export default function EmailVerification() {
   const token = params.token || searchParams.get("token") || "";
   const initialEmail = searchParams.get("email") || "";
 
-  // States: "verifying" | "verified_pending_approval" | "expired" | "invalid" | "sent"
+  // States: "verifying" | "verified_pending_approval" | "already_verified" | "expired" | "invalid" | "sent"
   const [viewState, setViewState] = useState(token ? "verifying" : "sent");
   const [maskedEmail, setMaskedEmail] = useState("");
   const [resendEmail, setResendEmail] = useState(initialEmail);
   const [resendCooldown, setResendCooldown] = useState(0);
   const [resendLoading, setResendLoading] = useState(false);
   const [feedback, setFeedback] = useState(null); // { type: 'success' | 'error', message: string }
+
+  // Prevent duplicate execution during React Strict Mode mounts or fast re-renders
+  const verificationStartedRef = useRef(false);
 
   // Cooldown countdown timer
   useEffect(() => {
@@ -53,33 +56,67 @@ export default function EmailVerification() {
     try {
       // 1. Inspect token status
       const inspectRes = await verifyEmailToken(rawToken);
-      if (inspectRes.email) {
+      if (inspectRes?.email) {
         setMaskedEmail(inspectRes.email);
+      }
+
+      // If token inspection already confirms the account is verified
+      if (inspectRes?.already_verified || inspectRes?.account_already_verified) {
+        setViewState("already_verified");
+        setFeedback({
+          type: "success",
+          message: "Your email address has already been verified.",
+        });
+        return;
       }
 
       // 2. Confirm verification
       const confirmRes = await confirmEmailVerification(rawToken);
-      setViewState("verified_pending_approval");
-      setFeedback({
-        type: "success",
-        message: confirmRes.message || "Email address successfully verified.",
-      });
+      if (confirmRes?.already_verified) {
+        setViewState("already_verified");
+        setFeedback({
+          type: "success",
+          message: confirmRes.message || "Your email address has already been verified.",
+        });
+      } else {
+        setViewState("verified_pending_approval");
+        setFeedback({
+          type: "success",
+          message: confirmRes.message || "Email address successfully verified.",
+        });
+      }
     } catch (err) {
       console.error("Email verification error:", err);
-      const code = err.code || "";
-      const msg = err.message || "Email verification failed.";
+      const code = err.code || err.reason || err.data?.code || err.data?.reason || "";
+      const msg = err.message || err.data?.detail || "Email verification failed.";
+      const isAlreadyVerified = Boolean(
+        err.account_already_verified ||
+        err.already_verified ||
+        err.data?.account_already_verified ||
+        err.data?.already_verified
+      );
 
-      if (code === "EXPIRED_TOKEN" || msg.toLowerCase().includes("expired")) {
+      if (err.email || err.data?.email) {
+        setMaskedEmail(err.email || err.data?.email);
+      }
+
+      if (isAlreadyVerified) {
+        setViewState("already_verified");
+        setFeedback({
+          type: "success",
+          message: "Your email address has already been verified.",
+        });
+      } else if (code === "EXPIRED_TOKEN" || msg.toLowerCase().includes("expired")) {
         setViewState("expired");
         setFeedback({
           type: "error",
           message: "This email verification link has expired. Links are valid for 24 hours.",
         });
-      } else if (code === "ALREADY_USED" || msg.toLowerCase().includes("already been used")) {
+      } else if (code === "REVOKED_TOKEN" || msg.toLowerCase().includes("superseded")) {
         setViewState("invalid");
         setFeedback({
           type: "error",
-          message: "This verification link has already been used. If your account is verified, you can sign in.",
+          message: "This verification link has been superseded by a newer link. Please check your inbox.",
         });
       } else {
         setViewState("invalid");
@@ -92,9 +129,9 @@ export default function EmailVerification() {
   }, []);
 
   useEffect(() => {
-    if (token) {
-      executeVerification(token);
-    }
+    if (!token || verificationStartedRef.current) return;
+    verificationStartedRef.current = true;
+    executeVerification(token);
   }, [token, executeVerification]);
 
   const handleResend = async (e) => {
@@ -204,6 +241,41 @@ export default function EmailVerification() {
               </div>
               <p className="text-amber-800 leading-relaxed">
                 In compliance with State Higher Education governance rules, public registrations are created with institutional access in a <strong>PENDING</strong> state. An authorized Higher Education Department administrator must approve your institution claim before assessment editing permissions are unlocked.
+              </p>
+            </div>
+
+            <div className="pt-2">
+              <Link
+                to="/auth/login"
+                className="w-full inline-flex items-center justify-center gap-2 bg-[#600b0b] hover:bg-[#780d0d] text-white font-bold text-xs py-3 px-4 rounded-xl shadow-xs transition-colors"
+              >
+                <LogIn className="w-4 h-4" />
+                <span>Proceed to Sign In</span>
+              </Link>
+            </div>
+          </div>
+        )}
+
+        {/* STATE: ALREADY VERIFIED */}
+        {viewState === "already_verified" && (
+          <div className="space-y-5">
+            <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl flex items-start gap-3">
+              <CheckCircle2 className="w-6 h-6 text-emerald-600 shrink-0 mt-0.5" />
+              <div className="space-y-1 text-xs">
+                <h2 className="font-bold text-emerald-950 text-sm">Email Already Verified</h2>
+                <p className="text-emerald-800 leading-relaxed">
+                  Your registered email address {maskedEmail ? `(${maskedEmail}) ` : ""}has already been verified. You can sign in to the portal with your credentials.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl space-y-2 text-xs text-amber-900">
+              <div className="flex items-center gap-2 font-bold text-amber-950">
+                <Building2 className="w-4 h-4 text-amber-700" />
+                <span>Institutional Review Status</span>
+              </div>
+              <p className="text-amber-800 leading-relaxed">
+                Your institution claim remains under review by Higher Education Department administrators. Once your claim is approved, assessment workspace permissions will be fully unlocked.
               </p>
             </div>
 

@@ -102,7 +102,10 @@ export async function request(path, options = {}) {
       Object.values(data || {})?.flat?.()?.[0] ||
       fallbackMessage;
     const err = new Error(firstMessage);
-    err.code = data?.code;
+    err.code = data?.code || data?.reason;
+    err.reason = data?.reason || data?.code;
+    err.account_already_verified = Boolean(data?.account_already_verified || data?.already_verified);
+    err.already_verified = Boolean(data?.already_verified || data?.account_already_verified);
     err.email = data?.email;
     err.status = response.status;
     err.data = data;

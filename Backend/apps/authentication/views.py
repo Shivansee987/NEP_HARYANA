@@ -825,6 +825,22 @@ class EmailVerificationVerifyView(APIView):
         from .email_verification_service import EmailVerificationService
         is_valid, user_or_none, reason = EmailVerificationService.verify_token(token)
         if not is_valid:
+            if reason == 'ALREADY_USED' and user_or_none:
+                user = getattr(user_or_none, 'user', None)
+                if user and getattr(user, 'is_email_verified', False):
+                    masked = EmailVerificationService.mask_email(user.email)
+                    return Response({
+                        'valid': False,
+                        'reason': 'ALREADY_VERIFIED',
+                        'code': 'ALREADY_VERIFIED',
+                        'already_verified': True,
+                        'account_already_verified': True,
+                        'email': masked,
+                        'full_name': user.full_name,
+                        'institution_status': user.institution_status,
+                        'detail': 'Your email address has already been verified. You can sign in.'
+                    }, status=status.HTTP_200_OK)
+
             status_map = {
                 'EXPIRED_TOKEN': (status.HTTP_410_GONE, 'This verification link has expired. Please request a new one.'),
                 'ALREADY_USED': (status.HTTP_410_GONE, 'This verification link has already been used.'),
@@ -832,7 +848,7 @@ class EmailVerificationVerifyView(APIView):
                 'INVALID_TOKEN': (status.HTTP_400_BAD_REQUEST, 'Invalid verification link.'),
             }
             http_status, message = status_map.get(reason, (status.HTTP_400_BAD_REQUEST, 'Invalid verification link.'))
-            return Response({'valid': False, 'reason': reason, 'detail': message}, status=http_status)
+            return Response({'valid': False, 'reason': reason, 'code': reason, 'detail': message}, status=http_status)
 
         user = user_or_none.user
         email = user.email
@@ -840,6 +856,7 @@ class EmailVerificationVerifyView(APIView):
         return Response({
             'valid': True,
             'reason': 'VALID',
+            'code': 'VALID',
             'email': masked,
             'full_name': user.full_name,
             'institution_status': user.institution_status,
@@ -875,11 +892,16 @@ class EmailVerificationConfirmView(APIView):
             if isinstance(exc, DRFValidationError):
                 code = 'VERIFICATION_FAILED'
                 detail = str(exc.detail)
+                resp_payload = {}
                 if isinstance(exc.detail, dict):
                     code = str(exc.detail.get('code') or exc.detail.get('reason') or 'VERIFICATION_FAILED')
                     detail = str(exc.detail.get('detail') or detail)
+                    for k in ('account_already_verified', 'already_verified', 'email'):
+                        if k in exc.detail:
+                            resp_payload[k] = exc.detail[k]
                 http_status = status.HTTP_410_GONE if code in ('EXPIRED_TOKEN', 'ALREADY_USED', 'REVOKED_TOKEN') else status.HTTP_400_BAD_REQUEST
-                return Response({'detail': detail, 'code': code}, status=http_status)
+                resp_payload.update({'detail': detail, 'code': code, 'reason': code})
+                return Response(resp_payload, status=http_status)
             return Response({'detail': str(exc), 'code': 'VERIFICATION_FAILED'}, status=status.HTTP_400_BAD_REQUEST)
 
 

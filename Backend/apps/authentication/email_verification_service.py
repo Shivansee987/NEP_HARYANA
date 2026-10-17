@@ -224,25 +224,37 @@ class EmailVerificationService:
         if not is_valid:
             error_map = {
                 "EXPIRED_TOKEN": "This verification link has expired. Please request a new verification link.",
-                "ALREADY_USED": "This verification link has already been used. Please sign in.",
+                "ALREADY_USED": "This verification link has already been used.",
                 "REVOKED_TOKEN": "This verification link has been superseded by a newer link. Please check your inbox.",
                 "INVALID_TOKEN": "The verification link is invalid or malformed.",
             }
-            raise DRFValidationError({
+            err_dict = {
                 "detail": error_map.get(reason, "Invalid or expired verification link."),
                 "code": reason,
                 "reason": reason,
-            })
+            }
+            if reason == "ALREADY_USED" and token_obj:
+                user = getattr(token_obj, 'user', None)
+                if user and getattr(user, 'is_email_verified', False):
+                    err_dict["account_already_verified"] = True
+                    err_dict["already_verified"] = True
+                    err_dict["email"] = cls.mask_email(user.email)
+            raise DRFValidationError(err_dict)
 
         with transaction.atomic():
             # Lock the token row to prevent race conditions / double consumption
             token = EmailVerificationToken.objects.select_for_update().get(pk=token_obj.pk)
             if token.is_used:
-                raise DRFValidationError({
-                    "detail": "This verification link has already been used. Please sign in.",
+                err_dict = {
+                    "detail": "This verification link has already been used.",
                     "code": "ALREADY_USED",
                     "reason": "ALREADY_USED",
-                })
+                }
+                if getattr(token.user, 'is_email_verified', False):
+                    err_dict["account_already_verified"] = True
+                    err_dict["already_verified"] = True
+                    err_dict["email"] = cls.mask_email(token.user.email)
+                raise DRFValidationError(err_dict)
             token.is_used = True
             token.used_at = timezone.now()
             token.save(update_fields=['is_used', 'used_at'])

@@ -154,6 +154,31 @@ class EmailVerificationTests(TestCase):
         res2 = self.client.post(reverse("email-verify-confirm"), {"token": raw_token}, format="json")
         self.assertEqual(res2.status_code, status.HTTP_410_GONE)
         self.assertEqual(res2.data.get("code"), "ALREADY_USED")
+        self.assertTrue(res2.data.get("account_already_verified"))
+
+    def test_already_verified_token_preflight_returns_already_verified(self):
+        """Opening a link for an already-verified user returns 200 with already_verified metadata."""
+        user = User.objects.create_user(
+            email="already.verified@college.edu.in",
+            full_name="Dr. Verified",
+            role="principal",
+            password="SecurePassword123!",
+            is_email_verified=False,
+        )
+        raw_token, token_obj = EmailVerificationService.create_verification_token(user)
+        # Consume token
+        EmailVerificationService.confirm_email_verification(raw_token)
+
+        # User is verified
+        user.refresh_from_db()
+        self.assertTrue(user.is_email_verified)
+
+        # Opening the link in browser executes GET /api/auth/verify-email/?token=...
+        res = self.client.get(reverse("email-verify") + f"?token={raw_token}")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertTrue(res.data.get("already_verified"))
+        self.assertEqual(res.data.get("code"), "ALREADY_VERIFIED")
+        self.assertIn("a***d@college.edu.in", res.data.get("email"))
 
     def test_expired_token_rejected(self):
         """An expired verification token is rejected."""
