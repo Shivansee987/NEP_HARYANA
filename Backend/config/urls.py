@@ -21,7 +21,6 @@ from django.conf import settings
 from django.conf.urls.static import static
 
 urlpatterns = [
-    path('admin/', admin.site.urls),
     path('api/', include('apps.college.urls')),
     path('api/v1/college/', include('apps.college.api.urls')),
     path('api/', include('apps.authentication.urls')),
@@ -33,6 +32,11 @@ urlpatterns = [
     path('api/v1/admin/', include('apps.admin_panel.api_urls')),
     path('api/v1/reports/', include('apps.reports.urls')),
 ]
+
+# The Django admin is a development inspection tool only. Production never mounts it, so it cannot be used to
+# bypass the committee workflow or the API's login lockout (FIN-01).
+if getattr(settings, 'ENABLE_DJANGO_ADMIN', False):
+    urlpatterns.insert(0, path('admin/', admin.site.urls))
 
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

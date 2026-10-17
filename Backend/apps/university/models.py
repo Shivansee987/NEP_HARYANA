@@ -21,14 +21,30 @@ class University(models.Model):
     )
     aishe_code = models.CharField(
         max_length=50,
-        unique=True,
+        blank=True,
+        default="",
         db_index=True,
         help_text=_("Official AISHE code (e.g., U-0123) or University Registration Code.")
+    )
+    institute_code = models.CharField(
+        max_length=50,
+        unique=True,
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text=_("Official DHE Institute Code.")
     )
     university_type = models.CharField(
         max_length=100,
         default="State Public University",
         help_text=_("Classification: State Public University, Deemed, Private, etc.")
+    )
+    district = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+        db_index=True,
+        help_text=_("District location in Haryana.")
     )
     state = models.CharField(
         max_length=100,
@@ -50,6 +66,11 @@ class University(models.Model):
         blank=True,
         default="",
         help_text=_("Primary contact phone number.")
+    )
+    source_reference = models.CharField(
+        max_length=100,
+        default="DHE_SCHOLARSHIP_REGISTRY_2026",
+        help_text=_("Import source reference.")
     )
     is_active = models.BooleanField(
         default=True,
@@ -79,9 +100,10 @@ class UniversityAssessment(models.Model):
         db_index=True,
         help_text=_("Unique assessment identifier (e.g. ASSESS-2026-UNI-001).")
     )
+    # PROTECT: deleting a University must never silently erase its assessments and their audit trail.
     university = models.ForeignKey(
         University,
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT,
         related_name="assessments",
         help_text=_("University institution under assessment.")
     )
@@ -147,6 +169,9 @@ class UniversityAssessment(models.Model):
         verbose_name = _("University Assessment")
         verbose_name_plural = _("University Assessments")
         ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["university", "academic_year"], name="unique_university_assessment_per_year"),
+        ]
 
     def __str__(self):
         return f"UniversityAssessment({self.assessment_id} - {self.university.name})"

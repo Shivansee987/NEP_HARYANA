@@ -1,12 +1,12 @@
 """
-NEP Excellence Awards 2026 - College API Permissions (Phase 7B)
-Enforces strict institutional isolation, framework barriers, and segregation of duties.
+NEP Excellence Awards 2026 - College API Permissions.
+Institution isolation, framework barriers and segregation of duties; the role rules themselves live in
+apps.evidence.access_policy (oversight is read-only, reviewers need review scope, chair-only certification).
 """
 from rest_framework.exceptions import NotAuthenticated, PermissionDenied
 from rest_framework.permissions import BasePermission, IsAuthenticated
 
-from apps.evidence.models import ReviewerAuthorization
-from apps.scoring.enums import FrameworkType
+from apps.evidence import access_policy as policy
 
 
 class CollegePermissionDenied(PermissionDenied):
@@ -23,318 +23,177 @@ class AssessmentPermissionDenied(PermissionDenied):
         self.code = code
 
 
+def _require_auth(request):
+    user = request.user
+    if not (user and user.is_authenticated):
+        raise NotAuthenticated()
+    return user
+
+
+def _university_only(user):
+    return getattr(user, 'university', None) and not getattr(user, 'college', None)
+
+
 class IsAuthenticatedUser(IsAuthenticated):
     """Requires request.user to be authenticated. Emits 401 when missing."""
     def has_permission(self, request, view):
-        if not (request.user and request.user.is_authenticated):
-            raise NotAuthenticated()
+        _require_auth(request)
         return True
 
 
 class IsCollegeAdminOrOwner(BasePermission):
     """
-    Controls access to College institution records:
-    - Superusers and State Administrators have platform-wide access.
-    - College users can access their own assigned College.
-    - University-only users (with university and no college) are strictly forbidden.
-    - Reviewers with college framework authorization can read records, but not create.
+    College institution records:
+    - Oversight administrators read every College; only Head/State/legacy Admin may register a new College.
+    - Committee reviewers may read College records.
+    - College users read only their own College. University-only and unbound users are refused.
     """
+    REGISTRY_WRITERS = ('head_admin', 'state_admin', 'admin')
+
     def has_permission(self, request, view):
-        user = request.user
-        if not (user and user.is_authenticated):
-            raise NotAuthenticated()
-
-        # Admin / Superuser
-        if getattr(user, 'is_superuser', False) or getattr(user, 'role', '') in ('admin', 'state_admin'):
-            return True
-
-        # University-only user attempting to access College endpoints
-        if getattr(user, 'university', None) and not getattr(user, 'college', None):
-            raise CollegePermissionDenied(
-                "University users are not authorized to access College resources.",
-                code="COLLEGE_NOT_AUTHORIZED"
-            )
-
-        # Committee reviewer: read-only access allowed
-        if getattr(user, 'role', '') in ('committee', 'committee_chair'):
-            if request.method in ('GET', 'HEAD', 'OPTIONS'):
+        user = _require_auth(request)
+        if policy.is_oversight(user):
+            if request.method in policy.SAFE_METHODS or getattr(user, 'is_superuser', False) or policy.role_of(user) in self.REGISTRY_WRITERS:
                 return True
-            raise CollegePermissionDenied(
-                "Reviewers are not authorized to create or modify College records.",
-                code="COLLEGE_NOT_AUTHORIZED"
-            )
-
-        # College user
-        user_col = getattr(user, 'college', None)
-        if user_col:
+            raise CollegePermissionDenied("Administrators other than the Head/State Admin have read-only access.")
+        if _university_only(user):
+            raise CollegePermissionDenied("University users are not authorized to access College resources.")
+        if policy.is_reviewer(user):
+            if request.method in policy.SAFE_METHODS:
+                return True
+            raise CollegePermissionDenied("Reviewers are not authorized to create or modify College records.")
+        if getattr(user, 'college', None):
             if request.method == 'POST' and view.__class__.__name__ == 'CollegeListCreateView':
-                raise CollegePermissionDenied(
-                    "Only administrators can register new Colleges.",
-                    code="COLLEGE_NOT_AUTHORIZED"
-                )
+                raise CollegePermissionDenied("Only administrators can register new Colleges.")
             return True
-
-        # Unassigned user with no institutional scope
-        raise CollegePermissionDenied(
-            "User is not associated with an authorized College institution.",
-            code="COLLEGE_NOT_AUTHORIZED"
-        )
+        raise CollegePermissionDenied("User is not associated with an authorized College institution.")
 
     def has_object_permission(self, request, view, obj):
-        user = request.user
-        if not (user and user.is_authenticated):
-            raise NotAuthenticated()
-
-        if getattr(user, 'is_superuser', False) or getattr(user, 'role', '') in ('admin', 'state_admin'):
-            return True
-
-        # University-only user
-        if getattr(user, 'university', None) and not getattr(user, 'college', None):
-            raise CollegePermissionDenied(
-                "University users cannot access College records.",
-                code="COLLEGE_NOT_AUTHORIZED"
-            )
-
-        # Committee reviewer
-        if getattr(user, 'role', '') in ('committee', 'committee_chair'):
-            if request.method in ('GET', 'HEAD', 'OPTIONS'):
+        user = _require_auth(request)
+        if policy.is_oversight(user) or policy.is_reviewer(user):
+            if request.method in policy.SAFE_METHODS:
                 return True
-            raise CollegePermissionDenied(
-                "Reviewers cannot modify College records.",
-                code="COLLEGE_NOT_AUTHORIZED"
-            )
-
-        # College institution user
+            raise CollegePermissionDenied("College records are read-only for this role.")
+        if _university_only(user):
+            raise CollegePermissionDenied("University users cannot access College records.")
         user_col = getattr(user, 'college', None)
-        if user_col:
-            if obj.pk == user_col.pk or obj.aishe_code == user_col.aishe_code:
-                return True
-            raise CollegePermissionDenied(
-                f"Institution user cannot access external College '{obj.name}'.",
-                code="COLLEGE_NOT_AUTHORIZED"
-            )
-
-        raise CollegePermissionDenied(
-            "Unauthorized access to College record.",
-            code="COLLEGE_NOT_AUTHORIZED"
-        )
+        if user_col and obj.pk == user_col.pk:
+            return True
+        raise CollegePermissionDenied(f"Institution user cannot access external College '{obj.name}'.")
 
 
 class IsCollegeAssessmentOwnerOrReviewer(BasePermission):
     """
-    Controls access to CollegeAssessment sessions:
-    - Admin/Superuser: full access.
-    - College institution user: access only to assessments for their own college.
-    - University user: strictly denied (403 ASSESSMENT_NOT_AUTHORIZED).
-    - Reviewer: can view, evaluate; cannot write parameter inputs or perform institutional submissions.
+    CollegeAssessment access:
+    - Oversight administrators: read-only.
+    - College institution user: only their own College's assessments (read and write while editable).
+    - Reviewer: read assessments in their review scope once submitted; never parameter writes or submission.
+    - University users and unbound applicants: refused.
     """
+    REVIEWER_FORBIDDEN_WRITES = ('CollegeAssessmentParameterDetailView', 'CollegeAssessmentSubmitView',
+                                 'CollegeAssessmentDetailView', 'CollegeAssessmentListCreateView')
+
     def has_permission(self, request, view):
-        user = request.user
-        if not (user and user.is_authenticated):
-            raise NotAuthenticated()
-
-        if getattr(user, 'is_superuser', False) or getattr(user, 'role', '') in ('admin', 'state_admin'):
-            return True
-
-        # University-only user
-        if getattr(user, 'university', None) and not getattr(user, 'college', None):
+        user = _require_auth(request)
+        if policy.is_oversight(user):
+            if request.method in policy.SAFE_METHODS:
+                return True
             raise AssessmentPermissionDenied(
-                "University users cannot access College assessments.",
-                code="ASSESSMENT_NOT_AUTHORIZED"
-            )
-
+                "Administrators have read-only oversight of assessments; institutions and the committee perform these actions.")
+        if _university_only(user):
+            raise AssessmentPermissionDenied("University users cannot access College assessments.")
+        if policy.is_reviewer(user) and request.method not in policy.SAFE_METHODS \
+                and view.__class__.__name__ in self.REVIEWER_FORBIDDEN_WRITES:
+            raise AssessmentPermissionDenied(
+                "Reviewers are not permitted to create, edit or submit institution assessments.")
         return True
 
     def has_object_permission(self, request, view, obj):
-        user = request.user
-        if not (user and user.is_authenticated):
-            raise NotAuthenticated()
-
-        if getattr(user, 'is_superuser', False) or getattr(user, 'role', '') in ('admin', 'state_admin'):
-            return True
-
-        # University-only user
-        if getattr(user, 'university', None) and not getattr(user, 'college', None):
-            raise AssessmentPermissionDenied(
-                "University users cannot access College assessments.",
-                code="ASSESSMENT_NOT_AUTHORIZED"
-            )
-
-        # Committee reviewer & chair
-        if getattr(user, 'role', '') in ('committee', 'committee_chair'):
-            # Conflict of interest check
-            user_col = getattr(user, 'college', None)
-            if user_col and obj.college_id == user_col.pk:
-                raise AssessmentPermissionDenied(
-                    "Conflict of interest: reviewer cannot inspect own institution assessment.",
-                    code="REVIEW_CONFLICT"
-                )
-
-            # Check framework authorization if ReviewerAuthorization records exist
-            auth_qs = ReviewerAuthorization.objects.filter(user=user, is_active=True)
-            if auth_qs.exists():
-                match = auth_qs.filter(
-                    framework__in=[FrameworkType.COLLEGE_2026.value, "COLLEGE_2026", "COLLEGE", "ALL"]
-                )
-                if hasattr(obj, 'college') and obj.college.aishe_code:
-                    match = match.filter(institution_id__in=["", obj.college.aishe_code, str(obj.college.pk)])
-                if not match.exists():
-                    raise AssessmentPermissionDenied(
-                        "Reviewer is not authorized for the College framework.",
-                        code="ASSESSMENT_NOT_AUTHORIZED"
-                    )
-
-            # Restrict write actions: reviewers cannot modify parameter inputs or submit assessment
-            if view.__class__.__name__ in (
-                'CollegeAssessmentParameterDetailView',
-                'CollegeAssessmentSubmitView',
-            ) and request.method in ('PUT', 'PATCH', 'POST'):
-                raise AssessmentPermissionDenied(
-                    "Reviewers are not permitted to submit parameter inputs or perform assessment submission.",
-                    code="ASSESSMENT_NOT_AUTHORIZED"
-                )
-
-            return True
-
-        # College institution user
-        user_col = getattr(user, 'college', None)
-        if user_col:
-            if obj.college_id == user_col.pk:
+        user = _require_auth(request)
+        if policy.is_oversight(user):
+            if request.method in policy.SAFE_METHODS:
                 return True
-            raise AssessmentPermissionDenied(
-                "Institution users cannot access assessments belonging to other Colleges.",
-                code="ASSESSMENT_NOT_AUTHORIZED"
-            )
+            raise AssessmentPermissionDenied("Administrators have read-only oversight of assessments.")
+        if _university_only(user):
+            raise AssessmentPermissionDenied("University users cannot access College assessments.")
 
-        raise AssessmentPermissionDenied(
-            "Unauthorized access to College assessment.",
-            code="ASSESSMENT_NOT_AUTHORIZED"
-        )
+        if policy.is_reviewer(user):
+            college = getattr(obj, 'college', None)
+            if policy.has_conflict_of_interest(user, college):
+                raise AssessmentPermissionDenied(
+                    "Conflict of interest: reviewer cannot inspect own institution assessment.", code="REVIEW_CONFLICT")
+            if getattr(obj, 'status', None) in policy.INSTITUTION_EDITING_STATES:
+                raise AssessmentPermissionDenied("This assessment has not been submitted for review.")
+            if not policy.has_review_scope(user, policy.COLLEGE, college, getattr(obj, 'assigned_reviewer_id', None)):
+                raise AssessmentPermissionDenied(
+                    "Reviewer is not assigned to, or authorized for, this College assessment.",
+                    code=policy.scope_denial_code(user, policy.COLLEGE))
+            if request.method not in policy.SAFE_METHODS and view.__class__.__name__ in self.REVIEWER_FORBIDDEN_WRITES:
+                raise AssessmentPermissionDenied(
+                    "Reviewers are not permitted to submit parameter inputs or perform assessment submission.")
+            return True
+
+        user_col = getattr(user, 'college', None)
+        if user_col and obj.college_id == user_col.pk:
+            return True
+        raise AssessmentPermissionDenied("Institution users cannot access assessments belonging to other Colleges.")
 
 
 class IsCommitteeOrAdminForEvaluation(BasePermission):
-    """
-    Restricts scoring evaluation execution to authorized committee reviewers
-    and administrators. Institution users cannot directly evaluate scores.
-    """
+    """Scoring evaluation: committee reviewers act; oversight administrators may only read."""
     def has_permission(self, request, view):
-        user = request.user
-        if not (user and user.is_authenticated):
-            raise NotAuthenticated()
-
-        if getattr(user, 'is_superuser', False) or getattr(user, 'role', '') in ('admin', 'state_admin', 'committee', 'committee_chair'):
+        user = _require_auth(request)
+        if policy.is_reviewer(user) or (policy.is_oversight(user) and request.method in policy.SAFE_METHODS):
             return True
-
-        raise AssessmentPermissionDenied(
-            "Scoring evaluation requires committee reviewer or administrator authority.",
-            code="ASSESSMENT_NOT_AUTHORIZED"
-        )
+        raise AssessmentPermissionDenied("Scoring evaluation requires committee reviewer authority.")
 
 
 class IsCommitteeReviewer(BasePermission):
     """
-    Authorizes Screening Committee members and Administrators for review actions.
-    Enforces framework authorization, blocks institutional users, and prevents conflict of interest.
+    Review actions (start, evaluate, accept/adjust, complete, return, reject) and the review queue:
+    Screening Committee members and chairs only, inside their review scope, never on their own institution.
     """
     def has_permission(self, request, view):
-        user = request.user
-        if not (user and user.is_authenticated):
-            raise NotAuthenticated()
-
-        if getattr(user, 'is_superuser', False) or getattr(user, 'is_staff', False):
+        user = _require_auth(request)
+        if policy.is_reviewer(user):
             return True
-
-        role = getattr(user, 'role', '')
-        if role in ('admin', 'state_admin', 'committee', 'committee_chair'):
-            return True
-
         raise AssessmentPermissionDenied(
-            "Review actions require committee reviewer or administrator authority.",
-            code="REVIEW_NOT_AUTHORIZED"
-        )
+            "Review actions require Screening Committee authority.", code="REVIEW_NOT_AUTHORIZED")
 
     def has_object_permission(self, request, view, obj):
-        user = request.user
-        if not (user and user.is_authenticated):
-            raise NotAuthenticated()
-
-        if getattr(user, 'is_superuser', False) or getattr(user, 'is_staff', False):
-            return True
-
-        role = getattr(user, 'role', '')
-        if role not in ('admin', 'state_admin', 'committee', 'committee_chair'):
+        user = _require_auth(request)
+        if not policy.is_reviewer(user):
+            raise AssessmentPermissionDenied("Review actions require Screening Committee authority.", code="REVIEW_NOT_AUTHORIZED")
+        college = getattr(obj, 'college', obj)
+        if policy.has_conflict_of_interest(user, college):
             raise AssessmentPermissionDenied(
-                "Review actions require committee reviewer authority.",
-                code="REVIEW_NOT_AUTHORIZED"
-            )
-
-        # Conflict of interest check
-        user_col = getattr(user, 'college', None)
-        target_col = getattr(obj, 'college', obj)
-        if user_col and target_col and (user_col.pk == target_col.pk or user_col.aishe_code == getattr(target_col, 'aishe_code', '')):
+                f"Conflict of interest: Reviewer belongs to institution '{college.name}'.", code="REVIEW_CONFLICT")
+        if not policy.has_review_scope(user, policy.COLLEGE, college, getattr(obj, 'assigned_reviewer_id', None)):
             raise AssessmentPermissionDenied(
-                f"Conflict of interest: Reviewer belongs to institution '{target_col.name}'.",
-                code="REVIEW_CONFLICT"
-            )
-
-        # Framework authorization check if specific authorizations are registered
-        user_auths = ReviewerAuthorization.objects.filter(user=user, is_active=True)
-        if user_auths.exists():
-            fw_match = user_auths.filter(framework__in=[FrameworkType.COLLEGE_2026.value, "COLLEGE_2026", "COLLEGE", "ALL"])
-            if not fw_match.exists():
-                raise AssessmentPermissionDenied(
-                    "Reviewer is not authorized for the College framework.",
-                    code="FRAMEWORK_MISMATCH"
-                )
-            if hasattr(target_col, 'aishe_code') and target_col.aishe_code:
-                inst_match = fw_match.filter(institution_id__in=["", target_col.aishe_code, str(target_col.pk)])
-                if not inst_match.exists():
-                    raise AssessmentPermissionDenied(
-                        f"Reviewer is not authorized for institution '{target_col.aishe_code}'.",
-                        code="REVIEW_NOT_AUTHORIZED"
-                    )
-
+                "Reviewer is not assigned to, or authorized for, this College assessment.",
+                code=policy.scope_denial_code(user, policy.COLLEGE))
         return True
 
 
 class IsCertificationAuthority(BasePermission):
-    """
-    Authorizes certification operations.
-    Restricted to the Screening Committee Chair.
-    Regular committee reviewers and institutional users are denied with CERTIFICATION_NOT_AUTHORIZED.
-    """
+    """Certification: the Screening Committee Chair only, within review scope and without conflict of interest."""
+    MESSAGE = "Certification authority required. Only the Screening Committee Chair can certify assessments."
+
     def has_permission(self, request, view):
-        user = request.user
-        if not (user and user.is_authenticated):
-            raise NotAuthenticated()
-
-        # Certification is the Chair's decision alone; State Admin / superusers oversee but do not certify.
-        if getattr(user, 'role', '') == 'committee_chair':
+        user = _require_auth(request)
+        if policy.role_of(user) == 'committee_chair':
             return True
-
-        raise AssessmentPermissionDenied(
-            "Certification authority required. Only the Screening Committee Chair can certify assessments.",
-            code="CERTIFICATION_NOT_AUTHORIZED"
-        )
+        raise AssessmentPermissionDenied(self.MESSAGE, code="CERTIFICATION_NOT_AUTHORIZED")
 
     def has_object_permission(self, request, view, obj):
-        user = request.user
-        if not (user and user.is_authenticated):
-            raise NotAuthenticated()
-
-        if getattr(user, 'role', '') != 'committee_chair':
+        user = _require_auth(request)
+        if policy.role_of(user) != 'committee_chair':
+            raise AssessmentPermissionDenied(self.MESSAGE, code="CERTIFICATION_NOT_AUTHORIZED")
+        college = getattr(obj, 'college', obj)
+        if policy.has_conflict_of_interest(user, college):
             raise AssessmentPermissionDenied(
-                "Certification authority required. Only the Screening Committee Chair can certify assessments.",
-                code="CERTIFICATION_NOT_AUTHORIZED"
-            )
-
-        # Conflict of interest check
-        user_col = getattr(user, 'college', None)
-        target_col = getattr(obj, 'college', obj)
-        if user_col and target_col and (user_col.pk == target_col.pk or user_col.aishe_code == getattr(target_col, 'aishe_code', '')):
+                f"Conflict of interest: Actor belongs to institution '{college.name}'.", code="REVIEW_CONFLICT")
+        if not policy.has_review_scope(user, policy.COLLEGE, college, getattr(obj, 'assigned_reviewer_id', None)):
             raise AssessmentPermissionDenied(
-                f"Conflict of interest: Actor belongs to institution '{target_col.name}'.",
-                code="REVIEW_CONFLICT"
-            )
-
+                "The Chair is not authorized for this College assessment.", code=policy.scope_denial_code(user, policy.COLLEGE))
         return True

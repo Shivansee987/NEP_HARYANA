@@ -1,7 +1,7 @@
 from rest_framework.authentication import BaseAuthentication
 from rest_framework import exceptions
 from django.contrib.auth import get_user_model
-from .utils import decode_token
+from .utils import ACCESS, decode_token
 
 User = get_user_model()
 
@@ -17,7 +17,7 @@ class JWTAuthentication(BaseAuthentication):
             
         access_token = parts[1]
         
-        payload = decode_token(access_token)
+        payload = decode_token(access_token, ACCESS)
         if not payload:
             raise exceptions.AuthenticationFailed('Invalid or expired access token')
             
@@ -32,6 +32,9 @@ class JWTAuthentication(BaseAuthentication):
             
         if not user.is_active:
             raise exceptions.AuthenticationFailed('User account is disabled')
+
+        if payload.get('tv') != user.token_version:
+            raise exceptions.AuthenticationFailed('Session has been revoked. Please sign in again.')
             
         return (user, None)
 

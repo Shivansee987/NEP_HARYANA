@@ -110,6 +110,13 @@ class CommitteeScoringComplianceTests(TestCase):
         _attach_verified_evidence(self.c_assessment, "C1", "C1.1", "EVID_C1_APPROVED_IDP", self.reviewer)
         _attach_verified_evidence(self.c_assessment, "C2", "C2.1", "EVID_C2_HOI_CERT", self.reviewer)
         _attach_verified_evidence(self.c_assessment, "C3", "C3.1", "EVID_C3_ABC_DASHBOARD", self.reviewer)
+        # Review scope is explicit (COM-01): committee users without a scoped authorization get framework-wide scope.
+        from apps.authentication.models import User as _ScopeUser
+        from apps.evidence.models import ReviewerAuthorization as _ScopeAuth
+        from apps.scoring.test_support import grant_review_scope as _grant_scope
+        for _reviewer in _ScopeUser.objects.filter(role__in=("committee", "committee_chair")):
+            if not _ScopeAuth.objects.filter(user=_reviewer).exists():
+                _grant_scope(_reviewer)
 
     # 1. Every College parameter exposes its maximum
     def test_01_every_college_parameter_exposes_maximum(self):
@@ -469,6 +476,13 @@ class UniversityAndCollegeAcceptanceRunTests(TestCase):
             role="committee",
             password="SecurePassword123!",
         )
+        # Review scope is explicit (COM-01): committee users without a scoped authorization get framework-wide scope.
+        from apps.authentication.models import User as _ScopeUser
+        from apps.evidence.models import ReviewerAuthorization as _ScopeAuth
+        from apps.scoring.test_support import grant_review_scope as _grant_scope
+        for _reviewer in _ScopeUser.objects.filter(role__in=("committee", "committee_chair")):
+            if not _ScopeAuth.objects.filter(user=_reviewer).exists():
+                _grant_scope(_reviewer)
 
     def test_university_full_scoring_acceptance_run(self):
         """

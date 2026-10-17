@@ -27,6 +27,8 @@ from apps.evidence.enums import (
 )
 from apps.evidence.services import EvidenceService
 
+from apps.scoring.test_support import fill_assessment, grant_review_scope
+
 User = get_user_model()
 
 
@@ -47,6 +49,7 @@ class CollegeDomainE2ETests(TestCase):
             role="committee",
             password="pass",
         )
+        grant_review_scope(self.reviewer)  # reviewers act only inside an explicit scope (COM-01)
 
     def test_complete_college_assessment_lifecycle(self):
         """End-to-end integration test across all Phase 7A domain responsibilities."""
@@ -131,20 +134,9 @@ class CollegeDomainE2ETests(TestCase):
             academic_year="2025-26",
         )
 
-        # 4. Verify Evidence via Phase 5C
+        # 4. The institution submits its evidence for verification
         EvidenceService.submit_for_verification(doc_c1.pk, self.principal)
-        EvidenceService.verify_evidence(
-            evidence_id=doc_c1.pk,
-            verifier=self.reviewer,
-            reason="Approved IDP document",
-        )
-
         EvidenceService.submit_for_verification(doc_c2.pk, self.principal)
-        EvidenceService.verify_evidence(
-            evidence_id=doc_c2.pk,
-            verifier=self.reviewer,
-            reason="Approved HOI certificate",
-        )
 
         # 5. Evaluate Coverage and Readiness via Phase 5D
         coverage_report = CollegeAssessmentService.evaluate_assessment_coverage(
@@ -156,7 +148,9 @@ class CollegeDomainE2ETests(TestCase):
         self.assertIn("C1", param_ids)
         self.assertIn("C2", param_ids)
 
-        # 6. Submit Assessment
+        # 6. Submit Assessment (every parameter must be answered; the values entered above are kept)
+        assessment.refresh_from_db()
+        fill_assessment(assessment)
         submitted_assessment = CollegeAssessmentService.submit_assessment(
             assessment_id=assessment.assessment_id,
             submitting_user=self.principal,
@@ -171,6 +165,18 @@ class CollegeDomainE2ETests(TestCase):
                 submitting_user=self.principal,
             )
 
+        # 6b. The committee verifies evidence only after submission (WF-15)
+        EvidenceService.verify_evidence(
+            evidence_id=doc_c1.pk,
+            verifier=self.reviewer,
+            reason="Approved IDP document",
+        )
+        EvidenceService.verify_evidence(
+            evidence_id=doc_c2.pk,
+            verifier=self.reviewer,
+            reason="Approved HOI certificate",
+        )
+
         # 7. Evaluate Scoring via frozen NEP2026ScoringEngine
         score_result = CollegeAssessmentService.evaluate_assessment_scoring(assessment.assessment_id)
         self.assertEqual(score_result.framework, "COLLEGE_2026")
@@ -181,9 +187,21 @@ class CollegeDomainE2ETests(TestCase):
         self.assertEqual(score_result.parameter_results["C10"].raw_score, 5.0)
         self.assertEqual(score_result.parameter_results["C10"].evidence_gated_score, 0.0)
 
+        # No verified proof = no marks: only C1 and C2 (verified) and C5 / C9 (no documentary evidence required by
+        # the source; open council question POL-01) can contribute. Every other answered parameter is gated to 0.
+        contributing = {"C1", "C2", "C5", "C9"}
+        for code, res in score_result.parameter_results.items():
+            if code not in contributing:
+                self.assertEqual(res.evidence_gated_score, 0.0, code)
+
         # Assessment model score snapshot updated
         assessment.refresh_from_db()
-        self.assertEqual(assessment.certified_score, 10.0)  # 6.0 (C1) + 4.0 (C2) = 10.0
+        expected_total = sum(score_result.parameter_results[c].evidence_gated_score for c in contributing)
+        self.assertEqual(assessment.certified_score, expected_total)
+        self.assertEqual(
+            score_result.parameter_results["C1"].evidence_gated_score + score_result.parameter_results["C2"].evidence_gated_score,
+            10.0,
+        )  # 6.0 (C1) + 4.0 (C2)
 
         # 8. Audit logs populated
         audit_logs = CollegeAssessmentAuditLog.objects.filter(assessment=assessment)

@@ -17,6 +17,9 @@ Certification impact of each item:
                           question is surfaced on every result but does not block certification.
     BLOCKS_WHEN_TRIGGERED - only an input that actually hits the undefined case blocks certification
                           (e.g. exactly 75.0% for C5, a fractional U9.B average, a claimed Scopus value).
+    BLOCKS_OFFICIAL_CERTIFICATION - marks no institution can earn until the council decides; official
+                          certification of the framework is held (apps.scoring.policy_gates). It cannot be lifted
+                          by configuration: only the evidence-taxonomy change that implements the decision lifts it.
 """
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
@@ -26,6 +29,7 @@ from django.conf import settings
 
 ADVISORY = "ADVISORY"
 BLOCKS_WHEN_TRIGGERED = "BLOCKS_WHEN_TRIGGERED"
+BLOCKS_OFFICIAL_CERTIFICATION = "BLOCKS_OFFICIAL_CERTIFICATION"
 
 UNRESOLVED = "UNRESOLVED"
 RESOLVED = "RESOLVED"
@@ -44,6 +48,20 @@ class PolicyItem:
 
 
 POLICY_ITEMS: Dict[str, PolicyItem] = {p.policy_id: p for p in [
+    PolicyItem(
+        policy_id="U6_U18_3_EVIDENCE",
+        parameters=("U6", "U18"),
+        question=(
+            "U6.A and U6.B (8 marks) have no evidence line in the University PDF, and U18.3 (2 marks) has no "
+            "resolved evidence requirement, while the general instructions award marks only on documentary "
+            "evidence. Which documentary evidence proves each of them?"
+        ),
+        implementation_default=(
+            "The subcriteria fail closed (0 marks) and official University certification is held until the council "
+            "decides and the evidence taxonomy is updated."
+        ),
+        certification_impact=BLOCKS_OFFICIAL_CERTIFICATION,
+    ),
     PolicyItem(
         policy_id="C7_MAXIMUM",
         parameters=("C7",),
@@ -169,6 +187,15 @@ def _configured_decisions() -> Dict[str, Dict[str, Any]]:
 def get_policy_state(policy_id: str) -> Dict[str, Any]:
     """Returns the effective status and resolution of a policy item."""
     item = POLICY_ITEMS[policy_id]
+    if item.certification_impact == BLOCKS_OFFICIAL_CERTIFICATION:
+        # Resolved only by the taxonomy change that implements the council's decision, never by configuration.
+        from apps.scoring.policy_gates import open_certification_policy_blockers
+        open_items = [b for fw in ("UNIVERSITY_2026", "COLLEGE_2026") for b in open_certification_policy_blockers(fw)
+                      if b["parameter"] in item.parameters]
+        if open_items:
+            return {"policy_id": policy_id, "status": UNRESOLVED, "resolution": None, "source": None}
+        return {"policy_id": policy_id, "status": RESOLVED, "resolution": {"source": "EVIDENCE_TAXONOMY"},
+                "source": "EVIDENCE_TAXONOMY"}
     configured = _configured_decisions().get(policy_id)
     if isinstance(configured, dict) and str(configured.get("status", "")).upper() == RESOLVED:
         return {"policy_id": policy_id, "status": RESOLVED, "resolution": dict(configured), "source": "CONFIGURATION"}
@@ -194,7 +221,10 @@ def policy_notice(policy_id: str, triggered: bool = False) -> Dict[str, Any]:
         "resolution": state["resolution"],
         "triggered": triggered,
         "blocks_certification": bool(
-            triggered and item.certification_impact == BLOCKS_WHEN_TRIGGERED and state["status"] != RESOLVED
+            state["status"] != RESOLVED and (
+                (triggered and item.certification_impact == BLOCKS_WHEN_TRIGGERED)
+                or item.certification_impact == BLOCKS_OFFICIAL_CERTIFICATION
+            )
         ),
     }
 

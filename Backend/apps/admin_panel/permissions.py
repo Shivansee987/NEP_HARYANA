@@ -9,5 +9,9 @@ class IsAdminRole(BasePermission):
         return bool(
             user
             and user.is_authenticated
-            and getattr(user, "role", None) == "admin"
+            and (
+                getattr(user, "is_superuser", False)
+                or getattr(user, "role", None) in ("head_admin", "sub_admin", "admin", "state_admin")
+            )
         )
+

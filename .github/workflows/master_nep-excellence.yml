@@ -1,8 +1,13 @@
 # Docs for the Azure Web Apps Deploy action: https://github.com/Azure/webapps-deploy
 # More GitHub Actions for Azure: https://github.com/Azure/actions
 # More info on Python, GitHub Actions, and Azure App Service: https://aka.ms/python-webapps-actions
-# Docs for the Azure Web Apps Deploy action:
-# https://github.com/Azure/webapps-deploy
+#
+# Release gate (FIN-08): nothing is deployed unless the backend tests, migration and production-settings checks,
+# and the frontend tests, lint gate, production build and bundle credential scan all pass on the same commit.
+# Pull requests run the checks only; only master is ever deployed.
+# Manual approval: add `environment: production` to the deploy job and configure required reviewers in GitHub
+# (Settings -> Environments) AFTER adding a matching federated credential (subject environment:production) to the
+# Azure app registration; otherwise azure/login's OIDC subject no longer matches and the deploy cannot log in.
 
 name: Build and deploy Python app to Azure Web App - nep-excellence
 
@@ -10,11 +15,88 @@ on:
   push:
     branches:
       - master
+  pull_request:
   workflow_dispatch:
 
+concurrency:
+  group: nep-excellence-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
+  backend-checks:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: ./Backend
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Migrations are complete
+        run: python manage.py makemigrations --check --dry-run --settings=config.settings.ci
+
+      - name: Production settings pass the deployment checklist
+        env:
+          DJANGO_SETTINGS_MODULE: config.settings.production
+          ALLOWED_HOSTS: ci.invalid
+          DATABASE_URL: postgres://ci:ci@localhost:5432/ci
+          EMAIL_BACKEND: django.core.mail.backends.smtp.EmailBackend
+        run: |
+          export DJANGO_SECRET_KEY="$(python -c 'import secrets; print(secrets.token_urlsafe(64))')"
+          python manage.py check --deploy --fail-level ERROR
+
+      - name: Backend test suite
+        run: python manage.py test apps --settings=config.settings.ci --noinput
+
+  frontend-checks:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: ./Frontend/NEP_HARYANA_INT
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: Frontend/NEP_HARYANA_INT/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Frontend tests (all files)
+        run: npm test
+
+      - name: Lint gate (undefined identifiers, broken hooks)
+        run: npm run lint:gate
+
+      - name: Production build
+        run: npm run build
+
+      - name: No development credentials in the bundle
+        run: npm run check:bundle
+
   build:
     runs-on: ubuntu-latest
+    needs: [backend-checks, frontend-checks]
+    if: github.event_name != 'pull_request'
 
     permissions:
       contents: read
@@ -27,11 +109,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-
-      - name: Debug repository structure
-        run: |
-          pwd
-          find . -name "requirements.txt"
 
       - name: Create virtual environment and install dependencies
         working-directory: ./Backend
@@ -48,10 +125,13 @@ jobs:
           path: |
             Backend
             !antenv/
+            !Backend/db.sqlite3
+            !Backend/media/
 
   deploy:
     runs-on: ubuntu-latest
     needs: build
+    if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
 
     permissions:
       id-token: write

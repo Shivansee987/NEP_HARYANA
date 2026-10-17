@@ -5,6 +5,7 @@ through the frozen server-authoritative scoring engine and Phase 5 evidence subs
 """
 from datetime import date
 from typing import Any, Dict, List, Optional, Tuple
+import math
 import uuid
 
 from django.db import transaction
@@ -124,6 +125,12 @@ class CollegeAssessmentService:
         if not is_active:
             raise CollegeValidationError(f"College '{college.name}' is not active.")
 
+        if CollegeAssessment.objects.filter(college=college, academic_year=academic_year).exists():
+            raise CollegeValidationError(
+                f"An assessment for {academic_year} already exists for '{college.name}'. Continue the existing assessment.",
+                code="ASSESSMENT_ALREADY_EXISTS",
+            )
+
         if not assessment_id:
             assessment_id = f"ASSESS-2026-COL-{college.aishe_code}-{uuid.uuid4().hex[:8].upper()}"
 
@@ -158,6 +165,7 @@ class CollegeAssessmentService:
         raw_inputs: Dict[str, Any],
         entities: Optional[List[Dict[str, Any]]] = None,
         activity_date: Optional[date] = None,
+        actor: Any = None,
     ) -> CollegeAssessment:
         """
         Validates and records parameter data for a specific College parameter (C1–C22).
@@ -189,7 +197,7 @@ class CollegeAssessmentService:
 
         CollegeAssessmentAuditLog.objects.create(
             assessment=assessment,
-            actor=None,
+            actor=actor if getattr(actor, "is_authenticated", False) else None,
             action="PARAMETER_UPDATED",
             previous_state=assessment.status,
             new_state=assessment.status,
@@ -343,8 +351,12 @@ class CollegeAssessmentService:
 
         CollegeReviewService.validate_reviewer_authorization(reviewer, assessment)
 
-        if assessment.status in ("CERTIFIED", "BLOCKED"):
+        if assessment.status in ("CERTIFIED", "BLOCKED", "REJECTED"):
             raise AssessmentLockedError(f"Assessment is {assessment.status} and cannot be modified.")
+        if assessment.status != "UNDER_REVIEW":
+            raise InvalidReviewStateError(
+                f"Scores can only be approved or adjusted while the assessment is UNDER_REVIEW (current: {assessment.status})."
+            )
 
         # Evaluate current server-authoritative scoring (explicit action -> persisted)
         result = cls.evaluate_assessment_scoring(assessment_id, persist=True)
@@ -438,8 +450,12 @@ class CollegeAssessmentService:
 
         CollegeReviewService.validate_reviewer_authorization(reviewer, assessment)
 
-        if assessment.status in ("CERTIFIED", "BLOCKED"):
+        if assessment.status in ("CERTIFIED", "BLOCKED", "REJECTED"):
             raise AssessmentLockedError(f"Assessment is {assessment.status} and cannot be modified.")
+        if assessment.status != "UNDER_REVIEW":
+            raise InvalidReviewStateError(
+                f"Scores can only be approved or adjusted while the assessment is UNDER_REVIEW (current: {assessment.status})."
+            )
 
         # Validate reason and bounds
         if not reason or len(reason.strip()) < 10:
@@ -450,6 +466,8 @@ class CollegeAssessmentService:
 
         try:
             adj_score = float(adjusted_score)
+            if not math.isfinite(adj_score):  # "NaN" / "Infinity" parse as floats but are not scores
+                raise ValueError
         except (ValueError, TypeError):
             raise CollegeValidationError("Adjusted score must be a valid number.", code="INVALID_SCORE")
 
@@ -683,16 +701,13 @@ class CollegeAssessmentService:
             )
 
         if submitting_user and getattr(submitting_user, "is_authenticated", False):
-            if not (
-                getattr(submitting_user, "is_superuser", False)
-                or getattr(submitting_user, "role", "") in ("admin", "state_admin")
-            ):
-                user_college = getattr(submitting_user, "college", None)
-                if not user_college or user_college.pk != assessment.college_id:
-                    raise CollegeNotAuthorizedError(
-                        f"User '{getattr(submitting_user, 'email', '')}' is not authorized to submit assessment for '{assessment.college.name}'.",
-                        code="ASSESSMENT_NOT_AUTHORIZED"
-                    )
+            # Only the institution itself submits; administrators have read-only oversight.
+            user_college = getattr(submitting_user, "college", None)
+            if not user_college or user_college.pk != assessment.college_id:
+                raise CollegeNotAuthorizedError(
+                    f"User '{getattr(submitting_user, 'email', '')}' is not authorized to submit assessment for '{assessment.college.name}'.",
+                    code="ASSESSMENT_NOT_AUTHORIZED"
+                )
 
         # Ensure parameters have been populated
         if not assessment.parameter_data:
@@ -700,6 +715,13 @@ class CollegeAssessmentService:
                 "Cannot submit assessment with empty parameter data. Complete parameter responses before submission.",
                 code="PARAMETER_DATA_REQUIRED",
             )
+
+        # Every number / single-choice answer of every parameter must be present (0 when nothing to claim)
+        from apps.scoring.completeness import completeness_errors, summarize
+        from apps.scoring.field_schema import COLLEGE_FIELD_SCHEMA
+        missing = completeness_errors(assessment.parameter_data, COLLEGE_FIELD_SCHEMA)
+        if missing:
+            raise CollegeValidationError(summarize(missing), code="SUBMISSION_INCOMPLETE", details=missing)
 
         # Invalid values, period-bound claims without dates and out-of-period claims must be corrected first
         errors = submission_errors(assessment.parameter_data, get_college_parameters(), COLLEGE_PARAMETER_CODES)
@@ -773,11 +795,10 @@ class CollegeAssessmentService:
             )
 
         actor_role = getattr(actor, "role", "")
-        is_admin = getattr(actor, "is_superuser", False) or actor_role in ("admin", "state_admin")
 
-        # Reviewer-only transitions check
+        # Reviewer-only transitions check (administrators have read-only oversight)
         if clean_target in ("UNDER_REVIEW", "REJECTED", "CERTIFIED", "DRAFT"):
-            if not is_admin and actor_role not in ("committee", "committee_chair"):
+            if actor_role not in ("committee", "committee_chair"):
                 raise CollegeNotAuthorizedError(
                     f"Only committee reviewers and administrators can transition assessment to '{clean_target}'.",
                     code="ASSESSMENT_NOT_AUTHORIZED"
@@ -811,86 +832,45 @@ class CollegeReviewService:
     @classmethod
     def validate_reviewer_authorization(cls, reviewer: Any, assessment: CollegeAssessment) -> bool:
         """
-        Validates that a reviewer possesses the required committee role,
-        has active framework authorization, and does not have an institutional conflict of interest.
+        A reviewer must hold a Screening Committee role, have review scope for this College (an active
+        framework/institution authorization or the assignment), and not belong to the institution.
+        Administrators have read-only oversight and cannot perform review actions.
         """
+        from apps.evidence import access_policy as policy
+
         if not reviewer or not getattr(reviewer, "is_authenticated", False):
             raise ReviewNotAuthorizedError("Authentication required to review assessments.")
-
-        role = getattr(reviewer, "role", "")
-        is_admin = (
-            getattr(reviewer, "is_superuser", False)
-            or getattr(reviewer, "is_staff", False)
-            or role in ("admin", "state_admin")
-        )
-
-        if not is_admin and role not in ("committee", "committee_chair"):
-            raise ReviewNotAuthorizedError("Only Screening Committee members and Administrators can review College assessments.")
-
-        # Institutional conflict of interest check
-        reviewer_college = getattr(reviewer, "college", None)
-        if reviewer_college:
-            if (
-                getattr(reviewer_college, "aishe_code", "") == assessment.college.aishe_code
-                or getattr(reviewer_college, "pk", None) == assessment.college_id
-            ):
-                raise ReviewConflictError(
-                    f"Conflict of interest: Reviewer is affiliated with institution '{assessment.college.name}'."
-                )
-
-        # University Vice Chancellor / University user cannot act as College reviewer
-        if role == "vice_chancellor" or (
-            getattr(reviewer, "university", None)
-            and not reviewer_college
-            and role not in ("admin", "state_admin", "committee", "committee_chair")
-        ):
-            raise ReviewNotAuthorizedError("University officials cannot review College assessments.")
-
-        # Check explicit ReviewerAuthorization
-        if not is_admin:
-            user_auths = ReviewerAuthorization.objects.filter(user=reviewer, is_active=True)
-            if user_auths.exists():
-                fw_matching = user_auths.filter(framework__in=[COLLEGE_FRAMEWORK_CODE, "ALL"])
-                if not fw_matching.exists():
-                    raise FrameworkMismatchError(
-                        f"Reviewer is not authorized for framework '{assessment.framework}'."
-                    )
-                inst_matching = fw_matching.filter(
-                    institution_id__in=["", assessment.college.aishe_code, str(assessment.college.pk)]
-                )
-                if not inst_matching.exists():
-                    raise ReviewNotAuthorizedError(
-                        f"Reviewer is not authorized for institution '{assessment.college.aishe_code}'."
-                    )
-
+        if not policy.is_reviewer(reviewer):
+            raise ReviewNotAuthorizedError("Only Screening Committee members can review College assessments.")
+        if policy.has_conflict_of_interest(reviewer, assessment.college):
+            raise ReviewConflictError(
+                f"Conflict of interest: Reviewer is affiliated with institution '{assessment.college.name}'."
+            )
+        if not policy.has_review_scope(reviewer, policy.COLLEGE, assessment.college, assessment.assigned_reviewer_id):
+            if policy.scope_denial_code(reviewer, policy.COLLEGE) == "FRAMEWORK_MISMATCH":
+                raise FrameworkMismatchError(f"Reviewer is not authorized for framework '{assessment.framework}'.")
+            raise ReviewNotAuthorizedError(
+                f"Reviewer is not assigned to, or authorized for, institution '{assessment.college.aishe_code}'."
+            )
         return True
 
     @classmethod
     def validate_certification_authority(cls, actor: Any, assessment: CollegeAssessment) -> bool:
-        """
-        Validates that an actor has explicit certification authority.
-        Only the Screening Committee Chair can certify assessments.
-        Standard committee reviewers and institutional users are blocked.
-        """
+        """Only the Screening Committee Chair, within review scope and without conflict of interest, certifies."""
+        from apps.evidence import access_policy as policy
+
         if not actor or not getattr(actor, "is_authenticated", False):
             raise CertificationNotAuthorizedError("Authentication required to certify assessments.")
-
         if getattr(actor, "role", "") != "committee_chair":
             raise CertificationNotAuthorizedError(
                 "Certification authority required. Only the Screening Committee Chair can certify assessments."
             )
-
-        # Institutional conflict of interest check
-        actor_college = getattr(actor, "college", None)
-        if actor_college:
-            if (
-                getattr(actor_college, "aishe_code", "") == assessment.college.aishe_code
-                or getattr(actor_college, "pk", None) == assessment.college_id
-            ):
-                raise ReviewConflictError(
-                    f"Conflict of interest: Certification authority is affiliated with institution '{assessment.college.name}'."
-                )
-
+        if policy.has_conflict_of_interest(actor, assessment.college):
+            raise ReviewConflictError(
+                f"Conflict of interest: Certification authority is affiliated with institution '{assessment.college.name}'."
+            )
+        if not policy.has_review_scope(actor, policy.COLLEGE, assessment.college, assessment.assigned_reviewer_id):
+            raise CertificationNotAuthorizedError("The Chair is not authorized for this College assessment.")
         return True
 
     @classmethod
@@ -942,6 +922,11 @@ class CollegeReviewService:
         if assessment.status not in ("SUBMITTED", "UNDER_REVIEW"):
             raise InvalidReviewStateError(
                 f"Cannot start review on assessment in '{assessment.status}' status. Must be 'SUBMITTED'."
+            )
+        if assessment.assigned_reviewer_id and assessment.assigned_reviewer_id != reviewer.pk:
+            raise ReviewConflictError(
+                "This assessment is assigned to another reviewer. An administrator or the Committee Chair must "
+                "reassign it before you can take it over."
             )
 
         prev_status = assessment.status
@@ -1233,6 +1218,11 @@ class CollegeReviewService:
 
         if assessment.status == "CERTIFIED":
             raise AssessmentAlreadyCertifiedError("Assessment is already certified and immutable.")
+        if assessment.status not in ("SUBMITTED", "UNDER_REVIEW"):
+            raise InvalidReviewStateError(
+                f"Only a submitted assessment can be rejected (current: {assessment.status}). "
+                "An institution's unsubmitted draft cannot be rejected."
+            )
 
         prev_status = assessment.status
         assessment.status = "REJECTED"
@@ -1336,6 +1326,15 @@ class CollegeReviewService:
                 "Certification blocked: " + " | ".join(gate_errors or ["Scoring engine did not produce a certified total."])
             )
 
+        # Gate 12: the committee must have recorded "Complete Review" for the current submission
+        completed = CollegeReviewRecord.objects.filter(assessment=assessment, action=CollegeReviewAction.COMPLETE_REVIEW)
+        if assessment.submitted_at:
+            completed = completed.filter(created_at__gte=assessment.submitted_at)
+        if not completed.exists():
+            raise InvalidReviewStateError(
+                "Certification requires the committee to complete the review of the current submission first."
+            )
+
         # ALL 11 GATES PASSED: Transition to CERTIFIED and lock
         prev_status = assessment.status
         assessment.status = "CERTIFIED"
@@ -1378,54 +1377,35 @@ class CollegeReviewService:
     @classmethod
     def get_review_queue(cls, user: Any, filters: Optional[Dict[str, Any]] = None):
         """
-        Retrieves the College assessment review queue for authorized committee reviewers and admins.
-        Excludes assessments with institutional conflict of interest.
+        Review queue for Screening Committee members: submitted College assessments inside the reviewer's
+        scope (global or institution-scoped authorization, plus anything assigned to them), excluding their own
+        institution. Drafts and returned assessments are the institution's and never appear.
         """
+        from django.db.models import Q
+        from apps.evidence import access_policy as policy
+
         if not user or not getattr(user, "is_authenticated", False):
             raise ReviewNotAuthorizedError("Authentication required to access review queue.")
+        oversight = policy.is_oversight(user)
+        if not (oversight or policy.is_reviewer(user)):
+            raise ReviewNotAuthorizedError("Only Screening Committee members can access the review queue.")
 
-        role = getattr(user, "role", "")
-        is_admin = (
-            getattr(user, "is_superuser", False)
-            or getattr(user, "is_staff", False)
-            or role in ("admin", "state_admin")
-        )
+        qs = CollegeAssessment.objects.filter(framework=COLLEGE_FRAMEWORK_CODE).exclude(
+            status__in=policy.INSTITUTION_EDITING_STATES
+        ).select_related("college", "assigned_reviewer")
 
-        if not is_admin and role not in ("committee", "committee_chair"):
-            raise ReviewNotAuthorizedError("Only committee reviewers and administrators can access the review queue.")
-
-        qs = CollegeAssessment.objects.filter(
-            framework=COLLEGE_FRAMEWORK_CODE
-        ).exclude(status="DRAFT").select_related("college", "assigned_reviewer")
-
-        # Conflict-of-interest exclusion: Exclude reviewer's own college
         user_college = getattr(user, "college", None)
         if user_college:
             qs = qs.exclude(college_id=user_college.pk)
 
-        # Scoped ReviewerAuthorization check
-        if not is_admin:
-            user_auths = ReviewerAuthorization.objects.filter(user=user, is_active=True)
-            if user_auths.exists():
-                fw_matching = user_auths.filter(framework__in=[COLLEGE_FRAMEWORK_CODE, "ALL"])
-                if not fw_matching.exists():
-                    return CollegeAssessment.objects.none()
+        global_scope, codes, _ = (True, [], False) if oversight else policy.review_scope_filter(user, policy.COLLEGE)
+        if not global_scope:
+            qs = qs.filter(
+                Q(assigned_reviewer_id=user.pk)
+                | Q(college__aishe_code__in=[c for c in codes if c])
+                | Q(college__id__in=[int(c) for c in codes if str(c).isdigit()])
+            )
 
-                scoped_insts = list(
-                    fw_matching.exclude(institution_id="").values_list("institution_id", flat=True)
-                )
-                has_global = fw_matching.filter(institution_id="").exists()
-                if not has_global:
-                    if scoped_insts:
-                        from django.db.models import Q
-                        qs = qs.filter(
-                            Q(college__aishe_code__in=scoped_insts) |
-                            Q(college__id__in=[int(x) for x in scoped_insts if x.isdigit()])
-                        )
-                    else:
-                        return CollegeAssessment.objects.none()
-
-        # Apply optional filters
         if filters:
             if filters.get("status"):
                 qs = qs.filter(status=filters["status"])

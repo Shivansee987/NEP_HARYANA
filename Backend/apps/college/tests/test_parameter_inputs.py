@@ -33,6 +33,16 @@ from apps.college.validators import (
 )
 
 
+
+# Activity dates inside the 2025-26 assessment period (period-bound claims score 0 without them).
+IN_PERIOD = {"activity_period_start": "2025-08-01", "activity_period_end": "2026-03-31"}
+
+
+def _schema_field(parameter, subcriterion, key):
+    from apps.scoring.field_schema import COLLEGE_FIELD_SCHEMA
+    return next(f for f in COLLEGE_FIELD_SCHEMA[parameter]["subcriteria"][subcriterion]["fields"] if f["key"] == key)
+
+
 class CollegeParameterInputsTests(TestCase):
 
     def setUp(self):
@@ -165,20 +175,22 @@ class CollegeParameterInputsTests(TestCase):
         self.assertEqual(res.raw_score, 4.0)
 
     def test_c4_supporting_institutes_boundary(self):
-        """C4: Supporting other institutes and schools (max 4.0)."""
+        """C4: 0.5 mark per supported area (C4.A, max 2) + schools gated on >= 5 covered (C4.B, max 2) -> 4.0."""
         eval_fn = COLLEGE_EVALUATORS["C4"]
         doc = self._make_verified_doc("EVID_C4_INSTITUTE_CERTS")
+        heis_areas = [o["value"] for o in _schema_field("C4", "C4.A", "support_areas")["options"][:4]]
+        school_areas = [o["value"] for o in _schema_field("C4", "C4.B", "school_support_areas")["options"][:4]]
         p_in = ParameterInput(
             parameter_code="C4",
             subcriteria_inputs={
                 "C4.A": SubcriterionInput(
                     subcriterion_code="C4.A",
-                    raw_inputs={"heis_mentored": 2},
+                    raw_inputs={"support_areas": heis_areas},  # 4 areas -> 2.0
                     evidence_docs=[doc],
                 ),
                 "C4.B": SubcriterionInput(
                     subcriterion_code="C4.B",
-                    raw_inputs={"schools_mentored": 6},
+                    raw_inputs={"schools_covered": 6, "school_support_areas": school_areas},  # >=5 schools, 4 areas -> 2.0
                     evidence_docs=[doc],
                 ),
             },
@@ -238,7 +250,8 @@ class CollegeParameterInputsTests(TestCase):
         self.assertEqual(res.raw_score, 5.0)
 
     def test_c7_sedg_bridge_ambiguity(self):
-        """C7: Bridge courses for SEDGs. Preserves UNRESOLVED_RULE (-3 mark deficit)."""
+        """C7: bridge courses for SEDGs. The PDF's stated maximum (6) exceeds its tiers (3); under the change
+        spec this is ADVISORY policy C7_MAXIMUM: scored literally from the tiers, never inflated. 95% -> tier II = 2."""
         eval_fn = COLLEGE_EVALUATORS["C7"]
         doc = self._make_verified_doc("EVID_C7_OFFICE_ORDERS")
         p_in = ParameterInput(
@@ -252,11 +265,13 @@ class CollegeParameterInputsTests(TestCase):
             },
         )
         res = eval_fn(p_in, self.context, self.validator)
-        self.assertEqual(res.resolution_status, ResolutionStatus.UNRESOLVED_RULE)
-        self.assertIsNone(res.final_score)
+        self.assertEqual(res.resolution_status, ResolutionStatus.CALCULABLE)
+        self.assertEqual(res.raw_score, 2.0)
+        self.assertLessEqual(res.raw_score, 3.0, "C7 must never exceed its highest source tier")
+        self.assertIn("C7_MAXIMUM", [n["policy_id"] for n in res.trace.get("policy_notices", [])])
 
     def test_c8_sarthi_ambiguity(self):
-        """C8: NEP-SARTHI nomination. Preserves UNRESOLVED_RULE."""
+        """C8: NEP-SARTHI nomination. Binary (policy C8_BINARY): a verified nomination scores the full 2 marks."""
         eval_fn = COLLEGE_EVALUATORS["C8"]
         doc = self._make_verified_doc("EVID_C8_OFFICE_ORDERS")
         p_in = ParameterInput(
@@ -270,8 +285,8 @@ class CollegeParameterInputsTests(TestCase):
             },
         )
         res = eval_fn(p_in, self.context, self.validator)
-        self.assertEqual(res.resolution_status, ResolutionStatus.UNRESOLVED_RULE)
-        self.assertIsNone(res.final_score)
+        self.assertEqual(res.resolution_status, ResolutionStatus.CALCULABLE)
+        self.assertEqual(res.raw_score, 2.0)
 
     def test_c9_career_orientation_boundary(self):
         """C9: Career orientation and placements (max 6.0)."""
@@ -296,7 +311,7 @@ class CollegeParameterInputsTests(TestCase):
         self.assertEqual(res.raw_score, 5.0)
 
     def test_c10_industry_collaboration_boundary(self):
-        """C10: Industry collaboration and MoUs (max 5.0)."""
+        """C10: Industry collaboration and MoUs (max 5.0); claims are bounded to the assessment period."""
         eval_fn = COLLEGE_EVALUATORS["C10"]
         doc = self._make_verified_doc("EVID_C10_MOU_DOCS")
         p_in = ParameterInput(
@@ -304,7 +319,7 @@ class CollegeParameterInputsTests(TestCase):
             subcriteria_inputs={
                 "C10.1": SubcriterionInput(
                     subcriterion_code="C10.1",
-                    raw_inputs={"active_mous_count": 5},  # >=5 -> 5.0
+                    raw_inputs={"active_mous_count": 5, **IN_PERIOD},  # >=5 -> 5.0
                     evidence_docs=[doc],
                 )
             },
@@ -321,7 +336,7 @@ class CollegeParameterInputsTests(TestCase):
             subcriteria_inputs={
                 "C11.I": SubcriterionInput(
                     subcriterion_code="C11.I",
-                    raw_inputs={"ventures_count": 12},  # 3.0
+                    raw_inputs={"ventures_count": 12, **IN_PERIOD},  # > 10 -> 3.0
                     evidence_docs=[doc],
                 ),
                 "C11.II.a": SubcriterionInput(
@@ -340,13 +355,17 @@ class CollegeParameterInputsTests(TestCase):
         self.assertEqual(res.raw_score, 5.0)
 
     def test_c12_alumni_connect_boundary(self):
-        """C12: Alumni connect (max 5.0)."""
+        """C12: Alumni connect (max 5.0); the reunion / annual report (C12.2) must fall in the assessment period."""
         eval_fn = COLLEGE_EVALUATORS["C12"]
         doc = self._make_verified_doc("EVID_C12_DATABASE")
         p_in = ParameterInput(
             parameter_code="C12",
             subcriteria_inputs={
-                f"C12.{i}": SubcriterionInput(subcriterion_code=f"C12.{i}", raw_inputs={"verified": True}, evidence_docs=[doc])
+                f"C12.{i}": SubcriterionInput(
+                    subcriterion_code=f"C12.{i}",
+                    raw_inputs={"verified": True, **(IN_PERIOD if i == 2 else {})},
+                    evidence_docs=[doc],
+                )
                 for i in range(1, 6)
             },
         )
@@ -399,7 +418,8 @@ class CollegeParameterInputsTests(TestCase):
         self.assertEqual(res.raw_score, 6.0)
 
     def test_c16_gender_parity_ambiguity(self):
-        """C16: Gender parity initiatives. Preserves UNRESOLVED_RULE (+1 mark excess)."""
+        """C16: five 1-mark items against a stated maximum of 4. ADVISORY policy C16_ITEMS_EXCEED_MAXIMUM: each item
+        scores 1 mark and the parameter is capped at 4 (never 5)."""
         eval_fn = COLLEGE_EVALUATORS["C16"]
         doc = self._make_verified_doc("EVID_C16_ICC_ORDERS")
         p_in = ParameterInput(
@@ -410,8 +430,8 @@ class CollegeParameterInputsTests(TestCase):
             },
         )
         res = eval_fn(p_in, self.context, self.validator)
-        self.assertEqual(res.resolution_status, ResolutionStatus.UNRESOLVED_RULE)
-        self.assertIsNone(res.final_score)
+        self.assertEqual(res.resolution_status, ResolutionStatus.CALCULABLE)
+        self.assertEqual(res.raw_score, 4.0)
 
     def test_c17_outreach_boundary(self):
         """C17: Outreach, community engagement (max 5.0)."""
@@ -447,20 +467,21 @@ class CollegeParameterInputsTests(TestCase):
         self.assertEqual(res.raw_score, 5.0)
 
     def test_c19_patents_and_scopus_ambiguity(self):
-        """C19: Patents, research, Scopus. C19.III preserves UNRESOLVED_RULE."""
+        """C19: Patents, research, Scopus. The Scopus metric is undefined (policy SCOPUS_METRIC): a non-zero claim
+        is not scored and blocks the parameter until the rubric owner decides."""
         eval_fn = COLLEGE_EVALUATORS["C19"]
         doc = self._make_verified_doc("EVID_C19_FILING_CERTS")
         p_in = ParameterInput(
             parameter_code="C19",
             subcriteria_inputs={
-                "C19.I": SubcriterionInput(subcriterion_code="C19.I", raw_inputs={"patents_filed": 10}, evidence_docs=[doc]),
-                "C19.II": SubcriterionInput(subcriterion_code="C19.II", raw_inputs={"patents_granted": 10}, evidence_docs=[doc]),
-                "C19.III": SubcriterionInput(subcriterion_code="C19.III", raw_inputs={"scopus_publications": 50}, evidence_docs=[doc]),
+                "C19.I": SubcriterionInput(subcriterion_code="C19.I", raw_inputs={"patents_filed": 10, **IN_PERIOD}, evidence_docs=[doc]),
+                "C19.II": SubcriterionInput(subcriterion_code="C19.II", raw_inputs={"patents_granted": 10, **IN_PERIOD}, evidence_docs=[doc]),
+                "C19.III": SubcriterionInput(subcriterion_code="C19.III", raw_inputs={"scopus_index": 50, **IN_PERIOD}, evidence_docs=[doc]),
             },
         )
         res = eval_fn(p_in, self.context, self.validator)
-        self.assertEqual(res.subcriteria_results["C19.III"].resolution_status, ResolutionStatus.UNRESOLVED_RULE)
-        self.assertEqual(res.resolution_status, ResolutionStatus.UNRESOLVED_RULE)
+        self.assertEqual(res.subcriteria_results["C19.III"].resolution_status, ResolutionStatus.POLICY_UNRESOLVED)
+        self.assertEqual(res.resolution_status, ResolutionStatus.POLICY_UNRESOLVED)
         self.assertIsNone(res.final_score)
 
     def test_c20_naac_nirf_boundary(self):
@@ -480,20 +501,21 @@ class CollegeParameterInputsTests(TestCase):
         self.assertEqual(res.raw_score, 5.0)
 
     def test_c21_cultural_ambiguity(self):
-        """C21: Cultural activities. Preserves SOURCE_INCONSISTENCY (3 marks rubric vs 4 max)."""
+        """C21: stated maximum 4 but components reach 3 (ADVISORY policy C21_MAXIMUM): scored literally, no marks
+        added. 15 activities -> 2, curriculum integration -> 1, total 3."""
         eval_fn = COLLEGE_EVALUATORS["C21"]
         doc = self._make_verified_doc("EVID_C21_ACTIVITY_REPORTS")
         p_in = ParameterInput(
             parameter_code="C21",
             subcriteria_inputs={
-                "C21.1": SubcriterionInput(subcriterion_code="C21.1", raw_inputs={"activities_count": 15}, evidence_docs=[doc]),
+                "C21.1": SubcriterionInput(subcriterion_code="C21.1", raw_inputs={"activities_count": 15, **IN_PERIOD}, evidence_docs=[doc]),
                 "C21.2": SubcriterionInput(subcriterion_code="C21.2", raw_inputs={"verified": True}, evidence_docs=[doc]),
             },
         )
         res = eval_fn(p_in, self.context, self.validator)
         self.assertEqual(res.raw_score, 3.0)
-        self.assertEqual(res.resolution_status, ResolutionStatus.SOURCE_INCONSISTENCY)
-        self.assertIsNone(res.final_score)
+        self.assertEqual(res.resolution_status, ResolutionStatus.CALCULABLE)
+        self.assertIn("C21_MAXIMUM", [n["policy_id"] for n in res.trace.get("policy_notices", [])])
 
     def test_c22_governance_feedback_boundary(self):
         """C22: Governance, feedback, and ATR (max 2.0)."""

@@ -10,6 +10,7 @@ from datetime import date
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
+from apps.scoring.test_support import submit_complete
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -95,7 +96,7 @@ class NodalOfficerBoundaryTests(TestCase):
     # --- returned assessments can be corrected and resubmitted -----------------------------------
 
     def test_returned_assessment_can_be_resubmitted(self):
-        UniversityAssessmentService.submit_assessment(self.assessment_a.assessment_id, submitting_user=self.nodal_a)
+        submit_complete(UniversityAssessmentService, self.assessment_a.assessment_id, submitting_user=self.nodal_a)
         UniversityReviewService.return_for_correction(
             self.assessment_a.assessment_id, reviewer=self.reviewer,
             reason="U1 programme count does not match the syndicate approval document.",
@@ -139,6 +140,23 @@ class NodalOfficerBoundaryTests(TestCase):
             original_filename="x.pdf", file_size=10, file_checksum=institution_id.ljust(64, "0")[:64],
             mime_type="application/pdf", status=EvidenceLifecycleState.EVIDENCE_PENDING,
         )
+
+    def test_rebound_uploader_loses_access_to_former_institution_evidence(self):
+        """FIN-25: uploading a document grants no lasting access. After the account is moved to another university
+        the former university's evidence is neither listed nor downloadable."""
+        doc = self._doc(self.assessment_a, self.uni_a.aishe_code)
+        self.client.force_authenticate(self.nodal_a)
+        self.assertEqual(self.client.get(f"/api/evidence/{doc.document_id}/").status_code, status.HTTP_200_OK)
+
+        self.nodal_a.university = self.uni_b
+        self.nodal_a.save(update_fields=["university"])
+        self.client.force_authenticate(self.nodal_a)
+        listed = [row["document_id"] for row in self.client.get("/api/evidence/").data["results"]]
+        self.assertNotIn(str(doc.document_id), listed)
+        self.assertIn(self.client.get(f"/api/evidence/{doc.document_id}/").status_code,
+                      (status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND))
+        self.assertIn(self.client.get(f"/api/evidence/{doc.document_id}/download/").status_code,
+                      (status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND))
 
     def test_university_users_list_only_own_evidence(self):
         own = self._doc(self.assessment_a, self.uni_a.aishe_code)

@@ -42,12 +42,17 @@ import {
   fetchAssociationDocumentBlob,
   startAssessmentReview,
   completeAssessmentReview,
+  returnAssessmentForCorrection,
+  rejectAssessment,
   fetchAssessmentScoring,
   acceptParameterScore,
   adjustParameterScore,
   certifyAssessment,
 } from "../../api/checker";
 import { useAuth } from "../../context/AuthContext.jsx";
+
+// Minimum reason length for Return for Correction / Reject (the API itself requires at least 5 characters).
+const MIN_DECISION_REASON = 10;
 import { StatusBadge, DashboardSkeleton, EmptyState, ErrorState } from "../../components/common";
 import { formatGatingStatus, getGatingStatusExplanation } from "../../components/common/StatusBadge";
 import DocumentPreviewModal from "../../components/Institution/DocumentPreviewModal";
@@ -96,6 +101,12 @@ export default function CheckerAssessmentReview() {
   const [showCompleteModal, setShowCompleteModal] = useState(false);
   const [completionRemarks, setCompletionRemarks] = useState("");
   const [completingReview, setCompletingReview] = useState(false);
+
+  // Return for Correction / Reject Assessment (decisionMode: "return" | "reject" | null)
+  const [decisionMode, setDecisionMode] = useState(null);
+  const [decisionReason, setDecisionReason] = useState("");
+  const [decisionConfirmed, setDecisionConfirmed] = useState(false);
+  const [decisionLoading, setDecisionLoading] = useState(false);
 
   // Score Acceptance State
   const [acceptingScore, setAcceptingScore] = useState(false);
@@ -730,6 +741,44 @@ export default function CheckerAssessmentReview() {
     }
   };
 
+  const openDecisionModal = (mode) => {
+    setDecisionMode(mode);
+    setDecisionReason("");
+    setDecisionConfirmed(false);
+  };
+
+  // RETURN FOR CORRECTION / REJECT ASSESSMENT ACTIONS
+  const handleConfirmDecision = async () => {
+    const reason = decisionReason.trim();
+    if (reason.length < MIN_DECISION_REASON) return;
+    setDecisionLoading(true);
+    try {
+      if (decisionMode === "return") {
+        await returnAssessmentForCorrection(assessment?.framework, assessment?.assessment_id, { reason });
+      } else {
+        await rejectAssessment(assessment?.framework, assessment?.assessment_id, { reason });
+      }
+      const name = assessment?.institution?.name || "The assessment";
+      setDecisionMode(null);
+      // A returned assessment goes back to the institution (reviewers lose access); a rejection is final.
+      navigate("/checker/queue", {
+        state: {
+          notice: decisionMode === "return"
+            ? `${name} was returned to the institution for correction.`
+            : `${name} was rejected.`,
+        },
+      });
+    } catch (err) {
+      console.error("Review decision error:", err);
+      setActionFeedback({
+        type: "error",
+        message: err.message || "The review decision could not be recorded.",
+      });
+    } finally {
+      setDecisionLoading(false);
+    }
+  };
+
   if (loading) {
     return <DashboardSkeleton />;
   }
@@ -746,6 +795,14 @@ export default function CheckerAssessmentReview() {
 
   const isUniv = assessment.framework === "UNIVERSITY_2026";
   const canReview = assessment.status === "SUBMITTED" || assessment.status === "UNDER_REVIEW";
+  // Only Screening Committee members act on an assessment; administrators have read-only oversight.
+  const isReviewer = user?.role === "committee" || user?.role === "committee_chair";
+  const canDecide = isReviewer && canReview;
+  // Official certification held by an open council decision (e.g. University U6 / U18.3 evidence, FIN-03).
+  const certificationHolds = (scoringEvaluation?.policy_register || []).filter(
+    (p) => p.blocks_certification && p.certification_impact === "BLOCKS_OFFICIAL_CERTIFICATION"
+      && (p.parameters || []).some((code) => frameworkParamCodes.includes(code))
+  );
 
   const getGatingDotColor = (gatingStatus) => {
     const g = String(gatingStatus || "").toUpperCase();
@@ -820,6 +877,18 @@ export default function CheckerAssessmentReview() {
               {actionLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <PlayIcon />}
               <span>Start Review</span>
             </button>
+          )}
+          {canDecide && (
+            <>
+              <button type="button" onClick={() => openDecisionModal("return")}
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-white hover:bg-amber-50 text-amber-800 border border-amber-300 rounded-lg text-xs font-bold shadow-xs cursor-pointer">
+                <RotateCcw className="w-3.5 h-3.5" /><span>Return for Correction</span>
+              </button>
+              <button type="button" onClick={() => openDecisionModal("reject")}
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-white hover:bg-red-50 text-red-700 border border-red-300 rounded-lg text-xs font-bold shadow-xs cursor-pointer">
+                <XCircle className="w-3.5 h-3.5" /><span>Reject Assessment</span>
+              </button>
+            </>
           )}
           {assessment.status === "UNDER_REVIEW" && (
             <button type="button" onClick={() => setShowCompleteModal(true)}
@@ -1391,6 +1460,53 @@ export default function CheckerAssessmentReview() {
         </div>
       )}
 
+      {decisionMode && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
+          role="dialog" aria-modal="true" aria-labelledby="review-decision-title">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-lg w-full p-6 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div id="review-decision-title" className={`flex items-center gap-2 font-bold text-sm ${decisionMode === "return" ? "text-amber-800" : "text-red-700"}`}>
+                {decisionMode === "return" ? <RotateCcw className="w-5 h-5" /> : <XCircle className="w-5 h-5" />}
+                <span>{decisionMode === "return" ? "Return for Correction" : "Reject Assessment"}</span>
+              </div>
+              <button type="button" aria-label="Close" onClick={() => setDecisionMode(null)} className="text-slate-400 hover:text-slate-600 font-bold text-lg cursor-pointer">×</button>
+            </div>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              {decisionMode === "return"
+                ? "The assessment goes back to the institution, which can correct its answers and evidence and submit again. The committee loses access until it is resubmitted."
+                : "Rejection is final. The institution cannot edit or resubmit this assessment, and it will not be certified."}
+            </p>
+            <div>
+              <label htmlFor="review-decision-reason" className="block text-xs font-bold text-slate-700 mb-1">
+                Reason (required; shared with the institution and recorded in the audit trail)
+              </label>
+              <textarea id="review-decision-reason" rows={4} value={decisionReason}
+                onChange={(e) => setDecisionReason(e.target.value)}
+                placeholder={decisionMode === "return" ? "Describe what the institution must correct..." : "Explain why the assessment is rejected..."}
+                className="w-full text-xs font-medium p-3 border border-slate-200 rounded-lg outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20" />
+              {decisionReason.trim().length > 0 && decisionReason.trim().length < MIN_DECISION_REASON && (
+                <p className="text-[11px] text-red-600 mt-1">Enter at least {MIN_DECISION_REASON} characters.</p>
+              )}
+            </div>
+            {decisionMode === "reject" && (
+              <label className="flex items-start gap-2 text-xs text-slate-700">
+                <input type="checkbox" checked={decisionConfirmed} onChange={(e) => setDecisionConfirmed(e.target.checked)} className="mt-0.5" />
+                <span>I understand this rejection is final and cannot be undone.</span>
+              </label>
+            )}
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+              <button type="button" onClick={() => setDecisionMode(null)} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold cursor-pointer">Cancel</button>
+              <button type="button" onClick={handleConfirmDecision}
+                disabled={decisionLoading || decisionReason.trim().length < MIN_DECISION_REASON || (decisionMode === "reject" && !decisionConfirmed)}
+                className={`px-4 py-2 text-white rounded-lg text-xs font-bold shadow-xs cursor-pointer disabled:opacity-50 flex items-center gap-1.5 ${decisionMode === "return" ? "bg-amber-600 hover:bg-amber-700" : "bg-red-600 hover:bg-red-700"}`}>
+                {decisionLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                <span>{decisionMode === "return" ? "Return to Institution" : "Reject Assessment"}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showCompleteModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
           <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-lg w-full p-6 space-y-4">
@@ -1631,16 +1747,25 @@ export default function CheckerAssessmentReview() {
                 </div>
               </div>
             </div>
+            {assessment.status !== "CERTIFIED" && certificationHolds.map((hold) => (
+              <div key={hold.policy_id} role="alert" className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900">
+                <p className="font-bold mb-1">Official certification on hold: council decision required</p>
+                <p className="leading-relaxed">{hold.question}</p>
+                <p className="leading-relaxed mt-1 text-amber-800">{hold.implementation_default}</p>
+              </div>
+            ))}
             <div className="flex items-center justify-between pt-3 border-t border-slate-100">
               <span className="text-xs text-slate-500 font-medium">
-                {assessment.status === "CERTIFIED" ? "Assessment certified and sealed."
+                {assessment.status !== "CERTIFIED" && certificationHolds.length > 0
+                  ? "Certification is on hold pending a council decision (see the notice above)."
+                  : assessment.status === "CERTIFIED" ? "Assessment certified and sealed."
                   : scoringEvaluation?.all_parameters_reviewed ? "All parameters reviewed. Ready for certification."
                   : "Notice: Not all parameters have been reviewed yet."}
               </span>
               <div className="flex items-center gap-3">
                 <button type="button" onClick={() => setShowFinalAwardModal(false)} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold cursor-pointer">Close</button>
                 {assessment.status !== "CERTIFIED" && (
-                  <button type="button" onClick={handleCertifyAssessment} disabled={certifyingAssessment}
+                  <button type="button" onClick={handleCertifyAssessment} disabled={certifyingAssessment || certificationHolds.length > 0}
                     className="inline-flex items-center gap-1.5 px-5 py-2 bg-amber-700 hover:bg-amber-800 text-white rounded-lg text-xs font-bold shadow-xs cursor-pointer disabled:opacity-50">
                     {certifyingAssessment && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                     <span>Certify Assessment</span>

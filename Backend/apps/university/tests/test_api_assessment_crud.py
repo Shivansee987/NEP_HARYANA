@@ -74,6 +74,13 @@ class UniversityAPIAssessmentCRUDTests(TestCase):
             university=self.uni_other,
             password="OtherPassword2026!",
         )
+        # Review scope is explicit (COM-01): committee users without a scoped authorization get framework-wide scope.
+        from apps.authentication.models import User as _ScopeUser
+        from apps.evidence.models import ReviewerAuthorization as _ScopeAuth
+        from apps.scoring.test_support import grant_review_scope as _grant_scope
+        for _reviewer in _ScopeUser.objects.filter(role__in=("committee", "committee_chair")):
+            if not _ScopeAuth.objects.filter(user=_reviewer).exists():
+                _grant_scope(_reviewer)
 
     # =========================================================================
     # Category D: Assessment Creation
@@ -187,7 +194,10 @@ class UniversityAPIAssessmentCRUDTests(TestCase):
         self.assertEqual(res.data.get("code"), "ASSESSMENT_NOT_AUTHORIZED")
 
     def test_reviewer_can_transition_to_under_review(self):
-        """Authorized reviewer or admin can transition SUBMITTED to UNDER_REVIEW."""
+        """An authorized reviewer moves SUBMITTED to UNDER_REVIEW through the review action, never by editing the
+        assessment record (reviewers cannot create, edit or submit institution assessments)."""
+        from apps.scoring.test_support import grant_review_scope
+        grant_review_scope(self.reviewer)
         self.client.force_authenticate(user=self.reviewer)
         assessment = UniversityAssessmentService.create_assessment(
             university_id=self.uni.id,
@@ -202,8 +212,17 @@ class UniversityAPIAssessmentCRUDTests(TestCase):
             {"status": "UNDER_REVIEW"},
             format="json"
         )
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
+        res = self.client.post(
+            f"/api/v1/university/university-assessments/{assessment.assessment_id}/start-review/",
+            {"comments": "Commencing review"},
+            format="json"
+        )
         self.assertEqual(res.status_code, status.HTTP_200_OK)
-        self.assertEqual(res.data.get("status"), "UNDER_REVIEW")
+        assessment.refresh_from_db()
+        self.assertEqual(assessment.status, "UNDER_REVIEW")
+        self.assertEqual(assessment.assigned_reviewer_id, self.reviewer.pk)
 
     # =========================================================================
     # Category K: Concurrency Protection
@@ -221,7 +240,7 @@ class UniversityAPIAssessmentCRUDTests(TestCase):
         # First update U1
         res1 = self.client.put(
             f"/api/university-assessments/{assessment.assessment_id}/parameters/U1/",
-            {"raw_inputs": {"programmes_count": 5}},
+            {"raw_inputs": {"U1.1": {"programmes_count": 5}}},
             format="json"
         )
         self.assertEqual(res1.status_code, status.HTTP_200_OK)
@@ -229,7 +248,7 @@ class UniversityAPIAssessmentCRUDTests(TestCase):
         # Second update U2
         res2 = self.client.put(
             f"/api/university-assessments/{assessment.assessment_id}/parameters/U2/",
-            {"raw_inputs": {"languages_count": 3}},
+            {"raw_inputs": {"U2.1": {"total_degree_programmes": 10, "indian_lang_programmes": 3}}},
             format="json"
         )
         self.assertEqual(res2.status_code, status.HTTP_200_OK)
@@ -238,5 +257,5 @@ class UniversityAPIAssessmentCRUDTests(TestCase):
         assessment.refresh_from_db()
         self.assertIn("U1", assessment.parameter_data)
         self.assertIn("U2", assessment.parameter_data)
-        self.assertEqual(assessment.parameter_data["U1"]["raw_inputs"]["programmes_count"], 5)
-        self.assertEqual(assessment.parameter_data["U2"]["raw_inputs"]["languages_count"], 3)
+        self.assertEqual(assessment.parameter_data["U1"]["raw_inputs"]["U1.1"]["programmes_count"], 5)
+        self.assertEqual(assessment.parameter_data["U2"]["raw_inputs"]["U2.1"]["indian_lang_programmes"], 3)

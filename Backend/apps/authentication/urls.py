@@ -1,6 +1,7 @@
 from django.urls import path
 from .views import (
     CollegeListView,
+    UniversityListView,
     CollegeAisheLookupView,
     RegisterView,
     UniversityAisheLookupView,
@@ -12,12 +13,18 @@ from .views import (
     RefreshTokenView,
     MeView,
     SendOTPView,
-    VerifyOTPView
+    VerifyOTPView,
+    AccountActivationVerifyView,
+    AccountActivationConfirmView,
+    EmailVerificationVerifyView,
+    EmailVerificationConfirmView,
+    EmailVerificationResendView,
 )
 
 urlpatterns = [
     # Public list for the signup form; /api/colleges/ is the authenticated college API (apps.college).
     path('auth/colleges/', CollegeListView.as_view(), name='college-list'),
+    path('auth/universities/', UniversityListView.as_view(), name='university-list'),
     path('auth/college/lookup/', CollegeAisheLookupView.as_view(), name='college-aishe-lookup'),
     path('auth/colleges/lookup/', CollegeAisheLookupView.as_view(), name='colleges-aishe-lookup'),
     # OTP verification endpoints
@@ -38,7 +45,15 @@ urlpatterns = [
     path('auth/refresh/', RefreshTokenView.as_view(), name='refresh'),
     path('auth/me/', MeView.as_view(), name='me'),
     path('auth/forgot-password/', PasswordResetRequestView.as_view(), name='password-reset-request'),
+    path('auth/password/reset/', PasswordResetRequestView.as_view(), name='password-reset-request-alias'),
     path('auth/reset-password/', PasswordResetConfirmView.as_view(), name='password-reset-confirm'),
+    path('auth/password/reset/confirm/', PasswordResetConfirmView.as_view(), name='password-reset-confirm-alias'),
+    path('auth/activate/verify/', AccountActivationVerifyView.as_view(), name='account-activation-verify'),
+    path('auth/activate/confirm/', AccountActivationConfirmView.as_view(), name='account-activation-confirm'),
+    # Email verification endpoints
+    path('auth/verify-email/', EmailVerificationVerifyView.as_view(), name='email-verify'),
+    path('auth/verify-email/confirm/', EmailVerificationConfirmView.as_view(), name='email-verify-confirm'),
+    path('auth/resend-verification/', EmailVerificationResendView.as_view(), name='email-resend-verification'),
 ]
 
 

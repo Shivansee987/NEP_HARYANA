@@ -194,8 +194,8 @@ class EvidenceService:
             raise UnauthorizedEvidenceActionError("Valid authenticated user is required for reviewer authorization.")
 
         role = getattr(reviewer, 'role', '')
-        if role not in ('committee', 'admin') and not getattr(reviewer, 'is_staff', False):
-            raise UnauthorizedEvidenceActionError("Only Screening Committee or Admin users can be authorized as reviewers.")
+        if role not in ('committee', 'committee_chair'):
+            raise UnauthorizedEvidenceActionError("Only Screening Committee members can be authorized as reviewers.")
 
         clean_fw = framework.strip().upper()
         if clean_fw not in ("UNIVERSITY_2026", "COLLEGE_2026", "ALL"):
@@ -216,81 +216,60 @@ class EvidenceService:
     @classmethod
     def validate_reviewer_authorization(cls, reviewer, doc: EvidenceDocument):
         """
-        Validates whether a reviewer is authorized to inspect/verify/reject an evidence document.
-        Enforces segregation of duties, institutional conflict of interest, assignment, and framework isolation.
+        Evidence decisions (verify / reject, document and association level) follow the assessment review rules
+        in apps.evidence.access_policy:
+        - Screening Committee members and chairs only; administrators have read-only oversight.
+        - Segregation of duties: an uploader never reviews their own evidence.
+        - No conflict of interest with the institution, and review scope (authorization or assignment) is required;
+          a reviewer without any authorization has no implicit scope.
+        - Only while the assessment is submitted / under review (never on an institution's draft).
+        - A document assigned to another reviewer can only be acted on by that reviewer.
         """
+        from apps.evidence import access_policy as policy
+
         if not reviewer or not getattr(reviewer, 'is_authenticated', False):
             raise UnauthorizedEvidenceActionError("Authentication required to review evidence.")
+        if not policy.is_reviewer(reviewer):
+            raise UnauthorizedEvidenceActionError("Only Screening Committee members can review evidence.")
 
-        verifier_role = getattr(reviewer, 'role', '')
-        is_admin = getattr(reviewer, 'is_superuser', False) or getattr(reviewer, 'is_staff', False) or verifier_role in ('admin', 'state_admin')
-        if not is_admin and verifier_role not in ('committee', 'committee_chair'):
-            raise UnauthorizedEvidenceActionError("Only Screening Committee or Admin can review evidence.")
-
-        # 1. Segregation of duties: Uploader cannot review their own evidence
         if reviewer.pk == doc.uploader_id:
             raise ReviewerConflictOfInterestError(
                 "Segregation of duties: Uploader cannot verify or reject their own evidence."
             )
 
-        # 2. Institutional affiliation conflict of interest
-        reviewer_college = getattr(reviewer, 'college', None)
-        if reviewer_college:
-            college_aishe = getattr(reviewer_college, 'aishe_code', '')
-            college_id_str = str(reviewer_college.pk)
-            if (college_aishe and college_aishe == doc.institution_id) or college_id_str == doc.institution_id:
-                raise ReviewerConflictOfInterestError(
-                    f"Conflict of interest: Reviewer is affiliated with institution '{doc.institution_id}'."
-                )
-
-        reviewer_uni = getattr(reviewer, 'university', None)
-        if reviewer_uni:
-            uni_aishe = getattr(reviewer_uni, 'aishe_code', '')
-            uni_id_str = str(reviewer_uni.pk)
-            if (uni_aishe and uni_aishe == doc.institution_id) or uni_id_str == doc.institution_id:
-                raise ReviewerConflictOfInterestError(
-                    f"Conflict of interest: Reviewer is affiliated with institution '{doc.institution_id}'."
-                )
-
-        # 3. Assignment enforcement: If assigned to another reviewer, regular reviewer cannot act
         if doc.assigned_reviewer_id and doc.assigned_reviewer_id != reviewer.pk:
-            if not is_admin:
-                raise UnauthorizedEvidenceActionError(
-                    f"Evidence is assigned to another reviewer. Only the assigned reviewer or admin can act."
-                )
-
-        # 4. Scope and Framework authorization
-        if is_admin:
-            return True
-
-        # For committee reviewers:
-        user_auths = ReviewerAuthorization.objects.filter(user=reviewer, is_active=True)
-
-        if user_auths.exists():
-            allowed_fw = [doc.framework, 'ALL']
-            if doc.framework in ('UNIVERSITY_2026', 'UNIVERSITY'):
-                allowed_fw.extend(['UNIVERSITY_2026', 'UNIVERSITY'])
-            elif doc.framework in ('COLLEGE_2026', 'COLLEGE'):
-                allowed_fw.extend(['COLLEGE_2026', 'COLLEGE'])
-            fw_matching = user_auths.filter(framework__in=allowed_fw)
-            if not fw_matching.exists():
-                raise ReviewerFrameworkMismatchError(
-                    f"Reviewer is not authorized for framework '{doc.framework}'."
-                )
-            inst_matching = fw_matching.filter(institution_id__in=["", doc.institution_id])
-            if not inst_matching.exists():
-                raise ReviewerNotAuthorizedError(
-                    f"Reviewer is not authorized for institution '{doc.institution_id}'."
-                )
-            return True
-
-        # If user has no authorizations, but the system has active authorizations configured:
-        if ReviewerAuthorization.objects.filter(is_active=True).exists():
-            raise ReviewerNotAuthorizedError(
-                f"Reviewer '{reviewer.email}' has no active framework authorizations assigned."
+            raise UnauthorizedEvidenceActionError(
+                "Evidence is assigned to another reviewer. Only the assigned reviewer can act on it."
             )
 
-        # Legacy fallback (for Phase 5A/5B regression tests where ReviewerAuthorization is not seeded):
+        assessment = policy.resolve_assessment(doc.assessment_id, doc.framework)
+        if assessment is not None:
+            institution = policy.assessment_institution(assessment)
+            if policy.has_conflict_of_interest(reviewer, institution):
+                raise ReviewerConflictOfInterestError(
+                    f"Conflict of interest: Reviewer is affiliated with institution '{doc.institution_id}'."
+                )
+            if assessment.status not in policy.REVIEWABLE_STATES:
+                raise UnauthorizedEvidenceActionError(
+                    f"Evidence can only be reviewed after the assessment is submitted (current: {assessment.status})."
+                )
+            if not policy.has_review_scope(reviewer, doc.framework, institution, getattr(assessment, 'assigned_reviewer_id', None)):
+                if policy.scope_denial_code(reviewer, doc.framework) == 'FRAMEWORK_MISMATCH':
+                    raise ReviewerFrameworkMismatchError(f"Reviewer is not authorized for framework '{doc.framework}'.")
+                raise ReviewerNotAuthorizedError(f"Reviewer is not authorized for institution '{doc.institution_id}'.")
+            return True
+
+        # Evidence not attached to a known assessment (legacy records): scope by the recorded institution code.
+        for own in (getattr(reviewer, 'college', None), getattr(reviewer, 'university', None)):
+            if own is not None and doc.institution_id in policy.institution_codes(own):
+                raise ReviewerConflictOfInterestError(
+                    f"Conflict of interest: Reviewer is affiliated with institution '{doc.institution_id}'."
+                )
+        auths = policy.active_authorizations(reviewer, doc.framework)
+        if not auths.exists():
+            raise ReviewerFrameworkMismatchError(f"Reviewer is not authorized for framework '{doc.framework}'.")
+        if not auths.filter(institution_id__in=["", doc.institution_id]).exists():
+            raise ReviewerNotAuthorizedError(f"Reviewer is not authorized for institution '{doc.institution_id}'.")
         return True
 
     @classmethod
@@ -310,7 +289,7 @@ class EvidenceService:
             raise UnauthorizedEvidenceActionError("Authenticated user required to assign reviewers.")
 
         admin_role = getattr(assigned_by, 'role', '')
-        if admin_role not in ('admin', 'state_admin') and not getattr(assigned_by, 'is_staff', False):
+        if admin_role not in ('head_admin', 'state_admin', 'sub_admin', 'admin') and not getattr(assigned_by, 'is_superuser', False):
             raise UnauthorizedEvidenceActionError("Only administrators can assign reviewers.")
 
         doc = EvidenceDocument.objects.select_for_update().get(pk=evidence_id)
@@ -318,8 +297,8 @@ class EvidenceService:
         if not reviewer or not getattr(reviewer, 'is_authenticated', False):
             raise ReviewerAssignmentError("Valid reviewer must be provided for assignment.")
 
-        if getattr(reviewer, 'role', '') not in ('committee', 'admin') and not getattr(reviewer, 'is_staff', False):
-            raise ReviewerAssignmentError("Assigned user must have a reviewer or committee role.")
+        if getattr(reviewer, 'role', '') not in ('committee', 'committee_chair'):
+            raise ReviewerAssignmentError("Assigned user must be a Screening Committee member.")
 
         # Check reviewer conflict of interest
         if reviewer.pk == doc.uploader_id:
@@ -383,7 +362,7 @@ class EvidenceService:
         """
         if not unassigned_by or not getattr(unassigned_by, 'is_authenticated', False):
             raise UnauthorizedEvidenceActionError("Authentication required.")
-        if getattr(unassigned_by, 'role', '') not in ('admin', 'state_admin') and not getattr(unassigned_by, 'is_staff', False):
+        if getattr(unassigned_by, 'role', '') not in ('head_admin', 'state_admin', 'sub_admin', 'admin') and not getattr(unassigned_by, 'is_superuser', False):
             raise UnauthorizedEvidenceActionError("Only administrators can unassign reviewers.")
 
         doc = EvidenceDocument.objects.select_for_update().get(pk=evidence_id)
@@ -433,20 +412,22 @@ class EvidenceService:
         if status:
             qs = qs.filter(status=status)
 
-        # Authorization-based scoping
-        verifier_role = getattr(reviewer, 'role', '')
-        if verifier_role != 'admin' and not getattr(reviewer, 'is_staff', False):
+        # Authorization-based scoping: oversight administrators see everything (read-only); reviewers see
+        # documents in their authorized frameworks/institutions plus documents assigned to them.
+        from django.db.models import Q
+        from apps.evidence import access_policy as policy
+        if not policy.is_oversight(reviewer):
+            if not policy.is_reviewer(reviewer):
+                raise UnauthorizedEvidenceActionError("Only Screening Committee members can view the evidence review queue.")
             user_auths = ReviewerAuthorization.objects.filter(user=reviewer, is_active=True)
-            if user_auths.exists():
-                authorized_frameworks = list(user_auths.values_list('framework', flat=True))
-                if 'ALL' not in authorized_frameworks:
-                    qs = qs.filter(framework__in=authorized_frameworks)
-
-                scoped_institutions = list(user_auths.exclude(institution_id="").values_list('institution_id', flat=True))
-                if scoped_institutions:
-                    qs = qs.filter(institution_id__in=scoped_institutions)
-            elif ReviewerAuthorization.objects.filter(is_active=True).exists():
-                return []
+            scope_q = Q(assigned_reviewer=reviewer)
+            for auth in user_auths:
+                fw = policy.FRAMEWORK_ALIASES.get(policy.normalize_framework(auth.framework))
+                term = Q() if auth.framework == 'ALL' else Q(framework__in=fw or (auth.framework,))
+                if auth.institution_id:
+                    term &= Q(institution_id=auth.institution_id)
+                scope_q |= term
+            qs = qs.filter(scope_q)
 
             # Exclude conflict of interest
             qs = qs.exclude(uploader=reviewer)
@@ -1195,17 +1176,9 @@ class EvidenceService:
 
         doc = assoc.evidence
         if user and getattr(user, 'is_authenticated', False):
-            user_role = getattr(user, 'role', '')
-            is_admin = getattr(user, 'is_superuser', False) or getattr(user, 'is_staff', False) or user_role in ('admin', 'state_admin')
-            if not is_admin and user_role in ('principal', 'nodal_officer', 'faculty', 'university_admin'):
-                user_college = getattr(user, 'college', None)
-                user_uni = getattr(user, 'university', None)
-                college_code = getattr(user_college, 'aishe_code', None) or str(getattr(user_college, 'pk', ''))
-                uni_code = getattr(user_uni, 'aishe_code', None) or str(getattr(user_uni, 'pk', ''))
-                if doc.institution_id not in (college_code, uni_code) and doc.uploader_id != user.pk:
-                    raise UnauthorizedEvidenceActionError("Cannot view verification history for another institution.")
-            elif not is_admin and user_role in ('committee', 'committee_chair'):
-                cls.validate_reviewer_authorization(user, doc)
+            from apps.evidence import access_policy as policy
+            if not policy.can_read_document(user, doc):
+                raise UnauthorizedEvidenceActionError("You are not authorized to view this evidence history.")
 
         history = []
         for v in assoc.verifications.all().order_by('-timestamp'):

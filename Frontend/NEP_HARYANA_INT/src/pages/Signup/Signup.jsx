@@ -2,10 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   fetchColleges,
+  fetchUniversities,
   verifyUniversityAishe,
   verifyCollegeAishe,
-  sendPhoneOtp,
-  verifyPhoneOtp,
   getDashboardPathForUser,
 } from "../../api/auth";
 import { useAuth } from "../../context/AuthContext.jsx";
@@ -25,6 +24,7 @@ import {
   MapPin,
   Sparkles,
   Phone,
+  Mail,
   KeyRound,
   RotateCw,
 } from "lucide-react";
@@ -56,33 +56,46 @@ export default function Signup({ initialType = null }) {
     confirmPassword: "",
   });
 
-  // OTP Verification state
-  const [otpCode, setOtpCode] = useState("");
-  const [otpSent, setOtpSent] = useState(false);
-  const [phoneVerified, setPhoneVerified] = useState(false);
-  const [isSendingOtp, setIsSendingOtp] = useState(false);
-  const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
-  const [otpCooldown, setOtpCooldown] = useState(0);
-  const [otpFeedback, setOtpFeedback] = useState({ type: "", message: "" });
-  const [devOtp, setDevOtp] = useState("");
-
-  // Cooldown countdown timer for OTP resend
-  useEffect(() => {
-    if (otpCooldown <= 0) return;
-    const timer = setInterval(() => {
-      setOtpCooldown((prev) => (prev > 0 ? prev - 1 : 0));
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [otpCooldown]);
 
   // University-specific state
   const [uniFields, setUniFields] = useState({
     designation: "University Nodal Officer",
     aisheCode: "",
+    universityName: "",
+    universityId: "",
   });
   const [uniVerificationStatus, setUniVerificationStatus] = useState("idle"); // idle | verifying | verified | invalid | not_found | error
   const [uniVerifiedInstitution, setUniVerifiedInstitution] = useState(null);
   const [uniVerificationError, setUniVerificationError] = useState("");
+  const [universities, setUniversities] = useState([]);
+  const [universitiesLoading, setUniversitiesLoading] = useState(true);
+  const [universitiesError, setUniversitiesError] = useState("");
+
+  // Load available universities for University workflow
+  useEffect(() => {
+    let active = true;
+    const loadUniversities = async () => {
+      try {
+        const items = await fetchUniversities();
+        if (active) {
+          setUniversities(items || []);
+        }
+      } catch (err) {
+        if (active) {
+          setUniversitiesError(err.message || "Could not load universities.");
+        }
+      } finally {
+        if (active) {
+          setUniversitiesLoading(false);
+        }
+      }
+    };
+
+    loadUniversities();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   // College-specific state (with first-class AISHE code verification option)
   const [collegeFields, setCollegeFields] = useState({
@@ -171,247 +184,29 @@ export default function Signup({ initialType = null }) {
     if (fieldErrors.phoneNumber) {
       setFieldErrors((prev) => ({ ...prev, phoneNumber: "" }));
     }
-    if (phoneVerified || otpSent) {
-      setPhoneVerified(false);
-      setOtpSent(false);
-      setOtpCode("");
-      setDevOtp("");
-      setOtpFeedback({ type: "", message: "" });
-    }
   };
 
-  const handleSendOtp = async (e) => {
-    if (e) e.preventDefault();
-    const phone = commonFields.phoneNumber.trim();
-    if (!phone || phone.length !== 10) {
-      setFieldErrors((prev) => ({
-        ...prev,
-        phoneNumber: "Please enter a valid 10-digit mobile number.",
-      }));
-      return;
-    }
-
-    setIsSendingOtp(true);
-    setOtpFeedback({ type: "", message: "" });
-
-    try {
-      const res = await sendPhoneOtp(phone);
-      setOtpSent(true);
-      setOtpCooldown(res.cooldown_seconds || 30);
-      if (res.dev_otp) {
-        setDevOtp(res.dev_otp);
-      }
-      setOtpFeedback({
-        type: "success",
-        message: res.message || "OTP sent successfully to your mobile number.",
-      });
-    } catch (err) {
-      setOtpFeedback({
-        type: "error",
-        message: err.message || "Failed to send OTP. Please check the number and try again.",
-      });
-    } finally {
-      setIsSendingOtp(false);
-    }
-  };
-
-  const handleVerifyOtp = async (e) => {
-    if (e) e.preventDefault();
-    const phone = commonFields.phoneNumber.trim();
-    const code = otpCode.trim();
-
-    if (!code || code.length < 4) {
-      setOtpFeedback({
-        type: "error",
-        message: "Please enter the valid OTP received on your mobile.",
-      });
-      return;
-    }
-
-    setIsVerifyingOtp(true);
-    setOtpFeedback({ type: "", message: "" });
-
-    try {
-      const res = await verifyPhoneOtp(phone, code);
-      if (res.verified) {
-        setPhoneVerified(true);
-        setOtpFeedback({
-          type: "success",
-          message: "Mobile number verified successfully!",
-        });
-        if (fieldErrors.phoneNumber) {
-          setFieldErrors((prev) => ({ ...prev, phoneNumber: "" }));
-        }
-      } else {
-        setOtpFeedback({
-          type: "error",
-          message: res.detail || "Invalid OTP code. Please try again.",
-        });
-      }
-    } catch (err) {
-      setOtpFeedback({
-        type: "error",
-        message: err.message || "Verification failed. Please enter the correct OTP.",
-      });
-    } finally {
-      setIsVerifyingOtp(false);
-    }
-  };
-
-  const renderPhoneOtpSection = () => (
+  const renderPhoneNumberSection = () => (
     <div className={`${styles.formGroup} ${styles.fullWidth}`}>
-      <div className="flex items-center justify-between mb-0.5">
-        <label htmlFor="phoneNumber" className="m-0 flex items-center gap-1.5">
-          <Phone size={13} className="text-[#600b0b]" />
-          Applicant Mobile Number *
-        </label>
-        {phoneVerified && (
-          <span className="text-[11px] font-bold text-emerald-700 bg-emerald-100 px-2.5 py-0.5 rounded-full flex items-center gap-1">
-            <CheckCircle2 size={12} /> Verified
-          </span>
-        )}
+      <label htmlFor="phoneNumber" className="flex items-center gap-1.5 mb-1 font-semibold text-slate-800 text-xs">
+        <Phone size={13} className="text-[#600b0b]" />
+        Applicant Mobile Number (Optional)
+      </label>
+      <div className={styles.phoneInputWrapper}>
+        <span className={styles.countryCodePrefix}>+91</span>
+        <input
+          type="tel"
+          id="phoneNumber"
+          name="phoneNumber"
+          value={commonFields.phoneNumber}
+          onChange={handlePhoneNumberChange}
+          placeholder="10-digit mobile number"
+          maxLength={10}
+          className="flex-1"
+          disabled={isSubmitting}
+          autoComplete="tel"
+        />
       </div>
-
-      {!phoneVerified ? (
-        <>
-          <div className={styles.phoneInputWrapper}>
-            <span className={styles.countryCodePrefix}>+91</span>
-            <input
-              type="tel"
-              id="phoneNumber"
-              name="phoneNumber"
-              value={commonFields.phoneNumber}
-              onChange={handlePhoneNumberChange}
-              placeholder="10-digit mobile number"
-              maxLength={10}
-              className="flex-1"
-              disabled={isSubmitting || isSendingOtp}
-              autoComplete="tel"
-            />
-            <button
-              type="button"
-              onClick={handleSendOtp}
-              disabled={
-                commonFields.phoneNumber.length !== 10 ||
-                isSendingOtp ||
-                otpCooldown > 0 ||
-                isSubmitting
-              }
-              className={styles.otpActionBtn}
-              id="send-otp-btn"
-            >
-              {isSendingOtp ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Sending...</span>
-                </>
-              ) : otpCooldown > 0 ? (
-                <span>Resend in {otpCooldown}s</span>
-              ) : otpSent ? (
-                <>
-                  <RotateCw className="w-4 h-4" />
-                  <span>Resend OTP</span>
-                </>
-              ) : (
-                <>
-                  <KeyRound className="w-4 h-4" />
-                  <span>Send OTP</span>
-                </>
-              )}
-            </button>
-          </div>
-
-          {/* OTP Input box when sent */}
-          {otpSent && (
-            <div className={styles.otpBox} id="otp-verification-box">
-              <div className="flex items-center justify-between text-xs text-slate-700">
-                <span className="font-semibold text-slate-800">
-                  Enter 6-Digit OTP sent to +91 {commonFields.phoneNumber}
-                </span>
-                {devOtp && (
-                  <span className={styles.otpDevHint} id="dev-otp-hint">
-                    Demo OTP: <strong>{devOtp}</strong>
-                  </span>
-                )}
-              </div>
-              <div className={styles.otpRow}>
-                <input
-                  type="text"
-                  id="otpCode"
-                  name="otpCode"
-                  value={otpCode}
-                  onChange={(e) => setOtpCode(e.target.value.replace(/[^\d]/g, "").slice(0, 6))}
-                  placeholder="• • • • • •"
-                  maxLength={6}
-                  className={`${styles.otpInput} flex-1`}
-                  disabled={isVerifyingOtp || isSubmitting}
-                  autoComplete="one-time-code"
-                />
-                <button
-                  type="button"
-                  onClick={handleVerifyOtp}
-                  disabled={otpCode.length < 4 || isVerifyingOtp || isSubmitting}
-                  className={styles.otpVerifyBtn}
-                  id="verify-otp-btn"
-                >
-                  {isVerifyingOtp ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Verifying...</span>
-                    </>
-                  ) : (
-                    <>
-                      <ShieldCheck className="w-4 h-4" />
-                      <span>Verify OTP</span>
-                    </>
-                  )}
-                </button>
-              </div>
-
-              {otpFeedback.message && (
-                <div
-                  className={`text-xs px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 ${
-                    otpFeedback.type === "success"
-                      ? "bg-emerald-100 text-emerald-800"
-                      : "bg-rose-100 text-rose-800"
-                  }`}
-                  id="otp-feedback-msg"
-                >
-                  {otpFeedback.type === "success" ? (
-                    <CheckCircle2 size={13} />
-                  ) : (
-                    <AlertCircle size={13} />
-                  )}
-                  <span>{otpFeedback.message}</span>
-                </div>
-              )}
-            </div>
-          )}
-        </>
-      ) : (
-        <div className={styles.otpVerifiedBadge} id="phone-verified-badge">
-          <div className={styles.otpVerifiedBadgeText}>
-            <CheckCircle2 size={18} className="text-emerald-600" />
-            <span>
-              Mobile Number Verified: <strong>+91 {commonFields.phoneNumber}</strong>
-            </span>
-          </div>
-          <button
-            type="button"
-            onClick={() => {
-              setPhoneVerified(false);
-              setOtpSent(false);
-              setOtpCode("");
-              setDevOtp("");
-            }}
-            className={styles.otpChangeBtn}
-            id="change-phone-btn"
-          >
-            Change Number
-          </button>
-        </div>
-      )}
-
       {fieldErrors.phoneNumber && (
         <span className={styles.fieldError}>
           <AlertCircle size={12} /> {fieldErrors.phoneNumber}
@@ -425,17 +220,64 @@ export default function Signup({ initialType = null }) {
     if (name === "aisheCode") {
       const upper = value.toUpperCase().trim();
       setUniFields((prev) => ({ ...prev, aisheCode: upper }));
-      // Reset verification if code is edited
-      if (uniVerificationStatus !== "idle") {
-        setUniVerificationStatus("idle");
-        setUniVerifiedInstitution(null);
+
+      // Instant match if typed code matches known university in universities list
+      const matched = universities.find(
+        (u) => u.aishe_code && u.aishe_code.toUpperCase() === upper
+      );
+      if (matched) {
+        setUniVerificationStatus("verified");
+        setUniVerifiedInstitution(matched);
         setUniVerificationError("");
+        setUniFields((prev) => ({
+          ...prev,
+          aisheCode: upper,
+          universityName: matched.name,
+          universityId: String(matched.id),
+        }));
+      } else {
+        if (uniVerificationStatus !== "idle") {
+          setUniVerificationStatus("idle");
+          setUniVerifiedInstitution(null);
+          setUniVerificationError("");
+        }
       }
       if (fieldErrors.aisheCode) {
         setFieldErrors((prev) => ({ ...prev, aisheCode: "" }));
       }
       return;
     }
+
+    if (name === "universityName") {
+      setUniFields((prev) => ({ ...prev, universityName: value }));
+
+      // Instant match if typed/selected name matches known university in universities list
+      const matched = universities.find(
+        (u) => u.name.toLowerCase() === value.trim().toLowerCase()
+      );
+      if (matched) {
+        setUniVerificationStatus("verified");
+        setUniVerifiedInstitution(matched);
+        setUniVerificationError("");
+        setUniFields((prev) => ({
+          ...prev,
+          universityName: matched.name,
+          universityId: String(matched.id),
+          aisheCode: matched.aishe_code || "",
+        }));
+      } else {
+        if (uniVerificationStatus !== "idle") {
+          setUniVerificationStatus("idle");
+          setUniVerifiedInstitution(null);
+          setUniVerificationError("");
+        }
+      }
+      if (fieldErrors.universityName) {
+        setFieldErrors((prev) => ({ ...prev, universityName: "" }));
+      }
+      return;
+    }
+
     setUniFields((prev) => ({ ...prev, [name]: value }));
     if (fieldErrors[name]) {
       setFieldErrors((prev) => ({ ...prev, [name]: "" }));
@@ -482,14 +324,15 @@ export default function Signup({ initialType = null }) {
   const handleVerifyUniAishe = async (e) => {
     if (e) e.preventDefault();
     const code = uniFields.aisheCode.trim();
+    const name = uniFields.universityName.trim();
 
-    if (!code) {
+    if (!code && !name) {
       setUniVerificationStatus("invalid");
-      setUniVerificationError("Please enter an AISHE code to verify.");
+      setUniVerificationError("Please enter an AISHE code or University Name to verify.");
       return;
     }
 
-    if (code.startsWith("C-")) {
+    if (code && code.startsWith("C-")) {
       setUniVerificationStatus("invalid");
       setUniVerificationError(
         "The entered code appears to be a College AISHE code. Please switch to College Registration or enter a University AISHE code (e.g., U-0123)."
@@ -502,14 +345,29 @@ export default function Signup({ initialType = null }) {
     setUniVerifiedInstitution(null);
 
     try {
-      const res = await verifyUniversityAishe(code);
+      const localMatch = universities.find(
+        (u) =>
+          (code && u.aishe_code && u.aishe_code.toUpperCase() === code.toUpperCase()) ||
+          (name && u.name.toLowerCase() === name.toLowerCase())
+      );
+
+      const res = await verifyUniversityAishe(code, {
+        name,
+        universityId: localMatch?.id || uniFields.universityId,
+      });
       if (res.verified && res.institution) {
         setUniVerifiedInstitution(res.institution);
         setUniVerificationStatus("verified");
+        setUniFields((prev) => ({
+          ...prev,
+          aisheCode: res.institution.aishe_code || prev.aisheCode,
+          universityName: res.institution.name,
+          universityId: String(res.institution.id),
+        }));
       } else {
         setUniVerificationStatus("not_found");
         setUniVerificationError(
-          res.detail || `No active University found matching AISHE code '${code}'.`
+          res.detail || `No active University found matching '${code || name}'.`
         );
       }
     } catch (err) {
@@ -610,15 +468,11 @@ export default function Signup({ initialType = null }) {
     if (!commonFields.email.trim()) {
       errors.email = "Official email address is required.";
     }
-    if (!commonFields.phoneNumber.trim()) {
-      errors.phoneNumber = "Mobile number is required.";
-    } else if (commonFields.phoneNumber.trim().length !== 10) {
+    if (commonFields.phoneNumber.trim() && commonFields.phoneNumber.trim().length !== 10) {
       errors.phoneNumber = "Please enter a valid 10-digit mobile number.";
-    } else if (!phoneVerified) {
-      errors.phoneNumber = "Please verify your mobile number via OTP before registration.";
     }
     if (uniVerificationStatus !== "verified" || !uniVerifiedInstitution) {
-      errors.aisheCode = "You must verify your University's AISHE code before proceeding.";
+      errors.aisheCode = "You must select or verify your University before proceeding.";
     }
     if (!commonFields.password) {
       errors.password = "Password is required.";
@@ -645,7 +499,9 @@ export default function Signup({ initialType = null }) {
         fullName: commonFields.fullName.trim(),
         email: commonFields.email.trim().toLowerCase(),
         phoneNumber: commonFields.phoneNumber.trim(),
-        aisheCode: uniVerifiedInstitution.aishe_code,
+        aisheCode: uniVerifiedInstitution.aishe_code || "",
+        universityName: uniVerifiedInstitution.name,
+        universityId: uniVerifiedInstitution.id,
         designation: uniFields.designation.trim() || "University Nodal Officer",
         institutionType: "UNIVERSITY",
         role: "nodal_officer",
@@ -658,11 +514,11 @@ export default function Signup({ initialType = null }) {
         type: "success",
         message:
           response.message ||
-          "University account created successfully. Navigating to workspace...",
+          "University account created successfully. A verification link has been sent to your email.",
       });
 
       setTimeout(() => {
-        navigate(getDashboardPathForUser(response.user));
+        navigate(`/auth/verify-email?email=${encodeURIComponent(commonFields.email.trim().toLowerCase())}`);
       }, 500);
     } catch (err) {
       setStatus({
@@ -690,12 +546,8 @@ export default function Signup({ initialType = null }) {
     if (!commonFields.email.trim()) {
       errors.email = "Official email address is required.";
     }
-    if (!commonFields.phoneNumber.trim()) {
-      errors.phoneNumber = "Mobile number is required.";
-    } else if (commonFields.phoneNumber.trim().length !== 10) {
+    if (commonFields.phoneNumber.trim() && commonFields.phoneNumber.trim().length !== 10) {
       errors.phoneNumber = "Please enter a valid 10-digit mobile number.";
-    } else if (!phoneVerified) {
-      errors.phoneNumber = "Please verify your mobile number via OTP before registration.";
     }
     if (collegeVerificationStatus !== "verified" || (!collegeVerifiedInstitution && !selectedCollege)) {
       errors.aisheCode = "You must enter and verify your College's AISHE code before proceeding.";
@@ -737,11 +589,11 @@ export default function Signup({ initialType = null }) {
         type: "success",
         message:
           response.message ||
-          "College account created successfully. Navigating to workspace...",
+          "College account created successfully. A verification link has been sent to your email.",
       });
 
       setTimeout(() => {
-        navigate(getDashboardPathForUser(response.user));
+        navigate(`/auth/verify-email?email=${encodeURIComponent(commonFields.email.trim().toLowerCase())}`);
       }, 500);
     } catch (err) {
       setStatus({
@@ -932,7 +784,16 @@ export default function Signup({ initialType = null }) {
 
               {/* Official Email */}
               <div className={styles.formGroup}>
-                <label htmlFor="email">Official Email Address *</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label htmlFor="email" className="m-0 flex items-center gap-1.5 font-semibold text-slate-800 text-xs">
+                    <Mail size={13} className="text-[#600b0b]" />
+                    Official Email Address *
+                  </label>
+                  <span className="text-[11px] font-bold text-amber-900 bg-amber-100/90 px-2.5 py-0.5 rounded-full flex items-center gap-1 border border-amber-200">
+                    <ShieldCheck size={12} className="text-amber-700" />
+                    Email Verification Required
+                  </span>
+                </div>
                 <input
                   type="email"
                   id="email"
@@ -949,6 +810,24 @@ export default function Signup({ initialType = null }) {
                     <AlertCircle size={12} /> {fieldErrors.email}
                   </span>
                 )}
+                <div className="mt-2 p-3 bg-amber-50/80 border border-amber-200/70 rounded-xl text-xs text-amber-950 space-y-1.5">
+                  <div className="flex items-center gap-1.5 font-bold text-amber-900">
+                    <Mail size={14} className="text-[#600b0b]" />
+                    <span>Email Verification Option &amp; Protocol</span>
+                  </div>
+                  <p className="text-amber-900/90 leading-relaxed text-[11px]">
+                    To ensure secure institutional onboarding, an email verification link is automatically sent to <strong>{commonFields.email.trim() || "your official email"}</strong> upon clicking Register. You must click the link to verify your identity before signing in.
+                  </p>
+                  <div className="pt-1 flex items-center justify-between border-t border-amber-200/60 mt-1">
+                    <span className="text-[11px] text-amber-800">Already have a pending account?</span>
+                    <Link
+                      to={`/auth/verify-email${commonFields.email.trim() ? `?email=${encodeURIComponent(commonFields.email.trim())}` : ""}`}
+                      className="text-[11px] font-bold text-[#600b0b] hover:underline"
+                    >
+                      Open Email Verification / Resend Link →
+                    </Link>
+                  </div>
+                </div>
               </div>
 
               {/* Fixed Institution Type */}
@@ -963,12 +842,69 @@ export default function Signup({ initialType = null }) {
                 </div>
               </div>
 
-              {/* Applicant Mobile Number & OTP Verification */}
-              {renderPhoneOtpSection()}
+              {/* Applicant Mobile Number */}
+              {renderPhoneNumberSection()}
+
+              {/* University Name Selection / Input (Supports Universities without AISHE Code) */}
+              <div className={`${styles.formGroup} ${styles.fullWidth}`}>
+                <div className="flex items-center justify-between mb-0.5">
+                  <label htmlFor="universityName" className="m-0 flex items-center gap-1.5">
+                    <Building2 size={13} className="text-[#600b0b]" />
+                    University Name *
+                  </label>
+                  {uniVerificationStatus === "verified" && uniVerifiedInstitution && (
+                    <span className="text-[11px] font-bold text-emerald-700 bg-emerald-100 px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                      <CheckCircle2 size={12} /> {uniVerifiedInstitution.aishe_code ? "Verified from AISHE" : "Verified by Name"}
+                    </span>
+                  )}
+                </div>
+                <div className="relative">
+                  <input
+                    type="text"
+                    id="universityName"
+                    name="universityName"
+                    list="registered-universities-list"
+                    value={uniFields.universityName}
+                    onChange={handleUniFieldChange}
+                    required={!uniFields.aisheCode}
+                    placeholder="Type or select University Name (e.g. Ashoka University, Kurukshetra University)"
+                    className="w-full min-h-[50px] px-4 rounded-xl border border-slate-300 bg-white text-slate-900 font-medium focus:border-[#600b0b] focus:ring-1 focus:ring-[#600b0b] transition-all"
+                    disabled={uniVerificationStatus === "verifying" || isSubmitting}
+                    autoComplete="off"
+                  />
+                  <datalist id="registered-universities-list">
+                    {universities.map((uni) => (
+                      <option key={uni.id} value={uni.name}>
+                        {uni.aishe_code ? `AISHE: ${uni.aishe_code}` : "No AISHE Code Registered"}
+                      </option>
+                    ))}
+                  </datalist>
+                </div>
+                <span className="text-[11px] text-slate-500 mt-1 block">
+                  If your university does not have an AISHE code, select or write your University Name here to register.
+                </span>
+                {fieldErrors.universityName && (
+                  <span className={styles.fieldError}>
+                    <AlertCircle size={12} /> {fieldErrors.universityName}
+                  </span>
+                )}
+              </div>
 
               {/* AISHE Code & Verification Section */}
               <div className={`${styles.formGroup} ${styles.fullWidth}`}>
-                <label htmlFor="aisheCode">University AISHE Code *</label>
+                <div className="flex items-center justify-between mb-0.5">
+                  <label htmlFor="aisheCode">
+                    University AISHE Code
+                    <span className="text-xs font-normal text-slate-500 ml-1.5">
+                      (Optional if registering by University Name)
+                    </span>
+                  </label>
+                  {!uniFields.aisheCode && uniVerifiedInstitution && (
+                    <span className="text-[11px] text-amber-800 bg-amber-50 px-2 py-0.5 rounded-md font-medium border border-amber-200">
+                      No AISHE Code Required
+                    </span>
+                  )}
+                </div>
                 <div className="flex gap-2.5">
                   <input
                     type="text"
@@ -976,7 +912,6 @@ export default function Signup({ initialType = null }) {
                     name="aisheCode"
                     value={uniFields.aisheCode}
                     onChange={handleUniFieldChange}
-                    required
                     placeholder="Enter AISHE Code (e.g. U-0160)"
                     autoComplete="off"
                     className="flex-1"
@@ -986,7 +921,7 @@ export default function Signup({ initialType = null }) {
                     type="button"
                     onClick={handleVerifyUniAishe}
                     disabled={
-                      !uniFields.aisheCode.trim() ||
+                      (!uniFields.aisheCode.trim() && !uniFields.universityName.trim()) ||
                       uniVerificationStatus === "verifying" ||
                       isSubmitting
                     }
@@ -1028,7 +963,7 @@ export default function Signup({ initialType = null }) {
                           {uniVerifiedInstitution.name}
                         </span>
                         <span className="text-slate-500">
-                          AISHE: {uniVerifiedInstitution.aishe_code} ·{" "}
+                          AISHE: {uniVerifiedInstitution.aishe_code || "Not Assigned (Registered by Name)"} ·{" "}
                           {uniVerifiedInstitution.university_type}
                         </span>
                       </div>
@@ -1153,7 +1088,7 @@ export default function Signup({ initialType = null }) {
                 <button
                   type="submit"
                   className={styles.submitBtn}
-                  disabled={isSubmitting || uniVerificationStatus !== "verified" || !phoneVerified}
+                  disabled={isSubmitting || uniVerificationStatus !== "verified"}
                   id="university-register-submit-btn"
                 >
                   {isSubmitting ? (
@@ -1163,7 +1098,7 @@ export default function Signup({ initialType = null }) {
                     </span>
                   ) : (
                     <span className="flex items-center justify-center gap-2">
-                      Register University Account
+                      Register &amp; Send Email Verification Link
                       <ArrowRight className="w-4 h-4" />
                     </span>
                   )}
@@ -1233,7 +1168,16 @@ export default function Signup({ initialType = null }) {
 
               {/* Official Email */}
               <div className={`${styles.formGroup} ${styles.fullWidth}`}>
-                <label htmlFor="email">Official Email Address *</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label htmlFor="email" className="m-0 flex items-center gap-1.5 font-semibold text-slate-800 text-xs">
+                    <Mail size={13} className="text-[#600b0b]" />
+                    Official Email Address *
+                  </label>
+                  <span className="text-[11px] font-bold text-amber-900 bg-amber-100/90 px-2.5 py-0.5 rounded-full flex items-center gap-1 border border-amber-200">
+                    <ShieldCheck size={12} className="text-amber-700" />
+                    Email Verification Required
+                  </span>
+                </div>
                 <input
                   type="email"
                   id="email"
@@ -1250,10 +1194,28 @@ export default function Signup({ initialType = null }) {
                     <AlertCircle size={12} /> {fieldErrors.email}
                   </span>
                 )}
+                <div className="mt-2 p-3 bg-amber-50/80 border border-amber-200/70 rounded-xl text-xs text-amber-950 space-y-1.5">
+                  <div className="flex items-center gap-1.5 font-bold text-amber-900">
+                    <Mail size={14} className="text-[#600b0b]" />
+                    <span>Email Verification Option &amp; Protocol</span>
+                  </div>
+                  <p className="text-amber-900/90 leading-relaxed text-[11px]">
+                    To ensure secure institutional onboarding, an email verification link is automatically sent to <strong>{commonFields.email.trim() || "your official email"}</strong> upon clicking Register. You must click the link to verify your identity before signing in.
+                  </p>
+                  <div className="pt-1 flex items-center justify-between border-t border-amber-200/60 mt-1">
+                    <span className="text-[11px] text-amber-800">Already have a pending account?</span>
+                    <Link
+                      to={`/auth/verify-email${commonFields.email.trim() ? `?email=${encodeURIComponent(commonFields.email.trim())}` : ""}`}
+                      className="text-[11px] font-bold text-[#600b0b] hover:underline"
+                    >
+                      Open Email Verification / Resend Link →
+                    </Link>
+                  </div>
+                </div>
               </div>
 
-              {/* Applicant Mobile Number & OTP Verification */}
-              {renderPhoneOtpSection()}
+              {/* Applicant Mobile Number */}
+              {renderPhoneNumberSection()}
 
               {/* College AISHE Code & Verification Section */}
               <div className={`${styles.formGroup} ${styles.fullWidth}`}>
@@ -1478,8 +1440,7 @@ export default function Signup({ initialType = null }) {
                   disabled={
                     isSubmitting ||
                     collegeVerificationStatus !== "verified" ||
-                    (!collegeVerifiedInstitution && !selectedCollege) ||
-                    !phoneVerified
+                    (!collegeVerifiedInstitution && !selectedCollege)
                   }
                   id="college-register-submit-btn"
                 >
@@ -1490,7 +1451,7 @@ export default function Signup({ initialType = null }) {
                     </span>
                   ) : (
                     <span className="flex items-center justify-center gap-2">
-                      Register College Account
+                      Register &amp; Send Email Verification Link
                       <ArrowRight className="w-4 h-4" />
                     </span>
                   )}

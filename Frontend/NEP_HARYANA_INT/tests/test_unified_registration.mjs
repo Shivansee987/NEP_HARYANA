@@ -161,31 +161,24 @@ describe('Unified Applicant Registration Frontend Suite', () => {
     assert.ok(appContent.includes('<Signup />'), 'Route /auth/signup must render Signup component');
   });
 
-  it('10. Applicant phone number and OTP verification workflow is present and wired in both forms', () => {
+  it('10. Onboarding flow uses optional applicant phone number and email verification (phone OTP removed)', () => {
     const content = fs.readFileSync(unifiedSignupPath, 'utf8');
     const authApiPath = path.join(srcDir, 'api/auth.js');
     const authApiContent = fs.readFileSync(authApiPath, 'utf8');
 
-    // API client exports
-    assert.ok(authApiContent.includes('export async function sendPhoneOtp'), 'auth.js must export sendPhoneOtp');
-    assert.ok(authApiContent.includes('export async function verifyPhoneOtp'), 'auth.js must export verifyPhoneOtp');
-
-    // Phone number field & elements in UI
+    // Phone number field is present in UI as optional input
     assert.ok(content.includes('id="phoneNumber"'), 'Must have phoneNumber input field');
-    assert.ok(content.includes('id="send-otp-btn"'), 'Must have Send OTP action button');
-    assert.ok(content.includes('id="otpCode"'), 'Must have OTP code input');
-    assert.ok(content.includes('id="verify-otp-btn"'), 'Must have Verify OTP button');
-    assert.ok(content.includes('id="phone-verified-badge"'), 'Must render phone verified badge');
-    assert.ok(content.includes('id="change-phone-btn"'), 'Must have change phone button');
+    assert.ok(content.includes('renderPhoneNumberSection'), 'Must render phone number section');
 
-    // Cooldown and rate limiting
-    assert.ok(content.includes('otpCooldown'), 'Must manage OTP countdown cooldown');
+    // Verification redirect to email verification workflow
+    assert.ok(content.includes('/auth/verify-email'), 'Must redirect to email verification upon registration');
 
-    // Rendered in both forms
-    assert.ok(
-      content.includes('{renderPhoneOtpSection()}') &&
-      content.split('{renderPhoneOtpSection()}').length >= 3,
-      'Must render phone and OTP verification in both University and College forms'
-    );
+    // Active signup must NOT gate on phoneVerified or dev-otp
+    assert.ok(!content.includes('phoneVerified'), 'Active signup must not gate on phoneVerified');
+    assert.ok(!content.includes('devOtp'), 'Active signup must not retain devOtp hints');
+
+    // Email verification API client exports
+    assert.ok(authApiContent.includes('export async function verifyEmailToken'), 'auth.js must export verifyEmailToken');
+    assert.ok(authApiContent.includes('export async function resendEmailVerification'), 'auth.js must export resendEmailVerification');
   });
 });

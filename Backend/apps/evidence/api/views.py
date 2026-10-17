@@ -3,6 +3,7 @@ NEP Excellence Awards 2026 - Evidence REST API Views
 Production-ready API endpoints exposing the complete evidence subsystem.
 Business logic is preserved in domain services; views act as clean HTTP adapters.
 """
+import logging
 import re
 import uuid
 from functools import wraps
@@ -10,6 +11,8 @@ from django.http import HttpResponse
 from rest_framework import status
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
+
+logger = logging.getLogger(__name__)
 from rest_framework.views import APIView
 
 
@@ -182,6 +185,13 @@ def handle_evidence_exceptions(view_method):
                 {"error": "domain_error", "detail": str(exc)},
                 status=status.HTTP_400_BAD_REQUEST
             )
+        except OSError as exc:
+            # Disk/storage failure: nothing was recorded (uploads are atomic); never echo internal details.
+            logger.error("Evidence storage failure: %s", type(exc).__name__)
+            return Response(
+                {"error": "storage_unavailable", "detail": "Document storage is temporarily unavailable. Please try again later."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
     return wrapper
 
 
@@ -203,18 +213,15 @@ class EvidenceListCreateView(APIView):
             'uploader', 'assigned_reviewer'
         ).prefetch_related('associations')
 
-        # Scope restriction by role
-        if not (getattr(user, 'is_superuser', False) or role in ('admin', 'state_admin')):
-            if role in ('committee', 'committee_chair'):
-                # Reviewers see documents assigned to them or in their authorized framework
-                qs = qs.exclude(institution_id=getattr(user.college, 'aishe_code', ''))
-            else:
-                # Institutional users (college or university) only ever see their own institution's evidence
-                inst_codes = []
-                for inst in (getattr(user, 'college', None), getattr(user, 'university', None)):
-                    if inst:
-                        inst_codes.append(getattr(inst, 'aishe_code', None) or str(inst.pk))
-                qs = qs.filter(institution_id__in=inst_codes)
+        # Scope restriction (apps.evidence.access_policy): oversight sees all; institutions see their own
+        # assessments' evidence; reviewers see submitted assessments in their scope or documents assigned to them.
+        from django.db.models import Q
+        from apps.evidence import access_policy as policy
+        readable = policy.readable_assessment_ids(user)
+        if readable is not None:
+            # Institution users see evidence only through assessments their institution owns (FIN-25).
+            extra = Q(assigned_reviewer=user) if policy.is_reviewer(user) else Q(pk__in=[])
+            qs = qs.filter(Q(assessment_id__in=readable) | extra)
 
         # Filtering parameters
         assessment_id = request.query_params.get('assessment_id')
@@ -255,8 +262,24 @@ class EvidenceListCreateView(APIView):
         data = serializer.validated_data
 
         user = request.user
-        user_college = getattr(user, 'college', None)
-        inst_id = data.get('institution_id') or (getattr(user_college, 'aishe_code', None) or str(getattr(user_college, 'pk', '')))
+        # Evidence is always filed against an existing assessment owned by the uploader's institution; the
+        # institution recorded on the document is derived from that assessment, never from the client.
+        from apps.evidence import access_policy as policy
+        assessment = policy.resolve_assessment(data['assessment_id'], data['framework'])
+        if assessment is None:
+            return Response(
+                {"error": "assessment_not_found", "code": "ASSESSMENT_NOT_FOUND",
+                 "detail": "Evidence can only be uploaded to an existing assessment."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not policy.institution_owns_assessment(user, assessment):
+            return Response(
+                {"error": "forbidden", "code": "ASSESSMENT_NOT_AUTHORIZED",
+                 "detail": "You can only upload evidence to your own institution's assessment."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        owner = policy.assessment_institution(assessment)
+        inst_id = owner.aishe_code or str(owner.pk)
 
         # Delegate intake to Phase 5B upload pipeline with validated evidence taxonomy
         doc = EvidenceUploadPipeline.process_upload(
@@ -597,30 +620,19 @@ class EvidenceAssociationListView(APIView):
     @handle_evidence_exceptions
     def get(self, request):
         user = request.user
-        role = getattr(user, 'role', '')
-        is_admin = getattr(user, 'is_superuser', False) or getattr(user, 'is_staff', False) or role in ('admin', 'state_admin')
 
         qs = EvidenceSubcriterionAssociation.objects.filter(is_active=True).select_related(
             'evidence', 'associated_by'
         ).prefetch_related('verifications__verifier')
 
-        # Scope restriction by role
-        if not is_admin:
-            if role in ('principal', 'nodal_officer', 'faculty', 'university_admin'):
-                user_college = getattr(user, 'college', None)
-                user_uni = getattr(user, 'university', None)
-                college_code = getattr(user_college, 'aishe_code', None) or str(getattr(user_college, 'pk', ''))
-                uni_code = getattr(user_uni, 'aishe_code', None) or str(getattr(user_uni, 'pk', ''))
-                inst_codes = [c for c in (college_code, uni_code) if c]
-                qs = qs.filter(evidence__institution_id__in=inst_codes)
-            elif role in ('committee', 'committee_chair'):
-                user_college = getattr(user, 'college', None)
-                user_uni = getattr(user, 'university', None)
-                college_code = getattr(user_college, 'aishe_code', None) or str(getattr(user_college, 'pk', ''))
-                uni_code = getattr(user_uni, 'aishe_code', None) or str(getattr(user_uni, 'pk', ''))
-                for c in (college_code, uni_code):
-                    if c:
-                        qs = qs.exclude(evidence__institution_id=c)
+        # Scope restriction (apps.evidence.access_policy), resolved through assessment ownership
+        from django.db.models import Q
+        from apps.evidence import access_policy as policy
+        readable = policy.readable_assessment_ids(user)
+        if readable is not None:
+            # Institution users see evidence only through assessments their institution owns (FIN-25).
+            extra = Q(evidence__assigned_reviewer=user) if policy.is_reviewer(user) else Q(pk__in=[])
+            qs = qs.filter(Q(evidence__assessment_id__in=readable) | extra)
 
         assessment_id = request.query_params.get('assessment_id')
         if assessment_id:
@@ -764,10 +776,7 @@ class EvidenceDocumentDownloadView(APIView):
         doc = get_evidence_document(pk)
         self.check_object_permissions(request, doc)
 
-        role = getattr(request.user, 'role', '')
-        is_admin = getattr(request.user, 'is_superuser', False) or getattr(request.user, 'is_staff', False) or role in ('admin', 'state_admin')
-        if not is_admin and role in ('committee', 'committee_chair'):
-            EvidenceService.validate_reviewer_authorization(request.user, doc)
+        # Read access was decided by IsEvidenceOwnerOrAdmin (access_policy.can_read_document).
 
         storage = get_evidence_storage()
         if not storage.exists(doc.file_path):
@@ -797,10 +806,7 @@ class EvidenceAssociationDocumentDownloadView(APIView):
         self.check_object_permissions(request, assoc)
         doc = assoc.evidence
 
-        role = getattr(request.user, 'role', '')
-        is_admin = getattr(request.user, 'is_superuser', False) or getattr(request.user, 'is_staff', False) or role in ('admin', 'state_admin')
-        if not is_admin and role in ('committee', 'committee_chair'):
-            EvidenceService.validate_reviewer_authorization(request.user, doc)
+        # Read access was decided by IsEvidenceOwnerOrAdmin (access_policy.can_read_document).
 
         storage = get_evidence_storage()
         if not storage.exists(doc.file_path):

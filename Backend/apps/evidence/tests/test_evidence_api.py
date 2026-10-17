@@ -26,6 +26,10 @@ from apps.evidence.services import EvidenceService
 from apps.scoring.enums import FrameworkType
 
 
+
+ASSESSMENT_A = "ASSESS-2026-COLLEGE-01"
+ASSESSMENT_B = "ASSESS-2026-COLLEGE-02"
+
 class EvidenceAPITestBase(APITestCase):
     """
     Base test fixture providing authentic users, institutions, and file payloads.
@@ -76,6 +80,14 @@ class EvidenceAPITestBase(APITestCase):
             granted_by=self.admin_user
         )
 
+        # Evidence is only accepted for an existing assessment owned by the uploader's institution (EV-01), and
+        # ownership is resolved through that assessment, so each college has its own.
+        from apps.college.models import CollegeAssessment
+        self.assessment_a = CollegeAssessment.objects.create(
+            assessment_id=ASSESSMENT_A, college=self.college_a, framework="COLLEGE_2026", academic_year="2025-26")
+        self.assessment_b = CollegeAssessment.objects.create(
+            assessment_id=ASSESSMENT_B, college=self.college_b, framework="COLLEGE_2026", academic_year="2025-26")
+
         # Standard authentic test file payloads
         self.valid_pdf_bytes = b"%PDF-1.4\n%Mock Valid PDF Header and stream content for NEP 2026\n%%EOF"
 
@@ -83,13 +95,14 @@ class EvidenceAPITestBase(APITestCase):
         self,
         uploader=None,
         college=None,
-        assessment_id="ASSESS-2026-COLLEGE-01",
+        assessment_id=None,
         framework="COLLEGE_2026",
         status_val=EvidenceLifecycleState.EVIDENCE_PRESENT,
         document_date=date(2025, 9, 15),
     ) -> EvidenceDocument:
         uploader = uploader or self.principal_a
         college = college or self.college_a
+        assessment_id = assessment_id or (ASSESSMENT_B if college == self.college_b else ASSESSMENT_A)
         checksum = EvidenceService.calculate_checksum(self.valid_pdf_bytes)
 
         return EvidenceDocument.objects.create(
@@ -164,7 +177,16 @@ class TestInstitutionIsolation(EvidenceAPITestBase):
         self.assertNotIn(str(doc_b.document_id), doc_ids)
 
 
-class TestReviewerAuthorizationAndQueue(EvidenceAPITestBase):
+class SubmittedAssessmentsMixin:
+    """The committee sees and reviews evidence only once the institution has submitted (WF-15)."""
+    def setUp(self):
+        super().setUp()
+        for assessment in (self.assessment_a, self.assessment_b):
+            assessment.status = "SUBMITTED"
+            assessment.save(update_fields=["status"])
+
+
+class TestReviewerAuthorizationAndQueue(SubmittedAssessmentsMixin, EvidenceAPITestBase):
     """
     Category D & E: Reviewer queue access, scoping, and conflict-of-interest prevention.
     """
@@ -230,7 +252,7 @@ class TestUploadPipelineAPI(EvidenceAPITestBase):
 
         data = {
             "file": uploaded,
-            "assessment_id": "ASSESS-2026-UPLOAD-01",
+            "assessment_id": ASSESSMENT_A,
             "framework": "COLLEGE_2026",
             "institution_id": "C-5001",
             "evidence_type": "EVID_C1_APPROVED_IDP",
@@ -251,7 +273,7 @@ class TestUploadPipelineAPI(EvidenceAPITestBase):
 
         data = {
             "file": empty_file,
-            "assessment_id": "ASSESS-2026-UPLOAD-02",
+            "assessment_id": ASSESSMENT_A,
             "framework": "COLLEGE_2026",
         }
         response = self.client.post(url, data, format='multipart')
@@ -265,7 +287,7 @@ class TestUploadPipelineAPI(EvidenceAPITestBase):
         data = {
             "file": traversal_file,
             "filename": "../../etc/passwd.pdf",
-            "assessment_id": "ASSESS-2026-UPLOAD-03",
+            "assessment_id": ASSESSMENT_A,
             "framework": "COLLEGE_2026",
         }
         response = self.client.post(url, data, format='multipart')
@@ -310,7 +332,7 @@ class TestLifecycleAndAssociationAPI(EvidenceAPITestBase):
         self.assertEqual(response.data["associations"][0]["subcriterion_id"], "C1.1")
 
 
-class TestVerificationAndRejectionAPI(EvidenceAPITestBase):
+class TestVerificationAndRejectionAPI(SubmittedAssessmentsMixin, EvidenceAPITestBase):
     """
     Category H, I, J: Verify, Reject, Concurrency, and Hash/Version binding.
     """
@@ -439,7 +461,7 @@ class TestEndToEndAPIFlow(EvidenceAPITestBase):
 
         upload_data = {
             "file": uploaded,
-            "assessment_id": "ASSESS-E2E-001",
+            "assessment_id": ASSESSMENT_A,
             "framework": "COLLEGE_2026",
             "institution_id": self.college_a.aishe_code,
             "evidence_type": "EVID_C1_APPROVED_IDP",
@@ -463,6 +485,10 @@ class TestEndToEndAPIFlow(EvidenceAPITestBase):
         resp_submit = self.client.post(submit_url)
         self.assertEqual(resp_submit.status_code, status.HTTP_200_OK)
         self.assertEqual(resp_submit.data["status"], EvidenceLifecycleState.EVIDENCE_PENDING)
+
+        # The institution submits its assessment; the committee reviews evidence only after that (WF-15).
+        self.assessment_a.status = "SUBMITTED"
+        self.assessment_a.save(update_fields=["status"])
 
         # 4. State Admin assigns reviewer
         self.client.force_authenticate(user=self.admin_user)
@@ -502,7 +528,7 @@ class TestEndToEndAPIFlow(EvidenceAPITestBase):
         self.client.force_authenticate(user=self.principal_a)
         coverage_url = reverse('evidence-coverage')
         resp_cov = self.client.get(coverage_url, {
-            'assessment_id': 'ASSESS-E2E-001',
+            'assessment_id': ASSESSMENT_A,
             'framework': 'COLLEGE_2026',
             'institution_id': self.college_a.aishe_code,
             'subcriterion_codes': 'C1.1'
@@ -514,7 +540,7 @@ class TestEndToEndAPIFlow(EvidenceAPITestBase):
         # 9. Check readiness via API
         readiness_url = reverse('evidence-readiness')
         resp_ready = self.client.get(readiness_url, {
-            'assessment_id': 'ASSESS-E2E-001',
+            'assessment_id': ASSESSMENT_A,
             'framework': 'COLLEGE_2026',
             'institution_id': self.college_a.aishe_code,
             'subcriterion_codes': 'C1.1'

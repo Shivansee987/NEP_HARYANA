@@ -7,6 +7,7 @@ from rest_framework.test import APITestCase
 
 from .models import College, RefreshToken
 from .utils import generate_access_token, decode_token, hash_token
+from .test_utils import verify_phone
 
 User = get_user_model()
 
@@ -52,15 +53,17 @@ class JWTAuthTests(APITestCase):
             "email": "newuser@college.edu.in",
             "collegeId": self.college.id,
             "role": "principal",
-            "password": "Password123!",
+            "password": "Unique!Password2026",
+            "phoneNumber": "9876500200",
         }
         response = self.client.post(url, data, format="json")
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertEqual(response.data["user"]["institution_status"], "PENDING")
+        self.assertEqual(response.data["user"]["is_email_verified"], False)
         self.assertIn("user", response.data)
-        # Tokens are in the JSON body under the 'tokens' key
-        self.assertIn("tokens", response.data)
-        self.assertIn("access", response.data["tokens"])
-        self.assertIn("refresh", response.data["tokens"])
+        # Auth tokens are NOT issued at registration; email verification is required first
+        self.assertNotIn("tokens", response.data)
+        self.assertTrue(response.data.get("verification_sent"))
 
     # ── login ─────────────────────────────────────────────────────────────────
 

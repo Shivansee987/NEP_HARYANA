@@ -24,6 +24,7 @@ from rest_framework import status
 
 from apps.evidence.models import ReviewerAuthorization
 from apps.university.models import University, UniversityAssessment
+from apps.scoring.test_support import fill_assessment
 
 User = get_user_model()
 
@@ -109,7 +110,6 @@ class UniversityAPIEndToEndIntegrationTests(TestCase):
         # ---------------------------------------------------------------------
         param_payload = {
             "raw_inputs": {
-                "programmes_count": 15,
                 "U1.1": {"programmes_count": 15},
             },
             "entities": [
@@ -127,7 +127,7 @@ class UniversityAPIEndToEndIntegrationTests(TestCase):
         )
         self.assertEqual(res_param.status_code, status.HTTP_200_OK)
         self.assertEqual(res_param.data["code"], "U1")
-        self.assertEqual(res_param.data["submitted_input"]["raw_inputs"]["programmes_count"], 15)
+        self.assertEqual(res_param.data["submitted_input"]["raw_inputs"]["U1.1"]["programmes_count"], 15)
 
         # ---------------------------------------------------------------------
         # Step 5: Evidence File Upload (Nodal User -> Phase 5E Evidence API)
@@ -174,6 +174,14 @@ class UniversityAPIEndToEndIntegrationTests(TestCase):
         res_sub = self.client.post(f"/api/evidence/{doc_uuid}/submit/", {}, format="json")
         self.assertEqual(res_sub.status_code, status.HTTP_200_OK)
         self.assertEqual(res_sub.data["status"], "EVIDENCE_PENDING")
+
+        # ---------------------------------------------------------------------
+        # Step 7b: Assessment Submission (Nodal User). Every parameter must be answered (U1 kept); the committee
+        # sees the evidence only once the university has submitted (WF-15).
+        # ---------------------------------------------------------------------
+        fill_assessment(UniversityAssessment.objects.get(assessment_id=assessment_id))
+        res_submit = self.client.post(f"/api/university-assessments/{assessment_id}/submit/", {}, format="json")
+        self.assertEqual(res_submit.status_code, status.HTTP_200_OK)
 
         # ---------------------------------------------------------------------
         # Step 8: Reviewer Queue Inspection (Reviewer)

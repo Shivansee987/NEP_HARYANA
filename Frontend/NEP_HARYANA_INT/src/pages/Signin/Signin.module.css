@@ -1,7 +1,9 @@
 /* Styles for Dev Login quick access buttons */
 
 .signinPanel {
-  max-width: 580px !important;
+  max-width: 680px !important;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .devLoginSection {
@@ -9,6 +11,7 @@
   padding-top: 1.5rem;
   border-top: 1px dashed rgba(96, 11, 11, 0.2);
   width: 100%;
+  box-sizing: border-box;
 }
 
 .devHeader {
@@ -48,9 +51,11 @@
 
 .devGrid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 0.65rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
   margin-top: 0.5rem;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .devCard {
@@ -58,16 +63,20 @@
   border: 1.5px solid #e2e8f0;
   background: #ffffff;
   border-radius: 12px;
-  padding: 0.7rem 0.8rem;
+  padding: 0.75rem 0.85rem;
   text-align: left;
   cursor: pointer;
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
+  gap: 0.45rem;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
   position: relative;
   outline: none;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .devCard:hover:not(:disabled) {
@@ -96,6 +105,8 @@
   align-items: center;
   justify-content: space-between;
   width: 100%;
+  gap: 0.35rem;
+  min-width: 0;
 }
 
 .iconWrapper {
@@ -115,12 +126,17 @@
   border-radius: 6px;
   letter-spacing: 0.03em;
   text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: calc(100% - 48px);
 }
 
 .enterArrow {
   display: inline-flex;
   align-items: center;
   color: #94a3b8;
+  flex-shrink: 0;
   transition: transform 0.2s ease, color 0.2s ease;
 }
 
@@ -138,6 +154,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  width: 100%;
 }
 
 .roleDesc {
@@ -148,6 +165,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  width: 100%;
 }
 
 .credentialsPill {
@@ -158,11 +176,18 @@
   font-size: 0.68rem;
   color: #475569;
   background: #f8fafc;
-  padding: 0.2rem 0.4rem;
+  padding: 0.2rem 0.45rem;
   border-radius: 6px;
   border: 1px solid #edf2f7;
   width: fit-content;
   max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+
+.credentialsPill > span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -309,7 +334,7 @@
   color: #475569;
 }
 
-@media (max-width: 560px) {
+@media (max-width: 640px) {
   .devGrid {
     grid-template-columns: 1fr;
   }

@@ -89,6 +89,13 @@ class UploadPipelineTestCase(TestCase):
         self.valid_png_bytes = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15c4"
         self.valid_jpeg_bytes = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x01\x00`\x00`\x00\x00\xff\xdb\x00C\x00"
         self.valid_docx_bytes = b"PK\x03\x04\x14\x00\x06\x00\x08\x00Mock Word Docx Content inside OpenXML zip container"
+        # Review scope is explicit (COM-01): committee users without a scoped authorization get framework-wide scope.
+        from apps.authentication.models import User as _ScopeUser
+        from apps.evidence.models import ReviewerAuthorization as _ScopeAuth
+        from apps.scoring.test_support import grant_review_scope as _grant_scope
+        for _reviewer in _ScopeUser.objects.filter(role__in=("committee", "committee_chair")):
+            if not _ScopeAuth.objects.filter(user=_reviewer).exists():
+                _grant_scope(_reviewer)
 
     def tearDown(self):
         if TEST_VAULT_DIR.exists():

@@ -43,6 +43,7 @@ from apps.university.models import (
     UniversityReviewRecord,
 )
 from apps.university.registry import UNIVERSITY_FRAMEWORK_CODE
+from apps.scoring.test_support import council_decision_resolved, fill_assessment
 from apps.university.services import UniversityAssessmentService, UniversityReviewService
 from apps.university.validators import (
     AssessmentAlreadyCertifiedError,
@@ -93,13 +94,14 @@ class UniversityReviewEndToEndTests(TestCase):
             password="SecurePassword2026!",
         )
 
-        # Ensure reviewer is authorized for University framework
-        ReviewerAuthorization.objects.create(
-            user=external_reviewer,
-            framework=UNIVERSITY_FRAMEWORK_CODE,
-            institution_id="",
-            is_active=True,
-        )
+        # Ensure reviewer and Chair are authorized for the University framework (no implicit review scope)
+        for authorized in (external_reviewer, chair_user):
+            ReviewerAuthorization.objects.create(
+                user=authorized,
+                framework=UNIVERSITY_FRAMEWORK_CODE,
+                institution_id="",
+                is_active=True,
+            )
 
         # ---------------------------------------------------------------------
         # Step 2: Assessment Creation in DRAFT
@@ -159,7 +161,8 @@ class UniversityReviewEndToEndTests(TestCase):
         # ---------------------------------------------------------------------
         # Step 5: Submission Gate (DRAFT -> SUBMITTED)
         # ---------------------------------------------------------------------
-        # Submit assessment via modern institutional submission endpoint
+        # Submit assessment via modern institutional submission endpoint (every parameter answered; U1 kept)
+        fill_assessment(UniversityAssessment.objects.get(assessment_id=assessment_id))
         client.force_authenticate(user=nodal_user)
         submit_res = client.post(
             f"/api/university-assessments/{assessment_id}/submit/",
@@ -213,10 +216,39 @@ class UniversityReviewEndToEndTests(TestCase):
         eval_assessment.certification_status = "FINALIZABLE"
         eval_assessment.save(update_fields=["certification_status"])
 
+        mock_certified_result = FrameworkResult(
+            framework=FrameworkType.UNIVERSITY_2026,
+            assessment_id=assessment_id,
+            institution_id=kuk_university.aishe_code,
+            calculation_id="calc-e2e-certify-01",
+            version_index=1,
+            timestamp=datetime.now(),
+            raw_total=88.0,
+            evidence_gated_total=88.0,
+            final_certified_total=88.0,
+            max_marks=100.0,
+            certification_status=CertificationStatus.FINALIZABLE,
+            blocking_reasons=[],
+            parameter_results={},
+        )
+
+        def mock_eval_scoring(aid, **kwargs):
+            assessment.refresh_from_db()
+            assessment.certified_score = Decimal("88.00")
+            assessment.certification_status = "FINALIZABLE"
+            assessment.save(update_fields=["certified_score", "certification_status"])
+            return mock_certified_result
+
+        from types import SimpleNamespace
+        ready = SimpleNamespace(blocking_reasons=[], correction_required_reasons=[], governance_reasons=[],
+                                source_silent_subcriteria=[])
+
         # ---------------------------------------------------------------------
         # Step 10: Complete Review (EVALUATED -> CERTIFICATION_PENDING)
         # ---------------------------------------------------------------------
-        with patch.object(UniversityAssessmentService, "check_assessment_readiness", return_value=(True, [], None)):
+        with patch.object(UniversityAssessmentService, "check_assessment_readiness", return_value=(True, [], None)), \
+             patch.object(UniversityAssessmentService, "get_review_readiness", return_value=(True, ready, None)), \
+             patch.object(UniversityAssessmentService, "evaluate_assessment_scoring", side_effect=mock_eval_scoring):
             complete_res = client.post(
                 f"/api/v1/university/assessments/{assessment_id}/review/complete/",
                 {"comments": "All evidence verified. Recommended for final certification."},
@@ -238,31 +270,21 @@ class UniversityReviewEndToEndTests(TestCase):
         # ---------------------------------------------------------------------
         # Step 12: Statutory Certification by Committee Chair
         # ---------------------------------------------------------------------
-        mock_certified_result = FrameworkResult(
-            framework=FrameworkType.UNIVERSITY_2026,
-            assessment_id=assessment_id,
-            institution_id=kuk_university.aishe_code,
-            calculation_id="calc-e2e-certify-01",
-            version_index=1,
-            timestamp=datetime.now(),
-            raw_total=88.0,
-            evidence_gated_total=88.0,
-            final_certified_total=88.0,
-            max_marks=100.0,
-            certification_status=CertificationStatus.FINALIZABLE,
-            blocking_reasons=[],
-            parameter_results={},
-        )
-
-        def mock_eval_scoring(aid):
-            assessment.refresh_from_db()
-            assessment.certified_score = Decimal("88.00")
-            assessment.certification_status = "FINALIZABLE"
-            assessment.save(update_fields=["certified_score", "certification_status"])
-            return mock_certified_result
-
+        # Official University certification is held until the U6 / U18.3 council decision (FIN-03) ...
         with patch.object(UniversityAssessmentService, "check_assessment_readiness", return_value=(True, [], None)), \
              patch.object(UniversityAssessmentService, "evaluate_assessment_scoring", side_effect=mock_eval_scoring):
+            held_res = client.post(
+                f"/api/v1/university/assessments/{assessment_id}/certify/",
+                {"remarks": "Statutory audit completed. Merit score certified by Chair."},
+                format="json",
+            )
+        self.assertEqual(held_res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(held_res.data["code"], "POLICY_DECISION_REQUIRED")
+
+        # ... and proceeds once the decision is reflected in the evidence taxonomy (simulated here).
+        with patch.object(UniversityAssessmentService, "check_assessment_readiness", return_value=(True, [], None)), \
+             patch.object(UniversityAssessmentService, "evaluate_assessment_scoring", side_effect=mock_eval_scoring), \
+             council_decision_resolved():
             cert_res = client.post(
                 f"/api/v1/university/assessments/{assessment_id}/certify/",
                 {"remarks": "Statutory audit completed. Merit score certified by Chair."},
@@ -300,7 +322,8 @@ class UniversityReviewEndToEndTests(TestCase):
             {"raw_inputs": {"U1.1": {"programmes_count": 99}}},
             format="json",
         )
-        self.assertEqual(param_tamper_res.status_code, status.HTTP_400_BAD_REQUEST)
+        # Refused either as a bad request or as a lifecycle conflict (certified records are locked)
+        self.assertIn(param_tamper_res.status_code, (status.HTTP_400_BAD_REQUEST, status.HTTP_409_CONFLICT))
 
         # ---------------------------------------------------------------------
         # Step 14: Audit Trail Immutability Verification

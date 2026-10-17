@@ -194,6 +194,38 @@ export function adjustParameterScore(framework, assessmentId, parameterCode, { s
 }
 
 /**
+ * Returns a submitted assessment to the institution for correction (reason mandatory, min 5 chars server-side).
+ * POST /api/v1/(university|college)/(university|college)-assessments/<id>/return-for-correction/
+ */
+export function returnAssessmentForCorrection(framework, assessmentId, { reason, comments = "" }) {
+  const isCollege = String(framework).toUpperCase().includes("COLLEGE");
+  const path = isCollege
+    ? `/v1/college/college-assessments/${assessmentId}/return-for-correction/`
+    : `/v1/university/university-assessments/${assessmentId}/return-for-correction/`;
+  return request(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reason, comments }),
+  });
+}
+
+/**
+ * Rejects (blocks) a submitted assessment. Terminal: the institution can no longer edit or resubmit it.
+ * POST /api/v1/(university|college)/(university|college)-assessments/<id>/block-review/
+ */
+export function rejectAssessment(framework, assessmentId, { reason, comments = "" }) {
+  const isCollege = String(framework).toUpperCase().includes("COLLEGE");
+  const path = isCollege
+    ? `/v1/college/college-assessments/${assessmentId}/block-review/`
+    : `/v1/university/university-assessments/${assessmentId}/block-review/`;
+  return request(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reason, comments }),
+  });
+}
+
+/**
  * Formal certification of an assessment by authorized chair/admin
  * POST /api/v1/(university|college)/(university|college)-assessments/<id>/certify/
  */

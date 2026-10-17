@@ -27,6 +27,7 @@ from apps.college.services import CollegeAssessmentService
 from apps.evidence.models import ReviewerAuthorization
 from apps.scoring.domain import FrameworkResult
 from apps.scoring.enums import FrameworkType, CertificationStatus
+from apps.scoring.test_support import record_complete_review
 
 User = get_user_model()
 
@@ -103,6 +104,13 @@ class CollegeReviewAPITests(TestCase):
         )
         ReviewerAuthorization.objects.create(
             user=self.conflicted_reviewer,
+            framework=COLLEGE_FRAMEWORK_CODE,
+            institution_id="",
+            is_active=True,
+        )
+        # The Chair needs explicit review scope too: there is no implicit scope for any reviewer role.
+        ReviewerAuthorization.objects.create(
+            user=self.chair,
             framework=COLLEGE_FRAMEWORK_CODE,
             institution_id="",
             is_active=True,
@@ -470,6 +478,8 @@ class CollegeReviewAPITests(TestCase):
         self.client.force_authenticate(user=self.chair)
         url = f"/api/v1/college/assessments/{self.assessment_a.assessment_id}/certify/"
 
+        # Certification requires the committee's "Complete Review" of the current submission (WF-12).
+        record_complete_review(self.assessment_a, self.chair)
         with patch.object(CollegeAssessmentService, "check_assessment_readiness", return_value=(True, [], None)), \
              patch.object(CollegeAssessmentService, "evaluate_assessment_scoring", side_effect=mock_eval):
             response = self.client.post(url, {"remarks": "Statutory college review certified"}, format="json")

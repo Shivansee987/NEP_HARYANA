@@ -7,13 +7,13 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const CHROME_PATH = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+const CHROME_PATH = process.env.CHROME_PATH || 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
 const FFMPEG_PATH = path.resolve(__dirname, '../../venv/Lib/site-packages/imageio_ffmpeg/binaries/ffmpeg-win-x86_64-v7.1.exe');
 const FRAMES_DIR = path.resolve(__dirname, 'temp_frames');
 const OUTPUT_MP4 = path.resolve(__dirname, '../../website_full_tour.mp4');
 const OUTPUT_WEBP = path.resolve(__dirname, '../../website_full_tour.webp');
-const ARTIFACTS_MP4 = 'C:\\Users\\Devansh Datta\\.gemini\\antigravity-ide\\brain\\a3301853-447f-4f46-aa8a-c9c168769d37\\website_full_tour.mp4';
-const ARTIFACTS_WEBP = 'C:\\Users\\Devansh Datta\\.gemini\\antigravity-ide\\brain\\a3301853-447f-4f46-aa8a-c9c168769d37\\website_full_tour_1790429286534.webp';
+// Optional extra folder to copy the finished videos into
+const COPY_DIR = process.env.TOUR_COPY_DIR || '';
 
 if (!fs.existsSync(FRAMES_DIR)) {
   fs.mkdirSync(FRAMES_DIR, { recursive: true });
@@ -204,15 +204,14 @@ async function runTour() {
   console.log('Running ffmpeg for MP4...');
   execSync(ffmpegCmdMp4, { stdio: 'inherit' });
 
-  // Copy to artifacts
-  fs.copyFileSync(OUTPUT_MP4, ARTIFACTS_MP4);
+  if (COPY_DIR) fs.copyFileSync(OUTPUT_MP4, path.join(COPY_DIR, path.basename(OUTPUT_MP4)));
 
   // Build WebP animated for markdown embedding
   const ffmpegCmdWebp = `"${FFMPEG_PATH}" -y -framerate 10 -i "${FRAMES_DIR}\\frame_%05d.jpg" -vf "scale=960:-1" -loop 0 "${OUTPUT_WEBP}"`;
   console.log('Running ffmpeg for WebP animation...');
   execSync(ffmpegCmdWebp, { stdio: 'inherit' });
 
-  fs.copyFileSync(OUTPUT_WEBP, ARTIFACTS_WEBP);
+  if (COPY_DIR) fs.copyFileSync(OUTPUT_WEBP, path.join(COPY_DIR, path.basename(OUTPUT_WEBP)));
 
   console.log('DONE!');
   console.log('MP4 Video saved to:', OUTPUT_MP4);

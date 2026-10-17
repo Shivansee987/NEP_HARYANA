@@ -26,10 +26,25 @@ load_dotenv(os.path.join(BASE_DIR, '.env'))
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-^2&m-q6^v_r@@o7i6mtgthl&h53sf&wulmgmi8ydtm6p9+ogww'
+# The fallback below is public (it has been committed) and is for local development only.
+# config.settings.production refuses to start unless DJANGO_SECRET_KEY / JWT_SIGNING_KEY are set.
+DEV_INSECURE_SECRET_KEY = 'django-insecure-^2&m-q6^v_r@@o7i6mtgthl&h53sf&wulmgmi8ydtm6p9+ogww'
+SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY') or DEV_INSECURE_SECRET_KEY
+
+# JWT signing. Tokens are signed with JWT_SIGNING_KEY and verified against it plus any keys listed in
+# JWT_PREVIOUS_SIGNING_KEYS (comma-separated), which allows a staged key rotation.
+JWT_SIGNING_KEY = os.environ.get('JWT_SIGNING_KEY') or SECRET_KEY
+JWT_PREVIOUS_SIGNING_KEYS = [
+	k.strip() for k in os.environ.get('JWT_PREVIOUS_SIGNING_KEYS', '').split(',') if k.strip()
+]
+JWT_ACCESS_TOKEN_MINUTES = int(os.environ.get('JWT_ACCESS_TOKEN_MINUTES', 15))
+JWT_REFRESH_TOKEN_DAYS = int(os.environ.get('JWT_REFRESH_TOKEN_DAYS', 7))
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
+
+# Django admin site (read-only inspection; see config/urls.py). Off unless a settings module turns it on.
+ENABLE_DJANGO_ADMIN = False
 
 # Frontend Base URL
 FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:5173')
@@ -226,3 +241,21 @@ MAX_EVIDENCE_FILE_SIZE = int(os.environ.get('MAX_EVIDENCE_FILE_SIZE', 25 * 1024 
 EVIDENCE_STORAGE_VAULT = MEDIA_ROOT / 'evidence_vault'
 EVIDENCE_STORAGE_BACKEND = 'apps.evidence.storage.FileSystemEvidenceStorage'
 
+
+# Mobile OTP / SMS delivery (apps.authentication.sms). No provider is enabled by default: sending an OTP
+# fails closed until SMS_BACKEND names a real provider adapter. Tests use the in-memory backend.
+SMS_BACKEND = os.environ.get('SMS_BACKEND', 'apps.authentication.sms.DisabledSMSBackend')
+if 'test' in sys.argv:
+	SMS_BACKEND = 'apps.authentication.sms.LocmemSMSBackend'
+OTP_TTL_MINUTES = int(os.environ.get('OTP_TTL_MINUTES', 10))
+OTP_RESEND_COOLDOWN_SECONDS = int(os.environ.get('OTP_RESEND_COOLDOWN_SECONDS', 30))
+OTP_MAX_ATTEMPTS = int(os.environ.get('OTP_MAX_ATTEMPTS', 5))
+OTP_MAX_SENDS_PER_HOUR = int(os.environ.get('OTP_MAX_SENDS_PER_HOUR', 5))
+PHONE_VERIFICATION_TTL_MINUTES = int(os.environ.get('PHONE_VERIFICATION_TTL_MINUTES', 30))
+
+# Password reset links (Django's default token generator) expire after this many seconds.
+PASSWORD_RESET_TIMEOUT = int(os.environ.get('PASSWORD_RESET_TIMEOUT', 60 * 60 * 24))
+
+# Shared cache for login lockout, OTP cooldown and throttling. Set REDIS_URL in multi-process deployments.
+if os.environ.get('REDIS_URL'):
+	CACHES = {'default': {'BACKEND': 'django.core.cache.backends.redis.RedisCache', 'LOCATION': os.environ['REDIS_URL']}}

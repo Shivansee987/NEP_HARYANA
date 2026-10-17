@@ -13,6 +13,7 @@ Verifies the institutional assessment submission lifecycle contract:
 from datetime import date
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from apps.scoring.test_support import submit_complete
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -174,8 +175,7 @@ class WorkflowW2SubmissionTests(TestCase):
         self.assertFalse(is_ready)
 
         # Submission MUST succeed despite unverified evidence
-        submitted = UniversityAssessmentService.submit_assessment(
-            assessment_id=assessment.assessment_id,
+        submitted = submit_complete(UniversityAssessmentService, assessment_id=assessment.assessment_id,
             submitting_user=self.user_uni_a,
         )
         self.assertEqual(submitted.status, "SUBMITTED")
@@ -207,6 +207,9 @@ class WorkflowW2SubmissionTests(TestCase):
             raw_inputs={"U1.1": {"programmes_count": 12}},
             activity_date=date(2025, 10, 15),
         )
+        # Submission requires every parameter to be answered; complete the rest of the form.
+        from apps.scoring.test_support import fill_assessment
+        fill_assessment(UniversityAssessment.objects.get(assessment_id=assessment.assessment_id))
 
         self.client.force_authenticate(user=self.user_uni_a)
         res = self.client.post(
@@ -229,12 +232,15 @@ class WorkflowW2SubmissionTests(TestCase):
             academic_year="2025-26",
             created_by=self.user_uni_a,
         )
+        # Submit the assessment exactly as stored (submit_complete would fill in the missing answers).
         with self.assertRaises(UniversityValidationError) as ctx:
             UniversityAssessmentService.submit_assessment(
                 assessment_id=assessment.assessment_id,
                 submitting_user=self.user_uni_a,
             )
         self.assertEqual(ctx.exception.code, "INVALID_PARAMETER_INPUT")
+        assessment.refresh_from_db()
+        self.assertEqual(assessment.status, "DRAFT")
 
     def test_w2_b2_university_cannot_submit_if_not_draft(self):
         """Only DRAFT assessments can be submitted."""
@@ -249,15 +255,13 @@ class WorkflowW2SubmissionTests(TestCase):
             raw_inputs={"U1.1": {"programmes_count": 10}},
         )
         # First submission
-        UniversityAssessmentService.submit_assessment(
-            assessment_id=assessment.assessment_id,
+        submit_complete(UniversityAssessmentService, assessment_id=assessment.assessment_id,
             submitting_user=self.user_uni_a,
         )
 
         # Second submission must fail
         with self.assertRaises(InvalidStateTransitionError):
-            UniversityAssessmentService.submit_assessment(
-                assessment_id=assessment.assessment_id,
+            submit_complete(UniversityAssessmentService, assessment_id=assessment.assessment_id,
                 submitting_user=self.user_uni_a,
             )
 
@@ -275,8 +279,7 @@ class WorkflowW2SubmissionTests(TestCase):
         )
 
         with self.assertRaises(UniversityNotAuthorizedError):
-            UniversityAssessmentService.submit_assessment(
-                assessment_id=assessment.assessment_id,
+            submit_complete(UniversityAssessmentService, assessment_id=assessment.assessment_id,
                 submitting_user=self.user_uni_b,
             )
 
@@ -297,8 +300,7 @@ class WorkflowW2SubmissionTests(TestCase):
             raw_inputs={"C1.1": {"achieved_targets_2024_25": 85, "fixed_targets_2024_25": 100}},
         )
 
-        submitted = CollegeAssessmentService.submit_assessment(
-            assessment_id=assessment.assessment_id,
+        submitted = submit_complete(CollegeAssessmentService, assessment_id=assessment.assessment_id,
             submitting_user=self.user_college,
         )
         self.assertEqual(submitted.status, "SUBMITTED")
@@ -354,8 +356,7 @@ class WorkflowW2SubmissionTests(TestCase):
             parameter_code="U1",
             raw_inputs={"U1.1": {"programmes_count": 10}},
         )
-        UniversityAssessmentService.submit_assessment(
-            assessment_id=assessment.assessment_id,
+        submit_complete(UniversityAssessmentService, assessment_id=assessment.assessment_id,
             submitting_user=self.user_uni_a,
         )
 
@@ -530,8 +531,7 @@ class WorkflowW2SubmissionTests(TestCase):
             parameter_code="U1",
             raw_inputs={"U1.1": {"programmes_count": 10}},
         )
-        UniversityAssessmentService.submit_assessment(
-            assessment_id=assessment.assessment_id,
+        submit_complete(UniversityAssessmentService, assessment_id=assessment.assessment_id,
             submitting_user=self.user_uni_a,
         )
 
@@ -557,8 +557,7 @@ class WorkflowW2SubmissionTests(TestCase):
             parameter_code="U1",
             raw_inputs={"U1.1": {"programmes_count": 10}},
         )
-        UniversityAssessmentService.submit_assessment(
-            assessment_id=assessment.assessment_id,
+        submit_complete(UniversityAssessmentService, assessment_id=assessment.assessment_id,
             submitting_user=self.user_uni_a,
         )
 

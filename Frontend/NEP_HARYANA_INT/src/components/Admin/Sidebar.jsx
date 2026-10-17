@@ -5,7 +5,9 @@ import {
   FileSpreadsheet,
   Settings as SettingsIcon,
   LogOut,
-  UserCheck
+  UserCheck,
+  Users,
+  GraduationCap,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.jsx';
 import hshecLogo from '../../assets/hshec_logo.jpeg';
@@ -24,12 +26,19 @@ const Sidebar = () => {
     }
   };
 
+  const isHeadAdmin = user?.role === 'head_admin' || user?.is_superuser;
+
   const links = [
-    { name: 'Overview', path: '/admin', icon: LayoutDashboard },
+    { name: isHeadAdmin ? 'Control Centre' : 'Overview', path: '/admin', icon: LayoutDashboard },
     { name: 'Institutions', path: '/admin/institutions', icon: School },
+    { name: 'Users', path: '/admin/users', icon: Users },
+    { name: 'Access Requests', path: '/admin/institution-requests', icon: UserCheck },
+    { name: 'Committees', path: '/admin/committees', icon: GraduationCap },
     { name: 'Reports', path: '/admin/reports', icon: FileSpreadsheet },
     { name: 'Settings', path: '/admin/settings', icon: SettingsIcon },
   ];
+
+
 
   return (
     <div className="peer fixed inset-y-0 left-0 w-20 hover:w-64 bg-white text-slate-800 flex flex-col z-50 shadow-xs hover:shadow-2xl border-r border-[#ebdcd0] transition-all duration-300 ease-in-out group overflow-hidden">
@@ -49,7 +58,7 @@ const Sidebar = () => {
       {/* Nav Menu */}
       <nav className="flex-1 overflow-y-auto py-6 px-3 space-y-1.5">
         <span className="px-3.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2.5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 whitespace-nowrap">
-          State Admin Console
+          {isHeadAdmin ? 'Head Admin Control Centre' : 'State Admin Console'}
         </span>
         <ul className="space-y-1">
           {links.map((link) => {
@@ -89,7 +98,16 @@ const Sidebar = () => {
           </div>
           <div className="min-w-0 flex-1 opacity-0 group-hover:opacity-100 transition-opacity duration-300 whitespace-nowrap">
             <p className="text-xs font-semibold text-slate-800 truncate">{user?.full_name || "Admin Officer"}</p>
-            <p className="text-[10px] text-[#600b0b] font-semibold truncate">{user?.role === "admin" ? "State Admin" : "Evaluator"}</p>
+            <p className="text-[10px] text-[#600b0b] font-semibold truncate">
+              {user?.role === "head_admin"
+                ? "Head Admin"
+                : user?.role === "sub_admin"
+                ? "Sub Admin"
+                : user?.role === "admin"
+                ? "State Admin"
+                : "Admin Officer"}
+            </p>
+
           </div>
         </div>
         <button

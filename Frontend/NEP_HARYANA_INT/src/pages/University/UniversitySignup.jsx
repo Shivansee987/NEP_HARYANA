@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
+  fetchUniversities,
   verifyUniversityAishe,
   getDashboardPathForUser,
 } from "../../api/auth";
@@ -20,6 +21,7 @@ import {
   ArrowRight,
   School,
   Sparkles,
+  Mail,
 } from "lucide-react";
 
 export default function UniversitySignup() {
@@ -32,6 +34,8 @@ export default function UniversitySignup() {
     email: "",
     designation: "University Nodal Officer",
     aisheCode: "",
+    universityName: "",
+    universityId: "",
     password: "",
     confirmPassword: "",
   });
@@ -41,6 +45,31 @@ export default function UniversitySignup() {
   const [verificationStatus, setVerificationStatus] = useState("idle");
   const [verifiedInstitution, setVerifiedInstitution] = useState(null);
   const [verificationError, setVerificationError] = useState("");
+  const [universities, setUniversities] = useState([]);
+  const [universitiesLoading, setUniversitiesLoading] = useState(true);
+
+  // Load universities registry
+  useEffect(() => {
+    let active = true;
+    const loadUniversities = async () => {
+      try {
+        const items = await fetchUniversities();
+        if (active) {
+          setUniversities(items || []);
+        }
+      } catch (err) {
+        // Fallback silently if offline
+      } finally {
+        if (active) {
+          setUniversitiesLoading(false);
+        }
+      }
+    };
+    loadUniversities();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   // Submission state
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -51,14 +80,57 @@ export default function UniversitySignup() {
   const handleChange = (e) => {
     const { name, value } = e.target;
 
-    // If changing AISHE code, reset previous verification state
+    // If changing AISHE code, reset previous verification state unless it matches a known university
     if (name === "aisheCode") {
       const upper = value.toUpperCase().trim();
       setFormData((prev) => ({ ...prev, aisheCode: upper }));
-      if (verificationStatus !== "idle") {
-        setVerificationStatus("idle");
-        setVerifiedInstitution(null);
+
+      const matched = universities.find(
+        (u) => u.aishe_code && u.aishe_code.toUpperCase() === upper
+      );
+      if (matched) {
+        setVerificationStatus("verified");
+        setVerifiedInstitution(matched);
         setVerificationError("");
+        setFormData((prev) => ({
+          ...prev,
+          aisheCode: upper,
+          universityName: matched.name,
+          universityId: String(matched.id),
+        }));
+      } else {
+        if (verificationStatus !== "idle") {
+          setVerificationStatus("idle");
+          setVerifiedInstitution(null);
+          setVerificationError("");
+        }
+      }
+      return;
+    }
+
+    // If changing University Name, check for matching university in registry
+    if (name === "universityName") {
+      setFormData((prev) => ({ ...prev, universityName: value }));
+
+      const matched = universities.find(
+        (u) => u.name.toLowerCase() === value.trim().toLowerCase()
+      );
+      if (matched) {
+        setVerificationStatus("verified");
+        setVerifiedInstitution(matched);
+        setVerificationError("");
+        setFormData((prev) => ({
+          ...prev,
+          universityName: matched.name,
+          universityId: String(matched.id),
+          aisheCode: matched.aishe_code || "",
+        }));
+      } else {
+        if (verificationStatus !== "idle") {
+          setVerificationStatus("idle");
+          setVerifiedInstitution(null);
+          setVerificationError("");
+        }
       }
       return;
     }
@@ -72,15 +144,16 @@ export default function UniversitySignup() {
   const handleVerifyAishe = async (e) => {
     if (e) e.preventDefault();
     const code = formData.aisheCode.trim();
+    const name = formData.universityName.trim();
 
-    if (!code) {
+    if (!code && !name) {
       setVerificationStatus("invalid");
-      setVerificationError("Please enter an AISHE code to verify.");
+      setVerificationError("Please enter an AISHE code or University Name to verify.");
       return;
     }
 
     // Basic format heuristic check
-    if (code.startsWith("C-")) {
+    if (code && code.startsWith("C-")) {
       setVerificationStatus("invalid");
       setVerificationError(
         "The entered code appears to be a College AISHE code. Please use College Registration or enter a University AISHE code (e.g., U-0123)."
@@ -93,14 +166,29 @@ export default function UniversitySignup() {
     setVerifiedInstitution(null);
 
     try {
-      const res = await verifyUniversityAishe(code);
+      const localMatch = universities.find(
+        (u) =>
+          (code && u.aishe_code && u.aishe_code.toUpperCase() === code.toUpperCase()) ||
+          (name && u.name.toLowerCase() === name.toLowerCase())
+      );
+
+      const res = await verifyUniversityAishe(code, {
+        name,
+        universityId: localMatch?.id || formData.universityId,
+      });
       if (res.verified && res.institution) {
         setVerifiedInstitution(res.institution);
         setVerificationStatus("verified");
+        setFormData((prev) => ({
+          ...prev,
+          aisheCode: res.institution.aishe_code || prev.aisheCode,
+          universityName: res.institution.name,
+          universityId: String(res.institution.id),
+        }));
       } else {
         setVerificationStatus("not_found");
         setVerificationError(
-          res.detail || `No active University found matching AISHE code '${code}'.`
+          res.detail || `No active University found matching '${code || name}'.`
         );
       }
     } catch (err) {
@@ -126,7 +214,7 @@ export default function UniversitySignup() {
     if (verificationStatus !== "verified" || !verifiedInstitution) {
       setSubmissionStatus({
         type: "error",
-        message: "You must verify your University's AISHE code before proceeding with registration.",
+        message: "You must select or verify your University before proceeding with registration.",
       });
       return;
     }
@@ -154,7 +242,9 @@ export default function UniversitySignup() {
       const payload = {
         fullName: formData.fullName.trim(),
         email: formData.email.trim().toLowerCase(),
-        aisheCode: verifiedInstitution.aishe_code,
+        aisheCode: verifiedInstitution.aishe_code || "",
+        universityName: verifiedInstitution.name,
+        universityId: verifiedInstitution.id,
         designation: formData.designation.trim() || "University Nodal Officer",
         institutionType: "UNIVERSITY",
         role: "nodal_officer",
@@ -165,12 +255,12 @@ export default function UniversitySignup() {
       const response = await registerUniversityAccount(payload);
       setSubmissionStatus({
         type: "success",
-        message: response.message || "Account created successfully. Navigating to University Workspace...",
+        message: response.message || "Account created successfully. A verification link has been sent to your email.",
       });
 
-      // Navigate to University Dashboard
+      // Navigate to Email Verification page
       setTimeout(() => {
-        navigate(getDashboardPathForUser(response.user));
+        navigate(`/auth/verify-email?email=${encodeURIComponent(formData.email.trim().toLowerCase())}`);
       }, 500);
     } catch (err) {
       setSubmissionStatus({
@@ -249,7 +339,16 @@ export default function UniversitySignup() {
 
             {/* Official Email */}
             <div className={styles.formGroup}>
-              <label htmlFor="email">Official Email Address *</label>
+              <div className="flex items-center justify-between mb-1">
+                <label htmlFor="email" className="m-0 flex items-center gap-1.5 font-semibold text-slate-800 text-xs">
+                  <Mail size={13} className="text-[#600b0b]" />
+                  Official Email Address *
+                </label>
+                <span className="text-[11px] font-bold text-amber-900 bg-amber-100/90 px-2.5 py-0.5 rounded-full flex items-center gap-1 border border-amber-200">
+                  <ShieldCheck size={12} className="text-amber-700" />
+                  Email Verification Required
+                </span>
+              </div>
               <input
                 type="email"
                 id="email"
@@ -260,6 +359,24 @@ export default function UniversitySignup() {
                 placeholder="nodal.officer@university.ac.in"
                 autoComplete="email"
               />
+              <div className="mt-2 p-3 bg-amber-50/80 border border-amber-200/70 rounded-xl text-xs text-amber-950 space-y-1.5">
+                <div className="flex items-center gap-1.5 font-bold text-amber-900">
+                  <Mail size={14} className="text-[#600b0b]" />
+                  <span>Email Verification Option &amp; Protocol</span>
+                </div>
+                <p className="text-amber-900/90 leading-relaxed text-[11px]">
+                  To protect institutional security, an email verification link is automatically sent to <strong>{formData.email.trim() || "your official email"}</strong> upon clicking Register. You must click the link to verify before signing in.
+                </p>
+                <div className="pt-1 flex items-center justify-between border-t border-amber-200/60 mt-1">
+                  <span className="text-[11px] text-amber-800">Already registered or need a new link?</span>
+                  <Link
+                    to={`/auth/verify-email${formData.email.trim() ? `?email=${encodeURIComponent(formData.email.trim())}` : ""}`}
+                    className="text-[11px] font-bold text-[#600b0b] hover:underline"
+                  >
+                    Open Email Verification / Resend Link →
+                  </Link>
+                </div>
+              </div>
             </div>
 
             {/* Fixed Institution Type */}
@@ -274,9 +391,61 @@ export default function UniversitySignup() {
               </div>
             </div>
 
+            {/* University Name field with autocomplete / registry datalist */}
+            <div className={`${styles.formGroup} ${styles.fullWidth}`}>
+              <div className="flex items-center justify-between mb-0.5">
+                <label htmlFor="universityName" className="m-0 flex items-center gap-1.5">
+                  <Building2 size={13} className="text-[#600b0b]" />
+                  University Name *
+                </label>
+                {verificationStatus === "verified" && verifiedInstitution && (
+                  <span className="text-[11px] font-bold text-emerald-700 bg-emerald-100 px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                    <CheckCircle2 size={12} /> {verifiedInstitution.aishe_code ? "Verified from AISHE" : "Verified by Name"}
+                  </span>
+                )}
+              </div>
+              <div className="relative">
+                <input
+                  type="text"
+                  id="universityName"
+                  name="universityName"
+                  list="registered-universities-list-uni"
+                  value={formData.universityName}
+                  onChange={handleChange}
+                  required={!formData.aisheCode}
+                  placeholder="Type or select University Name (e.g. Ashoka University, Kurukshetra University)"
+                  className="w-full min-h-[50px] px-4 rounded-xl border border-slate-300 bg-white text-slate-900 font-medium focus:border-[#600b0b] focus:ring-1 focus:ring-[#600b0b] transition-all"
+                  disabled={verificationStatus === "verifying" || isSubmitting}
+                  autoComplete="off"
+                />
+                <datalist id="registered-universities-list-uni">
+                  {universities.map((uni) => (
+                    <option key={uni.id} value={uni.name}>
+                      {uni.aishe_code ? `AISHE: ${uni.aishe_code}` : "No AISHE Code Registered"}
+                    </option>
+                  ))}
+                </datalist>
+              </div>
+              <span className="text-[11px] text-slate-500 mt-1 block">
+                If your university does not have an AISHE code, select or write your University Name here to register.
+              </span>
+            </div>
+
             {/* AISHE Code & Verification Section */}
             <div className={`${styles.formGroup} ${styles.fullWidth}`}>
-              <label htmlFor="aisheCode">University AISHE Code *</label>
+              <div className="flex items-center justify-between mb-0.5">
+                <label htmlFor="aisheCode">
+                  University AISHE Code
+                  <span className="text-xs font-normal text-slate-500 ml-1.5">
+                    (Optional if registering by University Name)
+                  </span>
+                </label>
+                {!formData.aisheCode && verifiedInstitution && (
+                  <span className="text-[11px] text-amber-800 bg-amber-50 px-2 py-0.5 rounded-md font-medium border border-amber-200">
+                    No AISHE Code Required
+                  </span>
+                )}
+              </div>
               <div className="flex gap-2.5">
                 <input
                   type="text"
@@ -284,7 +453,6 @@ export default function UniversitySignup() {
                   name="aisheCode"
                   value={formData.aisheCode}
                   onChange={handleChange}
-                  required
                   placeholder="Enter AISHE Code (e.g. U-0123)"
                   autoComplete="off"
                   className="flex-1"
@@ -293,7 +461,11 @@ export default function UniversitySignup() {
                 <button
                   type="button"
                   onClick={handleVerifyAishe}
-                  disabled={!formData.aisheCode.trim() || verificationStatus === "verifying" || isSubmitting}
+                  disabled={
+                    (!formData.aisheCode.trim() && !formData.universityName.trim()) ||
+                    verificationStatus === "verifying" ||
+                    isSubmitting
+                  }
                   className="px-5 py-2.5 bg-[#600b0b] hover:bg-[#7a0f0f] active:bg-[#4a0808] disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-semibold text-sm rounded-xl transition-all shadow-sm flex items-center gap-1.5"
                   id="verify-aishe-btn"
                 >
@@ -327,7 +499,7 @@ export default function UniversitySignup() {
                         {verifiedInstitution.name}
                       </span>
                       <span className="text-slate-500">
-                        AISHE: {verifiedInstitution.aishe_code} · {verifiedInstitution.university_type}
+                        AISHE: {verifiedInstitution.aishe_code || "Not Assigned (Registered by Name)"} · {verifiedInstitution.university_type}
                       </span>
                     </div>
                     {verifiedInstitution.address && (
@@ -445,7 +617,7 @@ export default function UniversitySignup() {
                   </span>
                 ) : (
                   <span className="flex items-center justify-center gap-2">
-                    Register University Account
+                    Register &amp; Send Email Verification Link
                     <ArrowRight className="w-4 h-4" />
                   </span>
                 )}

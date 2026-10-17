@@ -13,6 +13,24 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext.jsx";
+
+// Self-registered applicants are bound to their institution only after an administrator approves the request.
+function institutionRequestNotice(user, kind) {
+  const requested = user?.requested_institution_name || `the requested ${kind}`;
+  if (user?.institution_status === "PENDING") {
+    return {
+      title: "Institution access awaiting approval",
+      description: `Your request to act for ${requested} is waiting for approval by the State DHE Administrator. You will be able to open the assessment once it is approved.`,
+    };
+  }
+  if (user?.institution_status === "REJECTED") {
+    return {
+      title: "Institution access request not approved",
+      description: "Your request to act for this institution was not approved. Please contact the State DHE Administrator.",
+    };
+  }
+  return null;
+}
 import {
   fetchMyUniversities,
   fetchUniversityAssessments,
@@ -516,7 +534,7 @@ export default function UniversityDashboard() {
           </div>
 
           {/* Global Error Banner */}
-          {error && (
+          {error && !institutionRequestNotice(user, "university") && (
             <ErrorState
               title="Institutional Action Notice"
               message={error}
@@ -530,8 +548,8 @@ export default function UniversityDashboard() {
           ) : !university ? (
             <EmptyState
               icon={Building2}
-              title="No University Institution Linked"
-              description="Your authenticated account does not currently have an assigned university institution record. Please contact your State DHE Administrator."
+              title={institutionRequestNotice(user, "university")?.title || "No University Institution Linked"}
+              description={institutionRequestNotice(user, "university")?.description || "Your authenticated account does not currently have an assigned university institution record. Please contact your State DHE Administrator."}
             />
           ) : (
             <>

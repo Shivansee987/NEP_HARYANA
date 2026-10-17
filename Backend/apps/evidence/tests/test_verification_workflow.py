@@ -277,23 +277,22 @@ class TestReviewerAuthorization(VerificationWorkflowTestCase):
             )
 
     def test_self_verification_blocked(self):
-        # Admin uploads evidence
-        doc = EvidenceService.create_evidence(
-            uploader=self.admin_user,
-            assessment_id="ASSESS-U-2026-001",
-            framework="UNIVERSITY_2026",
-            institution_type="UNIVERSITY",
-            institution_id="UNIV-01",
-            original_filename="admin_doc.pdf",
-            file_bytes=self.sample_bytes,
-        )
-        EvidenceService.submit_for_verification(doc.pk, self.admin_user)
+        # An authorized committee member uploads evidence and then tries to decide on it themselves.
+        # Committee members cannot upload evidence through the service any more; a reviewer-uploaded record can
+        # only exist as legacy or injected data, which the conflict-of-interest check must still refuse.
+        EvidenceService.authorize_reviewer(self.univ_reviewer, framework="COLLEGE_2026")
+        doc = self.create_pending_evidence()
+        EvidenceDocument.objects.filter(pk=doc.pk).update(uploader=self.univ_reviewer)
 
         with self.assertRaises(ReviewerConflictOfInterestError):
-            EvidenceService.verify_evidence(doc.pk, self.admin_user, reason="Self verification attempt")
+            EvidenceService.verify_evidence(doc.pk, self.univ_reviewer, reason="Self verification attempt")
 
         with self.assertRaises(ReviewerConflictOfInterestError):
-            EvidenceService.reject_evidence(doc.pk, self.admin_user, reason="Self rejection attempt")
+            EvidenceService.reject_evidence(doc.pk, self.univ_reviewer, reason="Self rejection attempt")
+
+        # Administrators never review evidence at all (read-only oversight), so their attempt is refused outright.
+        with self.assertRaises(UnauthorizedEvidenceActionError):
+            EvidenceService.verify_evidence(doc.pk, self.admin_user, reason="Administrator verification attempt")
 
     def test_institutional_affiliation_conflict_of_interest_blocked(self):
         doc = self.create_pending_evidence(institution_id="C-3001")
@@ -355,17 +354,19 @@ class TestReviewerAssignment(VerificationWorkflowTestCase):
             )
 
     def test_cannot_assign_uploader_conflict_of_interest(self):
-        doc = EvidenceService.create_evidence(
-            uploader=self.admin_user,
-            assessment_id="ASSESS-U-2026-001",
-            framework="UNIVERSITY_2026",
-            institution_type="UNIVERSITY",
-            institution_id="UNIV-01",
-            original_filename="doc.pdf",
-            file_bytes=self.sample_bytes,
-        )
-        EvidenceService.submit_for_verification(doc.pk, self.admin_user)
+        # Committee members cannot upload evidence through the service any more; a reviewer-uploaded record can
+        # only exist as legacy or injected data, which the conflict-of-interest check must still refuse.
+        EvidenceService.authorize_reviewer(self.univ_reviewer, framework="COLLEGE_2026")
+        doc = self.create_pending_evidence()
+        EvidenceDocument.objects.filter(pk=doc.pk).update(uploader=self.univ_reviewer)
         with self.assertRaises(ReviewerConflictOfInterestError):
+            EvidenceService.assign_reviewer(
+                evidence_id=doc.pk,
+                reviewer=self.univ_reviewer,
+                assigned_by=self.admin_user,
+            )
+        # Only Screening Committee members can be assigned at all.
+        with self.assertRaises(ReviewerAssignmentError):
             EvidenceService.assign_reviewer(
                 evidence_id=doc.pk,
                 reviewer=self.admin_user,

@@ -8,6 +8,24 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext.jsx";
+
+// Self-registered applicants are bound to their institution only after an administrator approves the request.
+function institutionRequestNotice(user, kind) {
+  const requested = user?.requested_institution_name || `the requested ${kind}`;
+  if (user?.institution_status === "PENDING") {
+    return {
+      title: "Institution access awaiting approval",
+      description: `Your request to act for ${requested} is waiting for approval by the State DHE Administrator. You will be able to open the assessment once it is approved.`,
+    };
+  }
+  if (user?.institution_status === "REJECTED") {
+    return {
+      title: "Institution access request not approved",
+      description: "Your request to act for this institution was not approved. Please contact the State DHE Administrator.",
+    };
+  }
+  return null;
+}
 import {
   fetchMyColleges,
   fetchCollegeAssessments,
@@ -556,7 +574,7 @@ export default function CollegeDashboard() {
           </div>
 
           {/* Global Error Notice */}
-          {error && (
+          {error && !institutionRequestNotice(user, "college") && (
             <ErrorState
               title="College Portal Notice"
               message={error}
@@ -570,8 +588,8 @@ export default function CollegeDashboard() {
           ) : !college ? (
             <EmptyState
               icon={School}
-              title="No College Record Assigned"
-              description="Your account is not currently linked to an approved college institution record in the database. Please contact your State DHE Administrator."
+              title={institutionRequestNotice(user, "college")?.title || "No College Record Assigned"}
+              description={institutionRequestNotice(user, "college")?.description || "Your account is not currently linked to an approved college institution record in the database. Please contact your State DHE Administrator."}
             />
           ) : (
             <>

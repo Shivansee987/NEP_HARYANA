@@ -9,6 +9,7 @@ from rest_framework.test import APIClient
 from rest_framework import status
 
 from apps.authentication.models import College
+from apps.authentication.test_utils import last_sms_code, verify_phone
 from apps.university.models import University, UniversityAssessment
 from apps.university.services import UniversityAssessmentService
 
@@ -16,6 +17,11 @@ User = get_user_model()
 
 
 class UniversityRegistrationTests(TestCase):
+    def _verified(self, payload, phone):
+        """Adds a phone number verified through the real OTP flow to a registration payload."""
+        token = verify_phone(self.client, phone)
+        return {**payload, "phoneNumber": phone, "phoneVerificationToken": token}
+
     def setUp(self):
         self.client = APIClient()
 
@@ -124,14 +130,24 @@ class UniversityRegistrationTests(TestCase):
     # Phase 4: Institution Identity and Uniqueness
     # =========================================================================
 
-    def test_duplicate_aishe_prevention_at_database_level(self):
-        """Database enforces uniqueness on University.aishe_code."""
-        with self.assertRaises(IntegrityError):
-            University.objects.create(
-                name="Duplicate Code University",
-                aishe_code="U-0160",  # same as self.uni_a
-                state="Haryana",
-            )
+    def test_shared_aishe_code_requires_institute_code(self):
+        """
+        The DHE registry legitimately has institutions sharing an AISHE code, so it is not unique in the
+        database; registration must then be disambiguated by the DHE institute code instead of binding to an
+        arbitrary match.
+        """
+        University.objects.filter(pk=self.uni_a.pk).update(institute_code="9101")
+        University.objects.create(name="Shared Code Campus", aishe_code="U-0160", institute_code="9102", state="Haryana")
+        payload = self._verified({
+            "fullName": "Shared Code Applicant", "email": "shared@kuk.ac.in", "aisheCode": "U-0160",
+            "password": "SecurePassword2026!"}, "9876500101")
+        res = self.client.post("/api/auth/university/register/", payload, format="json")
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("aisheCode", res.data)
+        payload["instituteCode"] = "9101"
+        res = self.client.post("/api/auth/university/register/", payload, format="json")
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED, res.data)
+        self.assertEqual(User.objects.get(email="shared@kuk.ac.in").requested_university, self.uni_a)
 
     # =========================================================================
     # Phase 5: Secure Applicant Account Creation
@@ -150,22 +166,26 @@ class UniversityRegistrationTests(TestCase):
             "password": "SecurePassword2026!",
             "confirmPassword": "SecurePassword2026!",
         }
+        payload = self._verified(payload, "9876500102")
 
         res = self.client.post("/api/auth/university/register/", payload, format="json")
-        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
-        self.assertIn("tokens", res.data)
-        self.assertIn("access", res.data["tokens"])
-        self.assertIn("refresh", res.data["tokens"])
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED, res.data)
+        self.assertNotIn("tokens", res.data)
+        self.assertTrue(res.data.get("verification_sent"))
+        self.assertFalse(res.data["user"]["is_email_verified"])
         self.assertEqual(res.data["user"]["email"], "nodal.ramesh@kuk.ac.in")
         self.assertEqual(res.data["user"]["role"], "nodal_officer")
-        self.assertEqual(res.data["user"]["university_id"], self.uni_a.id)
-        self.assertEqual(res.data["user"]["aishe_code"], "U-0160")
+        # Ownership is only requested: no institution binding until an administrator approves it.
+        self.assertEqual(res.data["user"]["institution_status"], "PENDING")
+        self.assertIsNone(res.data["user"]["university_id"])
+        self.assertEqual(res.data["user"]["requested_institution_name"], self.uni_a.name)
 
         # Verify DB record
         user = User.objects.get(email="nodal.ramesh@kuk.ac.in")
         self.assertEqual(user.full_name, "Dr. Ramesh Sharma")
         self.assertEqual(user.role, "nodal_officer")
-        self.assertEqual(user.university, self.uni_a)
+        self.assertIsNone(user.university)
+        self.assertEqual(user.requested_university, self.uni_a)
         self.assertIsNone(user.college)
         self.assertTrue(user.check_password("SecurePassword2026!"))
 
@@ -240,12 +260,14 @@ class UniversityRegistrationTests(TestCase):
             "aisheCode": "U-0161",
             "institutionType": "UNIVERSITY",
             "role": "nodal_officer",
-            "password": "Password2026!",
+            "password": "SecurePassword2026!",
         }
+        payload = self._verified(payload, "9876500103")
         res = self.client.post("/api/auth/signup/", payload, format="json")
-        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED, res.data)
         self.assertEqual(res.data["user"]["role"], "nodal_officer")
-        self.assertEqual(res.data["user"]["university_id"], self.uni_b.id)
+        self.assertEqual(res.data["user"]["institution_status"], "PENDING")
+        self.assertEqual(User.objects.get(email="anita.sen@mdu.ac.in").requested_university, self.uni_b)
 
     # =========================================================================
     # Phase 6: University-Specific Access Control & Isolation
@@ -351,16 +373,21 @@ class UniversityRegistrationTests(TestCase):
             "institutionType": "COLLEGE",
             "password": "SecurePassword2026!",
         }
+        payload = self._verified(payload, "9876500104")
         res = self.client.post("/api/auth/signup/", payload, format="json")
-        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
-        self.assertIn("tokens", res.data)
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED, res.data)
+        self.assertNotIn("tokens", res.data)
+        self.assertTrue(res.data.get("verification_sent"))
+        self.assertFalse(res.data["user"]["is_email_verified"])
         self.assertEqual(res.data["user"]["role"], "principal")
-        self.assertEqual(res.data["user"]["college_id"], self.college.id)
+        self.assertEqual(res.data["user"]["institution_status"], "PENDING")
+        self.assertIsNone(res.data["user"]["college_id"])
         self.assertIsNone(res.data["user"]["university_id"])
 
-        # Check DB record
+        # Check DB record: the college is requested, not granted
         user = User.objects.get(email="principal.sunita@gcpanchkula.ac.in")
-        self.assertEqual(user.college, self.college)
+        self.assertIsNone(user.college)
+        self.assertEqual(user.requested_college, self.college)
         self.assertIsNone(user.university)
         self.assertEqual(user.role, "principal")
 
@@ -449,13 +476,15 @@ class UniversityRegistrationTests(TestCase):
         res = self.client.post("/api/auth/otp/send/", {"phone_number": "9876543210"}, format="json")
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         self.assertTrue(res.data["success"])
-        self.assertIn("dev_otp", res.data)
-        self.assertEqual(len(res.data["dev_otp"]), 6)
+        # The code is delivered by SMS only, never echoed by the API, and stored only as a hash.
+        self.assertNotIn("dev_otp", res.data)
+        code = last_sms_code("9876543210")
+        self.assertEqual(len(code), 6)
 
         from apps.authentication.models import OTPVerification
         record = OTPVerification.objects.filter(phone_number="9876543210").first()
         self.assertIsNotNone(record)
-        self.assertEqual(record.otp_code, res.data["dev_otp"])
+        self.assertNotIn(code, record.otp_hash)
         self.assertFalse(record.is_verified)
 
     def test_send_otp_invalid_phone(self):
@@ -487,17 +516,17 @@ class UniversityRegistrationTests(TestCase):
         self.assertFalse(res_verify.data["verified"])
 
     def test_verify_otp_success_and_registration(self):
-        """Applicant verifies phone number via OTP and successfully registers with phone saved."""
+        """Applicant can register with phone number saved without phone OTP gating."""
         phone = "9876543212"
+        # Standalone OTP endpoints still function
         send_res = self.client.post("/api/auth/otp/send/", {"phone_number": phone}, format="json")
         self.assertEqual(send_res.status_code, status.HTTP_200_OK)
-        dev_otp = send_res.data["dev_otp"]
 
-        verify_res = self.client.post("/api/auth/otp/verify/", {"phone_number": phone, "otp": dev_otp}, format="json")
+        verify_res = self.client.post("/api/auth/otp/verify/", {"phone_number": phone, "otp": last_sms_code(phone)}, format="json")
         self.assertEqual(verify_res.status_code, status.HTTP_200_OK)
         self.assertTrue(verify_res.data["verified"])
 
-        # Now register University applicant with this verified phone number
+        # Register University applicant with phone number (phone OTP is no longer mandatory for signup)
         payload = {
             "fullName": "Dr. Vikas Verma",
             "email": "vikas.verma@kuk.ac.in",
@@ -511,12 +540,16 @@ class UniversityRegistrationTests(TestCase):
         reg_res = self.client.post("/api/auth/university/register/", payload, format="json")
         self.assertEqual(reg_res.status_code, status.HTTP_201_CREATED)
         self.assertEqual(reg_res.data["user"]["phone_number"], phone)
+        self.assertEqual(reg_res.data["user"]["is_email_verified"], False)
+        self.assertTrue(reg_res.data.get("verification_sent"))
 
         user = User.objects.get(email="vikas.verma@kuk.ac.in")
         self.assertEqual(user.phone_number, phone)
+        self.assertFalse(user.is_email_verified)
 
-    def test_registration_rejects_unverified_phone(self):
-        """Applicant providing an unverified phone number is rejected during registration."""
+    def test_registration_without_phone_otp_and_rejects_invalid_phone_format(self):
+        """Phone OTP is not required for signup; invalid phone formats are rejected."""
+        # 1. Valid 10-digit phone without OTP succeeds
         payload = {
             "fullName": "Unverified Phone Applicant",
             "email": "unverified@kuk.ac.in",
@@ -525,8 +558,73 @@ class UniversityRegistrationTests(TestCase):
             "password": "SecurePassword2026!",
         }
         res = self.client.post("/api/auth/university/register/", payload, format="json")
-        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("phoneNumber", res.data)
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        self.assertFalse(res.data["user"]["is_email_verified"])
+
+        # 2. Malformed phone number (non-10-digit) is rejected with 400
+        payload_bad = {
+            "fullName": "Bad Phone Applicant",
+            "email": "badphone@kuk.ac.in",
+            "phoneNumber": "12345",
+            "aisheCode": "U-0160",
+            "password": "SecurePassword2026!",
+        }
+        res_bad = self.client.post("/api/auth/university/register/", payload_bad, format="json")
+        self.assertEqual(res_bad.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("phoneNumber", res_bad.data)
+
+    def test_public_universities_list_endpoint(self):
+        """Public /api/auth/universities/ lists all active universities for registration selector."""
+        res = self.client.get("/api/auth/universities/")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        names = [u["name"] for u in res.data]
+        self.assertIn(self.uni_a.name, names)
+        self.assertIn(self.uni_b.name, names)
+        # Inactive university should not be listed
+        self.assertNotIn(self.uni_inactive.name, names)
+
+    def test_lookup_university_by_name_without_aishe(self):
+        """Lookup endpoint successfully resolves university by name when AISHE is not provided."""
+        uni_no_aishe = University.objects.create(
+            name="Ashoka University Sonepat (Campus)",
+            aishe_code="",
+            university_type="Private University",
+            state="Haryana",
+            is_active=True,
+        )
+        res = self.client.get("/api/auth/university/lookup/", {"name": "Ashoka University Sonepat (Campus)"})
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertTrue(res.data["verified"])
+        self.assertEqual(res.data["institution"]["name"], uni_no_aishe.name)
+        self.assertEqual(res.data["institution"]["aishe_code"], "")
+
+    def test_registration_using_university_name_without_aishe(self):
+        """Nodal officer can register using University name when university has no AISHE code."""
+        uni_no_aishe = University.objects.create(
+            name="Sports University of Haryana, Rai, Sonipat",
+            aishe_code="",
+            university_type="State Public University",
+            state="Haryana",
+            is_active=True,
+        )
+        phone = "9876543220"
+        payload = self._verified({
+            "fullName": "Dr. Sunil Narwal",
+            "email": "nodal@sportsuni.ac.in",
+            "universityName": "Sports University of Haryana, Rai, Sonipat",
+            "universityId": uni_no_aishe.id,
+            "aisheCode": "",
+            "designation": "University Nodal Officer",
+            "institutionType": "UNIVERSITY",
+            "password": "SecurePassword2026!",
+            "confirmPassword": "SecurePassword2026!",
+        }, phone)
+        res = self.client.post("/api/auth/university/register/", payload, format="json")
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        user = User.objects.get(email="nodal@sportsuni.ac.in")
+        self.assertEqual(user.requested_university, uni_no_aishe)
+        self.assertEqual(user.institution_status, "PENDING")
+
 
 
 

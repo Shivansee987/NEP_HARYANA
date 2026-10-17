@@ -192,8 +192,9 @@ class UniversityListCreateView(APIView):
 
         qs = University.objects.filter(is_active=True).order_by('name')
 
-        # Institutional scoping
-        if not (getattr(user, 'is_superuser', False) or role in ('admin', 'state_admin', 'committee')):
+        # Institutional scoping (oversight administrators and reviewers see the registry)
+        from apps.evidence import access_policy as policy
+        if not (policy.is_oversight(user) or policy.is_reviewer(user)):
             user_uni = getattr(user, 'university', None)
             if user_uni:
                 qs = qs.filter(pk=user_uni.pk)
@@ -241,10 +242,14 @@ class UniversityAssessmentListCreateView(APIView):
     @handle_university_exceptions
     def get(self, request, pk):
         uni = get_university_object(pk)
-        # Verify ownership / permissions for this university
-        self.check_object_permissions(request, UniversityAssessment(university=uni))
-
-        qs = UniversityAssessment.objects.filter(university=uni).order_by('-created_at')
+        from apps.evidence import access_policy as policy
+        if policy.is_reviewer(request.user):
+            # Reviewers only ever see submitted assessments inside their review scope.
+            qs = UniversityReviewService.get_review_queue(user=request.user).filter(university=uni).order_by('-created_at')
+        else:
+            # Verify ownership / permissions for this university
+            self.check_object_permissions(request, UniversityAssessment(university=uni))
+            qs = UniversityAssessment.objects.filter(university=uni).order_by('-created_at')
         paginator = self.pagination_class()
         page = paginator.paginate_queryset(qs, request)
         if page is not None:
@@ -421,6 +426,7 @@ class UniversityAssessmentParameterDetailView(APIView):
             raw_inputs=validated_data.get('raw_inputs', {}),
             entities=validated_data.get('entities', []),
             activity_date=validated_data.get('activity_date'),
+            actor=request.user,
         )
 
         submitted_data = updated_assessment.parameter_data.get(param_clean)

@@ -8,12 +8,47 @@ from .api_views import (
     AdminAssessmentAssignReviewerView,
     AdminAssessmentCertifyView,
     AdminAssessmentInspectView,
+    AdminControlCentreSummaryView,
+    AdminGlobalUserAuditLogsView,
     AdminReviewQueueView,
     AdminReviewerAuthorizationsView,
     AdminStateInstitutionsView,
+    AdminUserListCreateView,
+    AdminUserDetailView,
+    AdminUserAuditLogsView,
+    AdminUserResetPasswordView,
+    AdminUserCommitteeView,
+    AdminUserResendInvitationView,
+    AdminUserInstitutionDecisionView,
+    AdminUserRevokeInvitationView,
+    AdminCommitteeListCreateView,
+    AdminCommitteeDetailView,
+    AdminCommitteeAssignChairView,
+    AdminCommitteeMembersView,
 )
 
 urlpatterns = [
+    # Head Admin Control Centre Summary
+    path('control-centre/summary/', AdminControlCentreSummaryView.as_view(), name='admin-control-centre-summary'),
+
+    # Centralized User Management & Role Governance
+    path('users/audit-trail/', AdminGlobalUserAuditLogsView.as_view(), name='admin-users-global-audit-trail'),
+    path('users/', AdminUserListCreateView.as_view(), name='admin-users-list-create'),
+    path('users/<int:user_id>/', AdminUserDetailView.as_view(), name='admin-users-detail'),
+    path('users/<int:user_id>/audit/', AdminUserAuditLogsView.as_view(), name='admin-users-audit'),
+    path('users/<int:user_id>/reset-password/', AdminUserResetPasswordView.as_view(), name='admin-users-reset-password'),
+    path('users/<int:user_id>/committee/', AdminUserCommitteeView.as_view(), name='admin-users-committee-assignment'),
+    path('users/<int:user_id>/resend-invitation/', AdminUserResendInvitationView.as_view(), name='admin-users-resend-invitation'),
+    path('users/<int:user_id>/revoke-invitation/', AdminUserRevokeInvitationView.as_view(), name='admin-users-revoke-invitation'),
+    path('users/<int:user_id>/institution-access/', AdminUserInstitutionDecisionView.as_view(), name='admin-users-institution-access'),
+
+    # Committee Management
+    path('committees/', AdminCommitteeListCreateView.as_view(), name='admin-committees-list-create'),
+    path('committees/<int:committee_id>/', AdminCommitteeDetailView.as_view(), name='admin-committees-detail'),
+    path('committees/<int:committee_id>/chair/', AdminCommitteeAssignChairView.as_view(), name='admin-committees-assign-chair'),
+    path('committees/<int:committee_id>/members/', AdminCommitteeMembersView.as_view(), name='admin-committees-members'),
+    path('committees/<int:committee_id>/members/<int:user_id>/', AdminCommitteeMembersView.as_view(), name='admin-committees-remove-member'),
+
     # Unified Review Queue
     path('review-queue/', AdminReviewQueueView.as_view(), name='admin-review-queue'),
     path('queue/', AdminReviewQueueView.as_view(), name='admin-queue-alias'),
@@ -30,3 +65,4 @@ urlpatterns = [
     # Reviewer Authorizations Management
     path('authorizations/', AdminReviewerAuthorizationsView.as_view(), name='admin-authorizations'),
 ]
+

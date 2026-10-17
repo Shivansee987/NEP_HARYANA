@@ -16,79 +16,25 @@ class ReportPermissionDenied(PermissionDenied):
 
 def can_user_view_assessment(user: Any, assessment: Any, framework: str) -> bool:
     """
-    Authoritative authorization check for viewing an assessment report.
-    Enforces strict tenant isolation and framework security:
-    - Admin / Superuser: Cross-framework access.
-    - Committee Chair: Cross-framework access.
-    - Committee Reviewer: Only if assigned reviewer or actively authorized for the framework without COI.
-    - Institutional User (principal): Strictly own college.
-    - Institutional User (nodal_officer, university_admin): Strictly own university.
+    Report visibility follows apps.evidence.access_policy:
+    - Oversight administrators: every assessment (read-only).
+    - Screening Committee members and chairs: submitted assessments inside their review scope, never their own
+      institution.
+    - Institution users: only their own (bound) institution's assessment, and only for its own framework.
     """
+    from apps.evidence import access_policy as policy
+
     if not user or not getattr(user, "is_authenticated", False):
         return False
-
-    if getattr(user, "is_superuser", False) or getattr(user, "is_staff", False):
+    if policy.is_oversight(user):
         return True
-
-    role = getattr(user, "role", "")
-
-    # 1. State / System Admin
-    if role in ("admin", "state_admin"):
-        return True
-
-    # 2. Committee Chair has global inspection visibility across the control plane
-    if role == "committee_chair":
-        return True
-
-    # 3. Screening Committee Reviewer
-    if role == "committee":
-        # Check direct assignment
-        if assessment.assigned_reviewer_id and assessment.assigned_reviewer_id == user.pk:
-            return True
-
-        # Check Conflict of Interest (COI)
-        user_inst_id = getattr(user, "institution_id", None)
-        if framework == "UNIVERSITY_2026":
-            target_aishe = getattr(assessment.university, "aishe_code", "")
-            if user_inst_id and user_inst_id == target_aishe:
-                return False  # COI: reviewer cannot inspect own institution
-        elif framework == "COLLEGE_2026":
-            target_aishe = getattr(assessment.college, "aishe_code", "")
-            if user_inst_id and user_inst_id == target_aishe:
-                return False  # COI
-
-        # Check framework-level ReviewerAuthorization binding
-        has_binding = ReviewerAuthorization.objects.filter(
-            user=user,
-            framework__in=[framework, "ALL"],
-            is_active=True,
-        ).exists()
-        return has_binding
-
-    # 4. University Institutional Users (nodal_officer, university_admin)
-    if role in ("nodal_officer", "university_admin"):
-        if framework != "UNIVERSITY_2026":
-            return False  # Cross-framework access forbidden
-        user_uni = getattr(user, "university", None)
-        if not user_uni:
-            return False
-        return bool(
-            user_uni.pk == assessment.university.pk
-            or (user_uni.aishe_code and user_uni.aishe_code == assessment.university.aishe_code)
-        )
-
-    # 5. College Institutional Users (principal)
-    if role == "principal":
-        if framework != "COLLEGE_2026":
-            return False  # Cross-framework access forbidden
-        user_col = getattr(user, "college", None)
-        if not user_col:
-            return False
-        return bool(
-            user_col.pk == assessment.college.pk
-            or (user_col.aishe_code and user_col.aishe_code == assessment.college.aishe_code)
-        )
-
+    fw = policy.normalize_framework(framework)
+    institution = getattr(assessment, "college", None) if fw == policy.COLLEGE else getattr(assessment, "university", None)
+    if policy.is_reviewer(user):
+        return policy.reviewer_can_view_assessment(
+            user, fw, institution, getattr(assessment, "status", None), getattr(assessment, "assigned_reviewer_id", None))
+    if policy.role_of(user) in policy.INSTITUTION_ROLES:
+        return policy.institution_owns_assessment(user, assessment)
     return False
 
 
@@ -99,17 +45,11 @@ class IsReportAuthorized(BasePermission):
     message = "Authentication and valid role required to access reports."
 
     def has_permission(self, request, view):
+        from apps.evidence import access_policy as policy
         user = request.user
-        return bool(
-            user
-            and user.is_authenticated
-            and getattr(user, "role", "") in (
-                "admin", "state_admin", "committee", "committee_chair",
-                "nodal_officer", "university_admin", "principal"
-            )
-            or getattr(user, "is_superuser", False)
-            or getattr(user, "is_staff", False)
-        )
+        if not (user and user.is_authenticated):
+            return False
+        return policy.is_oversight(user) or policy.is_reviewer(user) or policy.role_of(user) in policy.INSTITUTION_ROLES
 
 
 class IsAdminOrChairForAnalytics(BasePermission):
@@ -122,6 +62,5 @@ class IsAdminOrChairForAnalytics(BasePermission):
         user = request.user
         if not user or not user.is_authenticated:
             return False
-        if getattr(user, "is_superuser", False) or getattr(user, "is_staff", False):
-            return True
-        return getattr(user, "role", "") in ("admin", "state_admin", "committee_chair")
+        from apps.evidence import access_policy as policy
+        return policy.is_oversight(user) or getattr(user, "role", "") == "committee_chair"

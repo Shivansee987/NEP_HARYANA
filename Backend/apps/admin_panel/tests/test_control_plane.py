@@ -378,10 +378,11 @@ class AdminControlPlaneSecurityTests(TestCase):
 
     def test_cannot_assign_reviewer_to_certified_assessment(self):
         """Assigning a reviewer to a CERTIFIED assessment is strictly blocked (400)."""
-        # Create a certified assessment
+        # Create a certified assessment (its own college: one assessment per college per academic year)
+        college_c = College.objects.create(name="Govt College Rohtak", aishe_code="C-00107")
         certified_assess = CollegeAssessment.objects.create(
             assessment_id="ASSESS-COL-CERT-001",
-            college=self.college_b,
+            college=college_c,
             framework=COLLEGE_FRAMEWORK_CODE,
             status="CERTIFIED",
             certified_score=85.0,
@@ -457,13 +458,16 @@ class AdminControlPlaneSecurityTests(TestCase):
             parameter_results={},
         )
 
-        def mock_eval_scoring(aid):
+        def mock_eval_scoring(aid, **kwargs):
             self.col_assess_b.certified_score = 88.5
             self.col_assess_b.certification_status = "FINALIZABLE"
             self.col_assess_b.save(update_fields=["certified_score", "certification_status"])
             return mock_result
 
         mock_scoring.side_effect = mock_eval_scoring
+        # Certification requires the committee's "Complete Review" of the current submission (WF-12).
+        from apps.scoring.test_support import record_complete_review
+        record_complete_review(self.col_assess_b, self.chair)
 
         self.client.force_authenticate(user=self.chair)
         res = self.client.post(

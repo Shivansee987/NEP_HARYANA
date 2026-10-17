@@ -2,7 +2,7 @@
 End-to-End Verification Test Script: Evidence Upload & Verification Pipeline
 Tests the complete lifecycle:
 1. College Demo Authentication (principal@dev.local)
-2. Evidence upload using real PDF (AkashIML.pdf)
+2. Evidence upload using a real PDF (path as first argument or NEP_E2E_PDF; built-in minimal PDF otherwise)
 3. Deterministic canonical evidence derivation (EVID_C1_APPROVED_IDP)
 4. Association creation with PENDING verification status and complete citation metadata
 5. Assessment submission (DRAFT -> SUBMITTED)
@@ -96,14 +96,15 @@ def run_tests():
     # ---------------------------------------------------------
     # 1. Test PDF Source Resolution
     # ---------------------------------------------------------
-    pdf_path = r"C:\Users\Devansh Datta\Downloads\AkashIML.pdf"
-    if os.path.exists(pdf_path):
+    # Optional real PDF: pass its path as the first argument or via NEP_E2E_PDF
+    pdf_path = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("NEP_E2E_PDF", "")
+    if pdf_path and os.path.exists(pdf_path):
         with open(pdf_path, "rb") as f:
             pdf_bytes = f.read()
-        filename = "AkashIML.pdf"
+        filename = os.path.basename(pdf_path)
         print(f"[OK] Using real production test document: {filename} ({len(pdf_bytes):,} bytes)")
     else:
-        # Fallback to valid PDF bytes if path moved
+        # Fallback to valid PDF bytes if no document was supplied
         pdf_bytes = b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF"
         filename = "test_document.pdf"
         print(f"[NOTE] Using fallback valid PDF bytes: {filename} ({len(pdf_bytes)} bytes)")

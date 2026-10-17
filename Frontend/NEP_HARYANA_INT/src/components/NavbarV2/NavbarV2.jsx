@@ -239,6 +239,14 @@ function NavbarV2() {
             ) : (
               <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
                 <button
+                  onClick={() => navigate("/auth/verify-email")}
+                  className="v2-login-btn"
+                  style={{ background: "#f8fafc", color: "#600b0b", borderColor: "#cbd5e1" }}
+                  title="Verify Email Address or Resend Verification Link"
+                >
+                  Verify Email
+                </button>
+                <button
                   onClick={() => navigate("/auth/login")}
                   className="v2-login-btn"
                   style={{ background: "#600b0b", color: "#fff", borderColor: "#600b0b" }}

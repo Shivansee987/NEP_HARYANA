@@ -95,6 +95,13 @@ class UniversityAPIEvidenceAndScoringTests(TestCase):
                 "U1.1": {"programmes_count": 12},
             },
         )
+        # Review scope is explicit (COM-01): committee users without a scoped authorization get framework-wide scope.
+        from apps.authentication.models import User as _ScopeUser
+        from apps.evidence.models import ReviewerAuthorization as _ScopeAuth
+        from apps.scoring.test_support import grant_review_scope as _grant_scope
+        for _reviewer in _ScopeUser.objects.filter(role__in=("committee", "committee_chair")):
+            if not _ScopeAuth.objects.filter(user=_reviewer).exists():
+                _grant_scope(_reviewer)
 
     # =========================================================================
     # Category F: Evidence Integration
@@ -235,8 +242,14 @@ class UniversityAPIEvidenceAndScoringTests(TestCase):
 
     def test_evaluation_delegates_to_frozen_scoring_engine(self):
         """Evaluation endpoint delegates scoring to frozen engine and gates unverified marks."""
-        # First evaluate while evidence is unverified -> score should be 0.0
         self.client.force_authenticate(user=self.reviewer)
+        # The committee cannot evaluate an assessment the institution is still editing (DRAFT)
+        res = self.client.post(f"/api/university-assessments/{self.assessment.assessment_id}/evaluate/", {}, format="json")
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+        self.assessment.status = "SUBMITTED"
+        self.assessment.save(update_fields=["status"])
+
+        # First evaluate while evidence is unverified -> score should be 0.0
         res = self.client.post(
             f"/api/university-assessments/{self.assessment.assessment_id}/evaluate/",
             {},
@@ -287,6 +300,8 @@ class UniversityAPIEvidenceAndScoringTests(TestCase):
 
     def test_client_cannot_supply_score_in_evaluation_payload(self):
         """Client-supplied score in evaluation request body is rejected."""
+        self.assessment.status = "SUBMITTED"  # the committee evaluates submitted assessments only
+        self.assessment.save(update_fields=["status"])
         self.client.force_authenticate(user=self.reviewer)
         payload = {
             "score": 90.0,
