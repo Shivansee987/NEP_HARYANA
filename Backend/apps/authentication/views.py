@@ -899,7 +899,8 @@ class EmailVerificationResendView(APIView):
         from .email_verification_service import (
             EmailVerificationService,
             VerificationRateLimitError,
-            VerificationCooldownError
+            VerificationCooldownError,
+            EmailDeliveryError
         )
         try:
             EmailVerificationService.request_resend_verification(email)
@@ -915,6 +916,11 @@ class EmailVerificationResendView(APIView):
                 'code': 'RATE_LIMIT_EXCEEDED',
                 'retry_after_seconds': exc.retry_after,
             }, status=status.HTTP_429_TOO_MANY_REQUESTS)
+        except EmailDeliveryError as exc:
+            return Response({
+                'detail': str(exc),
+                'code': 'EMAIL_DELIVERY_FAILED',
+            }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
         return Response({
             'success': True,

@@ -227,6 +227,20 @@ class EmailVerificationTests(TestCase):
         # Ensure user was rolled back
         self.assertFalse(User.objects.filter(email="fail.delivery@college.edu.in").exists())
 
+    def test_resend_email_delivery_failure_safe_handling(self):
+        """If email delivery fails during resend, resend returns 503 and clears cooldown for retry."""
+        user = User.objects.create_user(
+            email="resend.fail@college.edu.in",
+            full_name="Resend Fail Tester",
+            role="principal",
+            password="SecurePassword123!",
+            is_email_verified=False,
+        )
+        with patch.object(EmailVerificationService, "send_verification_email", return_value=False):
+            res = self.client.post(reverse("email-resend-verification"), {"email": user.email}, format="json")
+            self.assertEqual(res.status_code, status.HTTP_503_SERVICE_UNAVAILABLE)
+            self.assertEqual(res.data.get("code"), "EMAIL_DELIVERY_FAILED")
+
     def test_separation_between_email_verification_and_admin_approval(self):
         """
         Email verification verifies email ownership but keeps institution_status as PENDING.

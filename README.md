@@ -11,8 +11,9 @@ The ChatGPT Link with all the work - https://chatgpt.com/share/6ab7cd81-895c-83e
 </a>
 
 <p>
-  <img src="https://img.shields.io/badge/Backend-Django_REST-0c4b33?style=for-the-badge&logo=django&logoColor=white" alt="Django" />
-  <img src="https://img.shields.io/badge/Frontend-React_+_Vite-4338ca?style=for-the-badge&logo=react&logoColor=white" alt="React" />
+  <img src="https://img.shields.io/badge/Backend-Django_6.0_+_DRF-0c4b33?style=for-the-badge&logo=django&logoColor=white" alt="Django" />
+  <img src="https://img.shields.io/badge/Frontend-React_18_+_Vite-4338ca?style=for-the-badge&logo=react&logoColor=white" alt="React" />
+  <img src="https://img.shields.io/badge/Database-PostgreSQL_(Neon)-0284c7?style=for-the-badge&logo=postgresql&logoColor=white" alt="PostgreSQL" />
   <img src="https://img.shields.io/badge/Session-2025--26-600b0b?style=for-the-badge" alt="Session" />
   <img src="https://img.shields.io/badge/Marks-Server_Calculated-c29b68?style=for-the-badge" alt="Server calculated marks" />
 </p>
@@ -84,12 +85,62 @@ The State Admin is the **eye on the whole state**, not a super-reviewer.
 
 ---
 
-## 🔄 The workflow, step by step
+## 🔐 Institutional Onboarding & Email Verification Workflow
+
+All applicants (College Principals & University Nodal Officers) undergo an end-to-end cryptographic email verification workflow before their account can be utilized.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as Applicant (College / University)
+    participant Front as Frontend (React + Vite)
+    participant Auth as Auth API & Service
+    participant DB as Neon PostgreSQL
+    participant Mail as SMTP Mail Server (Gmail / Relay)
+    actor Admin as State Admin
+
+    User->>Front: Submit Registration Form
+    Front->>Auth: POST /api/auth/register/ or /api/auth/register-university/
+    Auth->>DB: Create User (is_email_verified=False, status=PENDING)
+    Auth->>DB: Generate Single-Use Token (SHA-256 hashed, 24h TTL)
+    Auth->>Mail: Dispatch HTML & Plaintext Verification Email
+    Auth-->>Front: HTTP 201 (Masked Email, Verification Dispatched)
+    Front-->>User: Display "Verification Link Dispatched" Page
+    
+    User->>Front: Click Link in Email (/auth/verify-email/:token)
+    Front->>Auth: GET /api/auth/verify-email/?token=... (Pre-flight validation)
+    Auth-->>Front: Token Valid (Email Masked, Expiration Time)
+    Front->>Auth: POST /api/auth/verify-email/confirm/
+    Auth->>DB: Lock Token (select_for_update), mark is_used=True, set is_email_verified=True
+    Note over DB,Admin: Institution status remains strictly PENDING for admin verification
+    Auth-->>Front: HTTP 200 (Success, Redirect to Sign In)
+    
+    opt Admin Verification
+        Admin->>DB: Review institution accreditation & approve claim
+        DB-->>User: Institution access granted
+    end
+```
+
+### Security & Anti-Abuse Controls
+
+* **Cryptographic Token Hashing:** Raw tokens are never stored plaintext in the database. Tokens are stored as SHA-256 hashes (`token_hash`) and validated using constant-time comparison.
+* **Single-Use Enforcement:** Token consumption uses database row-level locking (`select_for_update()`) inside an atomic transaction to prevent race conditions or replay attacks.
+* **24-Hour Expiration:** Tokens automatically expire 24 hours after creation (`expires_at`), enforced on both preflight inspection and confirmation.
+* **Superseeded Token Invalidation:** When a new verification link or resend is requested, all prior unconsumed tokens for the user are immediately revoked (`is_revoked=True`).
+* **Rate Limiting & Cooldown:**
+  * **60-Second Cooldown:** Prevents rapid successive resend requests (`COOLDOWN_ACTIVE`).
+  * **5 Requests per Hour Limit:** Throttles abuse per normalized email address (`RATE_LIMIT_EXCEEDED`).
+  * **Anti-Enumeration Defense:** Resend requests for unregistered or unverified emails return constant-time generic responses so malicious actors cannot discover registered emails.
+* **Separation of Concerns:** Verifying email ownership does **not** grant access to institutional assessment data. The institution claim remains `PENDING` until vetted and approved by the State Admin.
+
+---
+
+## 🔄 The assessment workflow, step by step
 
 ```mermaid
 stateDiagram-v2
     direction LR
-    [*] --> NotStarted: institution registered
+    [*] --> NotStarted: institution registered & verified
     NotStarted --> FillingIn: starts the form
     FillingIn --> Submitted: fills every parameter + uploads proof
     Submitted --> UnderReview: Committee starts review
@@ -100,25 +151,25 @@ stateDiagram-v2
     Certified --> [*]
 ```
 
-**1 · Fill in (Principal / Nodal Officer)**
+**1 · Fill in (Principal / Nodal Officer)**  
 Open the dashboard → start the 2025-26 assessment → fill each parameter. The system checks your numbers before it accepts a submission (for example, "students placed" cannot be more than "students who took part").
 
-**2 · Upload proof**
+**2 · Upload proof**  
 Each part of a parameter asks for a specific document. Upload a PDF against that part. Uploading alone gives **no** marks — it only makes the claim checkable.
 
-**3 · Submit**
+**3 · Submit**  
 When every parameter is filled, press **Submit**. The form locks.
 
-**4 · Committee review (Reviewer)**
+**4 · Committee review (Reviewer)**  
 Open the queue → **Start Review** → look at each document next to the claim → **Verify** or **Reject** it (a reason is required). Verified proof unlocks the marks for that part.
 
-**5 · Approve marks (Chairperson)**
+**5 · Approve marks (Chairperson)**  
 For each parameter, **Accept** the calculated score, or **Adjust** it with a written reason. If something is wrong, **Return for Correction** instead — the institution gets it back to fix.
 
-**6 · Certify (Chairperson)**
+**6 · Certify (Chairperson)**  
 Once every parameter is approved: **Complete Review → Award → Certify**. Certification is final and cannot be undone.
 
-**7 · Watch (State Admin)**
+**7 · Watch (State Admin)**  
 Throughout, the State Admin sees every institution's stage, who is stuck, and who has been certified.
 
 > ⚠️ **Golden rule:** `NO VERIFIED PROOF = NO MARKS`. The browser never calculates marks — the server does, from the official rubric.
@@ -137,6 +188,27 @@ A university is never marked with the college rules, and a college is never mark
 
 ---
 
+## ⚙️ Environment Configuration
+
+Configuration is managed via `.env` in the `Backend/` folder. Use `Backend/.env.example` as a template.
+
+| Variable | Description | Example / Default |
+|---|---|---|
+| `DATABASE_URL` | PostgreSQL connection string (Neon cloud or local) | `postgresql://user:pass@host/db?sslmode=require` |
+| `FRONTEND_URL` | Base URL of frontend application for verification links & CORS | `http://localhost:5173` |
+| `EMAIL_BACKEND` | Django email backend (`smtp` to send real emails, `console` for terminal logs) | `django.core.mail.backends.smtp.EmailBackend` |
+| `EMAIL_HOST` | Outgoing SMTP server address | `smtp.gmail.com` |
+| `EMAIL_PORT` | SMTP port | `587` (TLS) or `465` (SSL) |
+| `EMAIL_USE_TLS` | Enable STARTTLS | `True` |
+| `EMAIL_HOST_USER` | Authenticated email address | `example@gmail.com` |
+| `EMAIL_HOST_PASSWORD` | App-specific password (16 characters) | `abcd efgh ijkl mnop` |
+| `DEFAULT_FROM_EMAIL` | Display sender header for outgoing emails | `Haryana Govt <noreply@haryana.gov.in>` |
+| `CLOUDINARY_CLOUD_NAME` | Cloudinary cloud account name for evidence storage | `your_cloud_name` |
+| `CLOUDINARY_UPLOAD_PRESET_NAME` | Cloudinary unsigned/signed upload preset | `NEP_EXCELLENCE-AWARDS` |
+| `MAX_EVIDENCE_FILE_SIZE` | Maximum upload size per PDF proof in bytes | `26214400` (25 MB) |
+
+---
+
 ## ⚡ Run it on your computer
 
 **1. Backend (Django, port 8000)**
@@ -145,7 +217,7 @@ cd Backend
 ..\venv\Scripts\activate          # Windows
 # source ../venv/bin/activate     # Linux / macOS
 python manage.py migrate
-python manage.py create_dev_users  # creates the staff logins below
+python manage.py create_dev_users  # creates staff logins
 python manage.py runserver 8000
 ```
 
@@ -156,8 +228,38 @@ npm install
 npm run dev
 ```
 
-Or start both at once from the repo root: `npm run dev`.
+Or start both at once from the repo root: `npm run dev`.  
 Open **http://localhost:5173**.
+
+---
+
+## 📡 Key API Endpoints Reference
+
+### Authentication & Onboarding
+* `POST /api/auth/register/` — Register College Principal (creates pending account & dispatches verification email)
+* `POST /api/auth/register-university/` — Register University Nodal Officer (creates pending account & dispatches verification email)
+* `GET /api/auth/verify-email/?token=<raw_token>` — Inspect and pre-validate verification link
+* `POST /api/auth/verify-email/confirm/` — Consumes token, confirms email address
+* `POST /api/auth/resend-verification/` — Requests fresh verification link (rate-limited, anti-enumeration)
+* `POST /api/auth/login/` — Authenticates user, issues JWT access and refresh tokens
+* `POST /api/auth/token/refresh/` — Refreshes expired access tokens
+
+### College & University Assessments
+* `GET /api/college/assessment/` — Retrieve active college assessment
+* `POST /api/college/assessment/submit/` — Submit completed college assessment (locks data)
+* `GET /api/university/assessment/` — Retrieve active university assessment
+* `POST /api/university/assessment/submit/` — Submit completed university assessment (locks data)
+
+### Committee Review & Scoring
+* `GET /api/evidence/review-queue/` — Screening committee review queue
+* `POST /api/evidence/<id>/verify/` — Reviewer verification of evidence document
+* `POST /api/scoring/parameter/<id>/review/` — Chairperson approval / score adjustment
+* `POST /api/scoring/assessment/<id>/certify/` — Final certification of assessment by Chairperson
+
+### Admin Control Plane
+* `GET /api/admin-panel/overview/` — State-wide monitoring metrics and alert queues
+* `GET /api/admin-panel/institutions/` — Filterable state institutional roster and stages
+* `POST /api/admin-panel/reviewer-assignments/` — Assign/reassign assessment reviewer
 
 ---
 
@@ -199,11 +301,14 @@ Log in as `admin@dev.local` at any point to watch them move through the stages.
 ## 🧰 Tests
 
 ```bash
-# Backend
+# Backend unit & integration test suite
 cd Backend
 python manage.py test
 
-# Frontend
+# Targeted email verification test suite
+python manage.py test apps.authentication.test_email_verification
+
+# Frontend linting & test suite
 cd Frontend/NEP_HARYANA_INT
 npm test
 ```
@@ -216,7 +321,7 @@ npm test
   <a href="./website_full_tour.mp4">
     <img src="./website_full_tour.webp" alt="Walkthrough of the landing page and the dashboards" width="880" />
   </a>
-  <p><em>Recorded before the State Admin console redesign — the admin screens now look different.</em></p>
+  <p><em>Walkthrough of the NEP Haryana portal, institutional dashboard, evidence submission, and state oversight console.</em></p>
 </div>
 
 ---
