@@ -33,7 +33,9 @@ class HeadAdminProvisioningCommandTests(TestCase):
         user = User.objects.get(email="head.admin@dhe.haryana.gov.in")
         self.assertEqual(user.role, "head_admin")
         self.assertTrue(user.is_staff)
-        self.assertTrue(user.is_superuser)
+        # FIN-01: the Head Admin is an application role, never a Django superuser.
+        self.assertFalse(user.is_superuser)
+        self.assertTrue(user.is_head_admin)
         self.assertTrue(user.is_active)
         self.assertTrue(user.check_password("SecureHeadAdminPassword123!"))
 
@@ -59,7 +61,7 @@ class HeadAdminProvisioningCommandTests(TestCase):
         )
         existing.refresh_from_db()
         self.assertEqual(existing.role, "head_admin")
-        self.assertTrue(existing.is_superuser)
+        self.assertFalse(existing.is_superuser)  # FIN-01
         self.assertTrue(existing.check_password("NewSecurePassword123!"))
 
 

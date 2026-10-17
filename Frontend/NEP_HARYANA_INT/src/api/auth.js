@@ -101,7 +101,12 @@ export async function request(path, options = {}) {
       data?.detail ||
       Object.values(data || {})?.flat?.()?.[0] ||
       fallbackMessage;
-    throw new Error(firstMessage);
+    const err = new Error(firstMessage);
+    err.code = data?.code;
+    err.email = data?.email;
+    err.status = response.status;
+    err.data = data;
+    throw err;
   }
 
   return data;
@@ -119,9 +124,39 @@ export async function registerCollege(payload) {
   return data;
 }
 
-export async function verifyUniversityAishe(aisheCode) {
+export function fetchUniversities() {
+  return request("/auth/universities/");
+}
+
+export async function verifyUniversityAishe(aisheCode, options = {}) {
+  // If an object is passed: { aisheCode, name, universityId }
+  if (typeof aisheCode === "object" && aisheCode !== null) {
+    const params = new URLSearchParams();
+    if (aisheCode.aisheCode || aisheCode.aishe_code) {
+      params.append("aishe_code", (aisheCode.aisheCode || aisheCode.aishe_code).trim());
+    }
+    if (aisheCode.name || aisheCode.universityName) {
+      params.append("name", (aisheCode.name || aisheCode.universityName).trim());
+    }
+    if (aisheCode.universityId || aisheCode.id) {
+      params.append("university_id", aisheCode.universityId || aisheCode.id);
+    }
+    return request(`/auth/university/lookup/?${params.toString()}`);
+  }
+
   const code = encodeURIComponent(String(aisheCode || "").trim());
-  return request(`/auth/university/lookup/?aishe_code=${code}`);
+  let url = `/auth/university/lookup/?aishe_code=${code}`;
+  if (typeof options === "string" && options.trim()) {
+    url += `&name=${encodeURIComponent(options.trim())}`;
+  } else if (options && typeof options === "object") {
+    if (options.name || options.universityName) {
+      url += `&name=${encodeURIComponent((options.name || options.universityName).trim())}`;
+    }
+    if (options.universityId || options.id) {
+      url += `&university_id=${encodeURIComponent(options.universityId || options.id)}`;
+    }
+  }
+  return request(url);
 }
 
 export async function verifyCollegeAishe(aisheCode) {
@@ -244,6 +279,26 @@ export function confirmAccountActivation(payload) {
   });
 }
 
+export async function verifyEmailToken(token) {
+  return request(`/auth/verify-email/?token=${encodeURIComponent(token)}`, {
+    method: "GET",
+  });
+}
+
+export async function confirmEmailVerification(token) {
+  return request("/auth/verify-email/confirm/", {
+    method: "POST",
+    body: JSON.stringify({ token }),
+  });
+}
+
+export async function resendEmailVerification(email) {
+  return request("/auth/resend-verification/", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+}
+
 
 export function getDashboardPathForUser(user) {
   const role = String(user?.role || "").toLowerCase();
@@ -264,14 +319,15 @@ export function getDashboardPathForUser(user) {
     return "/admin";
   }
 
-  // Committee members and chairs use the checker console.
-  if (
-    role === "committee" ||
-    role === "committee_chair" ||
-    role === "empowered_committee" ||
-    role === "empowered_committee_chair"
-  ) {
+  // Screening Committee members and chairs use the checker console.
+  if (role === "committee" || role === "committee_chair") {
     return "/checker/queue";
+  }
+
+  // Empowered Committee roles have their own landing page (the checker console does not admit them, and
+  // sending them there caused a redirect loop / blank page).
+  if (role === "empowered_committee" || role === "empowered_committee_chair") {
+    return "/empowered";
   }
 
 
@@ -283,3 +339,4 @@ export function getDashboardPathForUser(user) {
   // Safe fallback — home page, not /admin, to avoid infinite redirect loops.
   return "/";
 }
+

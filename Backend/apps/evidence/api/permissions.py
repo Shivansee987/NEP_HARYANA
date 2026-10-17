@@ -40,7 +40,7 @@ class IsEvidenceOwnerOrAdmin(BasePermission):
             return False
         assessment = policy.resolve_assessment(doc.assessment_id, doc.framework)
         if assessment is None:
-            return doc.uploader_id == user.pk
+            return doc.uploader_id == user.pk and policy.uploader_still_bound(user, doc)
         return policy.institution_owns_assessment(user, assessment)
 
 

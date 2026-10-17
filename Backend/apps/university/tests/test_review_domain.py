@@ -392,8 +392,12 @@ class UniversityReviewDomainTests(TestCase):
             self.assessment_a.save(update_fields=["certified_score", "certification_status"])
             return mock_result
 
+        # The U6 / U18.3 council decision is simulated as taken (FIN-03); otherwise official University
+        # certification is held (see test_certification_policy_gate).
+        from apps.scoring.test_support import council_decision_resolved
         with patch.object(UniversityAssessmentService, "check_assessment_readiness", return_value=(True, [], None)), \
-             patch.object(UniversityAssessmentService, "evaluate_assessment_scoring", side_effect=mock_eval_scoring):
+             patch.object(UniversityAssessmentService, "evaluate_assessment_scoring", side_effect=mock_eval_scoring), \
+             council_decision_resolved():
             certified, review_rec = UniversityReviewService.certify_assessment(
                 assessment_id=self.assessment_a.assessment_id,
                 actor=self.chair_user,

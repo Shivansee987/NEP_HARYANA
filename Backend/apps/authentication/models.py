@@ -24,6 +24,9 @@ class UserManager(BaseUserManager):
         if not email:
             raise ValueError('The Email field must be set')
         email = self.normalize_email(email)
+        if 'is_email_verified' not in extra_fields:
+            # Programmatic and test creation defaults to True; public registration explicitly specifies False.
+            extra_fields['is_email_verified'] = True
         user = self.model(
             email=email,
             full_name=full_name,
@@ -87,6 +90,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     requested_college = models.ForeignKey(College, on_delete=models.SET_NULL, null=True, blank=True, related_name='pending_users')
     requested_university = models.ForeignKey('university.University', on_delete=models.SET_NULL, null=True, blank=True, related_name='pending_users')
 
+    is_email_verified = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
     
@@ -199,6 +203,10 @@ class UserAuditLog(models.Model):
         ('INSTITUTION_ACCESS_REJECTED', 'Institution Access Rejected'),
         ('PASSWORD_RESET_LINK_SENT', 'Password Reset Link Sent'),
         ('NOTIFICATION_FAILED', 'Notification Delivery Failed'),
+        ('EMAIL_VERIFICATION_SENT', 'Email Verification Link Sent'),
+        ('EMAIL_VERIFIED', 'Email Address Verified'),
+        ('EMAIL_VERIFICATION_FAILED', 'Email Verification Failed'),
+        ('EMAIL_VERIFICATION_RESENT', 'Email Verification Link Resent'),
     )
 
     actor = models.ForeignKey(
@@ -284,6 +292,38 @@ class AccountActivationToken(models.Model):
 
     def __str__(self):
         return f"ActivationToken({self.user.email}, active={self.is_valid})"
+
+
+class EmailVerificationToken(models.Model):
+    """
+    Cryptographically secure, single-use, expiring email verification token.
+    Stores only the SHA-256 hash of the token. The raw token is NEVER persisted.
+    """
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='email_verification_tokens'
+    )
+    token_hash = models.CharField(max_length=64, unique=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField(db_index=True)
+    used_at = models.DateTimeField(null=True, blank=True)
+    is_used = models.BooleanField(default=False, db_index=True)
+    is_revoked = models.BooleanField(default=False, db_index=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = 'Email Verification Token'
+        verbose_name_plural = 'Email Verification Tokens'
+
+    @property
+    def is_valid(self):
+        from django.utils import timezone
+        return not self.is_used and not self.is_revoked and timezone.now() < self.expires_at
+
+    def __str__(self):
+        return f"EmailVerificationToken({self.user.email}, active={self.is_valid})"
+
 
 
 

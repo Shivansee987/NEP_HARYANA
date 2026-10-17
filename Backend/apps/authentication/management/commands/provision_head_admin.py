@@ -88,7 +88,9 @@ class Command(BaseCommand):
             user.full_name = full_name
             user.role = "head_admin"
             user.is_staff = True
-            user.is_superuser = True
+            # Head Admin authority is the application role. It is never a Django superuser, so it carries no
+            # implicit model-level powers outside the governed API (FIN-01).
+            user.is_superuser = False
             user.is_active = True
             if phone:
                 user.phone_number = phone
@@ -103,7 +105,7 @@ class Command(BaseCommand):
                 password=password,
                 phone_number=phone,
                 is_staff=True,
-                is_superuser=True,
+                is_superuser=False,
                 is_active=True,
             )
             is_created = True

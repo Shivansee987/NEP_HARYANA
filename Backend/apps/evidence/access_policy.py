@@ -140,7 +140,10 @@ def can_read_document(user, doc):
     """
     Read access to an evidence document (metadata, file, history):
     - oversight administrators: always (read-only);
-    - institution users: only documents of an assessment their institution owns (or that they uploaded);
+    - institution users: only documents of an assessment their institution currently owns. Having uploaded a
+      document grants nothing by itself, so a user moved to another institution loses access (FIN-25); the one
+      exception is a legacy document with no assessment, readable by its uploader while still bound to the
+      institution it was filed for;
     - reviewers: documents of a submitted assessment within their scope and without conflict of interest.
     Ownership is resolved through the assessment, never through the AISHE code alone, so institutions that
     legitimately share an AISHE code cannot read each other's evidence.
@@ -156,10 +159,16 @@ def can_read_document(user, doc):
         return reviewer_can_view_assessment(user, doc.framework, assessment_institution(assessment), assessment.status,
                                             getattr(assessment, 'assigned_reviewer_id', None))
     if role_of(user) in INSTITUTION_ROLES:
-        if doc.uploader_id == user.pk:
-            return True
+        if assessment is None:
+            return doc.uploader_id == user.pk and uploader_still_bound(user, doc)
         return institution_owns_assessment(user, assessment)
     return False
+
+
+def uploader_still_bound(user, doc):
+    """True when the user is still bound to the institution a (legacy, assessment-less) document was filed for."""
+    own = getattr(user, 'college', None) or getattr(user, 'university', None)
+    return bool(own) and getattr(doc, 'institution_id', '') in institution_codes(own)
 
 
 def readable_assessment_ids(user):

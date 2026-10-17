@@ -112,6 +112,8 @@ export const RUBRIC_REGISTRY = {
         numKey: "admitted_students",
         denKey: "sanctioned_intake",
         maxMarks: 2,
+        isPolicyNotice: true,
+        policyNoticeText: "Council Notice: exactly 75% of sanctioned seats filled is covered by neither '>75% and <90%' nor '<75%'. An input of exactly 75.0% is not scored and blocks certification until the council decides.",
         options: [
           { id: "C5_T1", label: "I. 90% and above", threshold: ">= 90%", marks: 2, minPct: 90, op: "gte", defaultNum: 95, defaultDen: 100 },
           { id: "C5_T2", label: "II. Above 75% and less than 90%", threshold: "> 75% and < 90%", marks: 1, minPct: 75, maxPct: 90, op: "gt_lt", defaultNum: 82, defaultDen: 100 },
@@ -319,7 +321,7 @@ export const RUBRIC_REGISTRY = {
   C16: {
     code: "C16",
     subcriteria: {
-      "C16.1": { type: "CHECKLIST_ITEM", fieldKey: "verified", maxMarks: 1, options: [{ id: "C16_1", label: "I. ICC and Women Cell constituted and displayed at prominent places", threshold: "Yes", marks: 1 }] },
+      "C16.1": { type: "CHECKLIST_ITEM", fieldKey: "verified", maxMarks: 1, isPolicyNotice: true, policyNoticeText: "Council Notice: C16 lists five 1-mark items (5 marks) against a stated maximum of 4 marks. Each item scores 1 mark; the parameter total is capped at 4.", options: [{ id: "C16_1", label: "I. ICC and Women Cell constituted and displayed at prominent places", threshold: "Yes", marks: 1 }] },
       "C16.2": { type: "CHECKLIST_ITEM", fieldKey: "verified", maxMarks: 1, options: [{ id: "C16_2", label: "II. Gender parity / safety billboards displayed in campus", threshold: "Yes", marks: 1 }] },
       "C16.3": { type: "CHECKLIST_ITEM", fieldKey: "verified", maxMarks: 1, options: [{ id: "C16_3", label: "III. Gender Champion nominated and uploaded on SAKSHAM", threshold: "Yes", marks: 1 }] },
       "C16.4": { type: "CHECKLIST_ITEM", fieldKey: "verified", maxMarks: 1, options: [{ id: "C16_4", label: "IV. Participation in SAKSHAM Gender Audit", threshold: "Yes", marks: 1 }] },
@@ -542,6 +544,8 @@ export const RUBRIC_REGISTRY = {
         numKey: "eligible_students",
         denKey: "total_final_year_students",
         maxMarks: 2,
+        isPolicyNotice: true,
+        policyNoticeText: "Council Notice: exactly 50% eligibility is covered by neither '>50% and up to 75%' nor '<50%'. An input of exactly 50.0% is not scored and blocks certification until the council decides.",
         options: [
           { id: "U5A_T1", label: "I. Above 75%", threshold: "> 75%", marks: 2, minPct: 75, op: "gt", defaultNum: 80, defaultDen: 100 },
           { id: "U5A_T2", label: "II. >50% and up to 75%", threshold: "> 50% and <= 75%", marks: 1, minPct: 50, maxPct: 75, op: "gt_lte", defaultNum: 65, defaultDen: 100 },
@@ -837,6 +841,8 @@ export const RUBRIC_REGISTRY = {
         type: "COUNT_TIERS",
         countKey: "activities_count",
         maxMarks: 2,
+        isPolicyNotice: true,
+        policyNoticeText: "Council Notice: U20 components total 5 marks (2 + 2 + 1) against a stated maximum of 4 marks. Components are scored as written; the parameter total is capped at 4.",
         options: [
           { id: "U20_1_T1", label: "I. 10 or more mapped activities", threshold: ">= 10", marks: 2, minCount: 10 },
           { id: "U20_1_T2", label: "II. 5 and above mapped activities", threshold: "5 to 9", marks: 1, minCount: 5, maxCount: 9 },

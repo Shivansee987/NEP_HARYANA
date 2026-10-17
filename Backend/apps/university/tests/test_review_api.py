@@ -16,6 +16,7 @@ from rest_framework.test import APIClient
 
 from apps.scoring.domain import FrameworkResult
 from apps.scoring.enums import FrameworkType, CertificationStatus
+from apps.scoring.test_support import council_decision_resolved, record_complete_review
 from apps.university.models import (
     University,
     UniversityAssessment,
@@ -293,9 +294,13 @@ class UniversityReviewAPITests(TestCase):
 
         self.client.force_authenticate(user=self.chair)
         url = f"/api/v1/university/assessments/{self.assessment_a.assessment_id}/certify/"
+        # Certification requires the committee's "Complete Review" of the current submission (WF-12), and the
+        # U6 / U18.3 council decision is simulated as taken (FIN-03; otherwise certification is held).
+        record_complete_review(self.assessment_a, self.chair)
 
         with patch.object(UniversityAssessmentService, "check_assessment_readiness", return_value=(True, [], None)), \
-             patch.object(UniversityAssessmentService, "evaluate_assessment_scoring", side_effect=mock_eval):
+             patch.object(UniversityAssessmentService, "evaluate_assessment_scoring", side_effect=mock_eval), \
+             council_decision_resolved():
             response = self.client.post(url, {"remarks": "Statutory review certified"}, format="json")
             self.assertEqual(response.status_code, status.HTTP_200_OK)
             self.assertEqual(response.data["assessment"]["status"], "CERTIFIED")

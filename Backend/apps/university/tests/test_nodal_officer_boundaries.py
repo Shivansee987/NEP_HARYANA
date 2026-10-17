@@ -141,6 +141,23 @@ class NodalOfficerBoundaryTests(TestCase):
             mime_type="application/pdf", status=EvidenceLifecycleState.EVIDENCE_PENDING,
         )
 
+    def test_rebound_uploader_loses_access_to_former_institution_evidence(self):
+        """FIN-25: uploading a document grants no lasting access. After the account is moved to another university
+        the former university's evidence is neither listed nor downloadable."""
+        doc = self._doc(self.assessment_a, self.uni_a.aishe_code)
+        self.client.force_authenticate(self.nodal_a)
+        self.assertEqual(self.client.get(f"/api/evidence/{doc.document_id}/").status_code, status.HTTP_200_OK)
+
+        self.nodal_a.university = self.uni_b
+        self.nodal_a.save(update_fields=["university"])
+        self.client.force_authenticate(self.nodal_a)
+        listed = [row["document_id"] for row in self.client.get("/api/evidence/").data["results"]]
+        self.assertNotIn(str(doc.document_id), listed)
+        self.assertIn(self.client.get(f"/api/evidence/{doc.document_id}/").status_code,
+                      (status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND))
+        self.assertIn(self.client.get(f"/api/evidence/{doc.document_id}/download/").status_code,
+                      (status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND))
+
     def test_university_users_list_only_own_evidence(self):
         own = self._doc(self.assessment_a, self.uni_a.aishe_code)
         self._doc(self.assessment_b, self.uni_b.aishe_code)

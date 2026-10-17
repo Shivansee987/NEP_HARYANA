@@ -34,34 +34,70 @@ def normalize_phone_number(phone: str) -> str:
     return cleaned
 
 
-def resolve_university(aishe_code, institute_code=None):
+def resolve_university(aishe_code=None, institute_code=None, university_id=None, university_name=None):
     """
-    Returns (university, error_message). A shared AISHE code must be disambiguated with the DHE institute
-    code, mirroring the public lookup endpoint (which answers 409 for ambiguous codes).
+    Returns (university, error_message).
+    Resolves university by ID, AISHE code (with DHE institute code disambiguation),
+    or University Name (for universities without AISHE codes).
     """
-    qs = University.objects.filter(aishe_code__iexact=aishe_code, is_active=True)
-    if institute_code:
-        qs = qs.filter(institute_code=str(institute_code).strip())
-    matches = list(qs[:2])
-    if not matches:
-        return None, f"No active University found matching AISHE code '{aishe_code}'."
-    if len(matches) > 1:
-        return None, (f"Multiple universities share AISHE code '{aishe_code}'. "
-                      f"Provide your DHE Institute Code (instituteCode) to identify your university.")
-    return matches[0], None
+    if university_id:
+        uni = University.objects.filter(id=university_id, is_active=True).first()
+        if uni:
+            return uni, None
+        return None, f"No active University found with ID '{university_id}'."
+
+    aishe_code = normalize_aishe_code(aishe_code) if aishe_code else ""
+    if aishe_code:
+        qs = University.objects.filter(aishe_code__iexact=aishe_code, is_active=True)
+        if institute_code:
+            qs = qs.filter(institute_code=str(institute_code).strip())
+        matches = list(qs[:2])
+        if not matches:
+            if university_name:
+                uni = University.objects.filter(name__iexact=str(university_name).strip(), is_active=True).first()
+                if not uni:
+                    uni = University.objects.filter(name__icontains=str(university_name).strip(), is_active=True).first()
+                if uni:
+                    return uni, None
+            return None, f"No active University found matching AISHE code '{aishe_code}'."
+        if len(matches) > 1:
+            return None, (f"Multiple universities share AISHE code '{aishe_code}'. "
+                          f"Provide your DHE Institute Code (instituteCode) to identify your university.")
+        return matches[0], None
+
+    if university_name:
+        name_str = str(university_name).strip()
+        qs = University.objects.filter(name__iexact=name_str, is_active=True)
+        if not qs.exists():
+            qs = University.objects.filter(name__icontains=name_str, is_active=True)
+        matches = list(qs[:2])
+        if not matches:
+            return None, f"No active University found matching name '{name_str}'."
+        if len(matches) > 1:
+            return None, f"Multiple universities match '{name_str}'. Please select the exact university name."
+        return matches[0], None
+
+    return None, "Either University AISHE Code or University Name is required."
 
 
-def validate_verified_phone(attrs):
-    """New registrations must present a phone number verified through the OTP backend."""
-    from .otp_service import phone_verification_is_valid
+def validate_phone_number(attrs):
+    """
+    Phone number is optional contact info. If provided, normalize and validate 10-digit format.
+    Phone/SMS OTP verification is completely removed from the signup dependency chain.
+    """
     phone = attrs.get('phoneNumber') or attrs.get('phone_number') or ''
+    if not phone:
+        attrs['phone_number'] = ''
+        return attrs
     norm_phone = normalize_phone_number(phone)
-    if len(norm_phone) != 10 or not norm_phone.isdigit():
+    if norm_phone and (len(norm_phone) != 10 or not norm_phone.isdigit()):
         raise serializers.ValidationError({"phoneNumber": "Enter a valid 10-digit mobile number."})
-    if not phone_verification_is_valid(norm_phone, attrs.get('phoneVerificationToken') or ''):
-        raise serializers.ValidationError({"phoneNumber": "Mobile number is not verified. Please verify it using the OTP sent to it."})
     attrs['phone_number'] = norm_phone
     return attrs
+
+
+# Backwards compatibility alias
+validate_verified_phone = validate_phone_number
 
 
 def validate_new_password(attrs):
@@ -73,16 +109,14 @@ def validate_new_password(attrs):
 
 def create_pending_applicant(validated_data, role, college=None, university=None):
     """
-    Creates the applicant account in PENDING state: the institution is only *requested*. Assessment access
-    (which checks user.college / user.university) is granted when an administrator approves the request.
+    Creates the applicant account in PENDING/UNVERIFIED state:
+    1. Email verification is required before login is permitted.
+    2. Once email is verified, institutional access remains PENDING until an administrator approves it.
     """
     from django.db import transaction
     from .models import UserAuditLog
-    from .otp_service import consume_phone_verification
 
     with transaction.atomic():
-        if not consume_phone_verification(validated_data['phone_number'], validated_data.get('phoneVerificationToken')):
-            raise serializers.ValidationError({"phoneNumber": "Mobile verification has expired or was already used. Please verify again."})
         user = User.objects.create_user(
             email=validated_data['email'],
             full_name=validated_data['fullName'].strip(),
@@ -90,10 +124,11 @@ def create_pending_applicant(validated_data, role, college=None, university=None
             password=validated_data['password'],
             college=None,
             university=None,
-            phone_number=validated_data['phone_number'],
+            phone_number=validated_data.get('phone_number', ''),
             institution_status='PENDING',
             requested_college=college,
             requested_university=university,
+            is_email_verified=False,
         )
         institution = college or university
         UserAuditLog.objects.create(
@@ -133,6 +168,8 @@ class UniversityPublicSerializer(serializers.ModelSerializer):
 class UserSerializer(serializers.ModelSerializer):
     fullName = serializers.CharField(source='full_name', read_only=True)
     phoneNumber = serializers.CharField(source='phone_number', read_only=True)
+    is_email_verified = serializers.BooleanField(read_only=True)
+    email_verified = serializers.BooleanField(source='is_email_verified', read_only=True)
     collegeId = serializers.SerializerMethodField()
     college_id = serializers.SerializerMethodField()
     college_name = serializers.SerializerMethodField()
@@ -148,6 +185,7 @@ class UserSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'email', 'full_name', 'fullName', 'role',
             'phone_number', 'phoneNumber',
+            'is_email_verified', 'email_verified',
             'collegeId', 'college_id', 'college_name',
             'universityId', 'university_id', 'university_name',
             'institution_type', 'institution_name',
@@ -231,6 +269,8 @@ class RegisterSerializer(serializers.Serializer):
     collegeId = serializers.IntegerField(required=False, allow_null=True)
     aisheCode = serializers.CharField(required=False, allow_blank=True, max_length=50)
     instituteCode = serializers.CharField(required=False, allow_blank=True, max_length=50)
+    universityName = serializers.CharField(required=False, allow_blank=True, max_length=255)
+    universityId = serializers.IntegerField(required=False, allow_null=True)
     institutionType = serializers.CharField(required=False, default="COLLEGE")
     role = serializers.CharField(required=False, default="principal")
     password = serializers.CharField(write_only=True, required=True)
@@ -257,11 +297,19 @@ class RegisterSerializer(serializers.Serializer):
 
         if institution_type == 'UNIVERSITY' or role == 'nodal_officer':
             aishe = attrs.get('aisheCode')
-            if not aishe:
-                raise serializers.ValidationError({"aisheCode": "AISHE code is required for University registration."})
-            university, error = resolve_university(normalize_aishe_code(aishe), attrs.get('instituteCode'))
+            uni_name = attrs.get('universityName')
+            uni_id = attrs.get('universityId')
+            if not aishe and not uni_name and not uni_id:
+                raise serializers.ValidationError({"aisheCode": "AISHE code or University Name is required for University registration."})
+            university, error = resolve_university(
+                aishe_code=normalize_aishe_code(aishe) if aishe else "",
+                institute_code=attrs.get('instituteCode'),
+                university_id=uni_id,
+                university_name=uni_name,
+            )
             if error:
-                raise serializers.ValidationError({"aisheCode": error})
+                error_field = 'universityName' if (uni_name and not aishe) else 'aisheCode'
+                raise serializers.ValidationError({error_field: error})
             attrs['verified_university'] = university
             attrs['role'] = 'nodal_officer'
         else:
@@ -286,16 +334,17 @@ class UniversityRegisterSerializer(serializers.Serializer):
     Dedicated University Applicant Registration.
     - Fixed institution type UNIVERSITY and role nodal_officer; privileged roles are refused.
     - Verified mobile number and password policy are required.
-    - The AISHE code (plus DHE institute code when the AISHE code is shared) must resolve to exactly one
-      active University. The account is created PENDING until an administrator approves the request.
+    - The AISHE code or University Name must resolve to an active University.
     """
     fullName = serializers.CharField(required=True, min_length=2, max_length=255)
     email = serializers.EmailField(required=True)
     phoneNumber = serializers.CharField(required=False, allow_blank=True)
     phone_number = serializers.CharField(required=False, allow_blank=True)
     phoneVerificationToken = serializers.CharField(required=False, allow_blank=True, write_only=True)
-    aisheCode = serializers.CharField(required=True, max_length=50)
+    aisheCode = serializers.CharField(required=False, allow_blank=True, max_length=50)
     instituteCode = serializers.CharField(required=False, allow_blank=True, max_length=50)
+    universityName = serializers.CharField(required=False, allow_blank=True, max_length=255)
+    universityId = serializers.IntegerField(required=False, allow_null=True)
     designation = serializers.CharField(required=False, default="University Nodal Officer", max_length=150)
     institutionType = serializers.CharField(required=False, default="UNIVERSITY")
     role = serializers.CharField(required=False, default="nodal_officer")
@@ -319,9 +368,9 @@ class UniversityRegisterSerializer(serializers.Serializer):
         return 'UNIVERSITY'
 
     def validate_aisheCode(self, value):
+        if not value:
+            return ""
         normalized = normalize_aishe_code(value)
-        if not normalized:
-            raise serializers.ValidationError("AISHE code is required.")
         if normalized.startswith("C-"):
             raise serializers.ValidationError(
                 "The provided code appears to be a College AISHE code. Please use the College registration portal."
@@ -334,9 +383,23 @@ class UniversityRegisterSerializer(serializers.Serializer):
         confirm_password = attrs.get('confirmPassword')
         if confirm_password and attrs.get('password') != confirm_password:
             raise serializers.ValidationError({"confirmPassword": "Passwords do not match."})
-        university, error = resolve_university(attrs.get('aisheCode'), attrs.get('instituteCode'))
+
+        aishe = attrs.get('aisheCode')
+        uni_name = attrs.get('universityName')
+        uni_id = attrs.get('universityId')
+
+        if not aishe and not uni_name and not uni_id:
+            raise serializers.ValidationError({"aisheCode": "University AISHE code or University Name is required."})
+
+        university, error = resolve_university(
+            aishe_code=aishe,
+            institute_code=attrs.get('instituteCode'),
+            university_id=uni_id,
+            university_name=uni_name,
+        )
         if error:
-            raise serializers.ValidationError({"aisheCode": f"{error} Institution must be verified before registration."})
+            error_field = 'universityName' if (uni_name and not aishe) else 'aisheCode'
+            raise serializers.ValidationError({error_field: f"{error} Institution must be verified before registration."})
         attrs['verified_university'] = university
 
         validate_new_password(attrs)

@@ -86,6 +86,8 @@ const LinkButton = ({ onClick, children }) => (
 
 const AdminOverview = () => {
   const navigate = useNavigate();
+  // Opens the state-wide institutions list with an optional filter query (e.g. "stage=SUBMITTED").
+  const goTo = (query) => navigate(query ? `/admin/institutions?${query}` : "/admin/institutions");
   const { user } = useAuth();
   const isHeadAdmin = user?.role === 'head_admin' || user?.is_superuser;
 

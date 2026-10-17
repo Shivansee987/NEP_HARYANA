@@ -104,6 +104,19 @@ class TestDEF01EvidenceTaxonomyContract(APITestCase):
             granted_by=self.admin_user,
         )
 
+        # Evidence is only accepted for an existing assessment owned by the uploader's institution (EV-01), so the
+        # assessments these tests upload to exist and belong to the uploaders.
+        from apps.college.models import CollegeAssessment
+        from apps.university.models import University, UniversityAssessment
+        self.university = University.objects.create(name="Haryana Test University", aishe_code="U-5001")
+        self.university_user.role = "nodal_officer"
+        self.university_user.university = self.university
+        self.university_user.save()
+        CollegeAssessment.objects.create(assessment_id="ASSESS-C-2026-001", college=self.college,
+                                         framework="COLLEGE_2026", academic_year="2025-26")
+        UniversityAssessment.objects.create(assessment_id="ASSESS-U-2026-001", university=self.university,
+                                            framework="UNIVERSITY_2026", academic_year="2025-26")
+
         self.valid_pdf_bytes = b"%PDF-1.4\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF"
 
     def _get_upload_file(self, filename="evidence.pdf"):
@@ -267,6 +280,9 @@ class TestDEF01EvidenceTaxonomyContract(APITestCase):
 
         # Submit for verification
         EvidenceService.submit_for_verification(doc.pk, self.college_user)
+        # The committee reviews evidence only after the institution submits its assessment (WF-15).
+        from apps.college.models import CollegeAssessment
+        CollegeAssessment.objects.filter(assessment_id="ASSESS-C-2026-001").update(status="SUBMITTED")
         # Assign reviewer
         EvidenceService.assign_reviewer(doc.pk, self.committee_reviewer, self.admin_user)
         # Reviewer verifies document

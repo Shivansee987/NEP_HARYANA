@@ -242,8 +242,14 @@ class UniversityAPIEvidenceAndScoringTests(TestCase):
 
     def test_evaluation_delegates_to_frozen_scoring_engine(self):
         """Evaluation endpoint delegates scoring to frozen engine and gates unverified marks."""
-        # First evaluate while evidence is unverified -> score should be 0.0
         self.client.force_authenticate(user=self.reviewer)
+        # The committee cannot evaluate an assessment the institution is still editing (DRAFT)
+        res = self.client.post(f"/api/university-assessments/{self.assessment.assessment_id}/evaluate/", {}, format="json")
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+        self.assessment.status = "SUBMITTED"
+        self.assessment.save(update_fields=["status"])
+
+        # First evaluate while evidence is unverified -> score should be 0.0
         res = self.client.post(
             f"/api/university-assessments/{self.assessment.assessment_id}/evaluate/",
             {},
@@ -294,6 +300,8 @@ class UniversityAPIEvidenceAndScoringTests(TestCase):
 
     def test_client_cannot_supply_score_in_evaluation_payload(self):
         """Client-supplied score in evaluation request body is rejected."""
+        self.assessment.status = "SUBMITTED"  # the committee evaluates submitted assessments only
+        self.assessment.save(update_fields=["status"])
         self.client.force_authenticate(user=self.reviewer)
         payload = {
             "score": 90.0,

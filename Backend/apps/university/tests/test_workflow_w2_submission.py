@@ -232,11 +232,15 @@ class WorkflowW2SubmissionTests(TestCase):
             academic_year="2025-26",
             created_by=self.user_uni_a,
         )
+        # Submit the assessment exactly as stored (submit_complete would fill in the missing answers).
         with self.assertRaises(UniversityValidationError) as ctx:
-            submit_complete(UniversityAssessmentService, assessment_id=assessment.assessment_id,
+            UniversityAssessmentService.submit_assessment(
+                assessment_id=assessment.assessment_id,
                 submitting_user=self.user_uni_a,
             )
         self.assertEqual(ctx.exception.code, "INVALID_PARAMETER_INPUT")
+        assessment.refresh_from_db()
+        self.assertEqual(assessment.status, "DRAFT")
 
     def test_w2_b2_university_cannot_submit_if_not_draft(self):
         """Only DRAFT assessments can be submitted."""

@@ -141,13 +141,18 @@ class CollegeAPIAuthAndIsolationTests(TestCase):
 
     def test_college_assessment_cannot_be_created_for_university_institution(self):
         """Attempting to create a College assessment referencing a University ID is rejected."""
-        self.client.force_authenticate(user=self.admin_user)
         payload = {
             "college_id": 999999,  # Non-existent college
             "academic_year": "2025-26",
         }
+        # Institutions create their own assessments; a principal cannot target another (non-existent) institution.
+        self.client.force_authenticate(user=self.user_col_a)
         resp = self.client.post("/api/college/assessments/", payload, format="json")
-        self.assertIn(resp.status_code, (status.HTTP_400_BAD_REQUEST, status.HTTP_404_NOT_FOUND))
+        self.assertIn(resp.status_code, (status.HTTP_400_BAD_REQUEST, status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND))
+        # Administrators have read-only oversight and cannot create assessments at all.
+        self.client.force_authenticate(user=self.admin_user)
+        resp = self.client.post("/api/college/assessments/", payload, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_college_evidence_cannot_cross_framework_boundary(self):
         """University evidence cannot be ingested as College evidence for scoring."""

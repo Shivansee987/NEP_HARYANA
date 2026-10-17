@@ -1340,6 +1340,13 @@ class UniversityReviewService:
                 "Certification requires the committee to complete the review of the current submission first."
             )
 
+        # Gate 13 (checked last, so integrity and readiness problems are reported first): official certification
+        # is held while marks are unearnable pending a council decision (FIN-03 / SCO-01).
+        from apps.scoring.policy_gates import certification_policy_message, open_certification_policy_blockers
+        policy_blockers = open_certification_policy_blockers(UNIVERSITY_FRAMEWORK_CODE)
+        if policy_blockers:
+            raise CertificationBlockedError(certification_policy_message(policy_blockers), code="POLICY_DECISION_REQUIRED")
+
         # ALL 11 GATES PASSED: Transition to CERTIFIED and lock
         prev_status = assessment.status
         assessment.status = "CERTIFIED"

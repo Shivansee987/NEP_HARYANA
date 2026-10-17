@@ -4,6 +4,8 @@ from .base import *  # noqa: F401,F403
 from .base import DEV_INSECURE_SECRET_KEY, os
 
 DEBUG = False
+# Never mounted in production, whatever the environment says (FIN-01).
+ENABLE_DJANGO_ADMIN = False
 
 
 def _require_strong_secret(name):
@@ -24,6 +26,28 @@ JWT_PREVIOUS_SIGNING_KEYS = [
 
 if not ALLOWED_HOSTS:  # noqa: F405
 	raise ImproperlyConfigured("ALLOWED_HOSTS must list the production host names.")
+
+
+def _require_postgres_database():
+	"""
+	Production data lives only in an explicitly configured PostgreSQL database. There is no fallback: base.py's
+	SQLite defaults (the repository's db.sqlite3, or the test-runner switch) never apply here (FIN-07).
+	"""
+	import dj_database_url
+
+	url = os.environ.get('DATABASE_URL', '').strip()
+	if not url:
+		raise ImproperlyConfigured("DATABASE_URL must point to the production PostgreSQL database.")
+	try:
+		config = dj_database_url.parse(url, conn_max_age=600, conn_health_checks=True)
+	except Exception as exc:
+		raise ImproperlyConfigured("DATABASE_URL is not a valid database URL.") from exc
+	if config.get('ENGINE') not in ('django.db.backends.postgresql', 'django.contrib.gis.db.backends.postgis'):
+		raise ImproperlyConfigured("Production requires a PostgreSQL DATABASE_URL (SQLite and other engines are refused).")
+	return {'default': config}
+
+
+DATABASES = _require_postgres_database()
 
 _DEV_SMS_BACKENDS = ('apps.authentication.sms.ConsoleSMSBackend', 'apps.authentication.sms.LocmemSMSBackend')
 if SMS_BACKEND in _DEV_SMS_BACKENDS:  # noqa: F405

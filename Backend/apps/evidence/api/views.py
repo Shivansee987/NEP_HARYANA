@@ -219,7 +219,8 @@ class EvidenceListCreateView(APIView):
         from apps.evidence import access_policy as policy
         readable = policy.readable_assessment_ids(user)
         if readable is not None:
-            extra = Q(assigned_reviewer=user) if policy.is_reviewer(user) else Q(uploader=user)
+            # Institution users see evidence only through assessments their institution owns (FIN-25).
+            extra = Q(assigned_reviewer=user) if policy.is_reviewer(user) else Q(pk__in=[])
             qs = qs.filter(Q(assessment_id__in=readable) | extra)
 
         # Filtering parameters
@@ -629,7 +630,8 @@ class EvidenceAssociationListView(APIView):
         from apps.evidence import access_policy as policy
         readable = policy.readable_assessment_ids(user)
         if readable is not None:
-            extra = Q(evidence__assigned_reviewer=user) if policy.is_reviewer(user) else Q(evidence__uploader=user)
+            # Institution users see evidence only through assessments their institution owns (FIN-25).
+            extra = Q(evidence__assigned_reviewer=user) if policy.is_reviewer(user) else Q(pk__in=[])
             qs = qs.filter(Q(evidence__assessment_id__in=readable) | extra)
 
         assessment_id = request.query_params.get('assessment_id')

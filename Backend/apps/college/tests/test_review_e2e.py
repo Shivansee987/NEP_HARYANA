@@ -49,6 +49,8 @@ from apps.evidence.models import (
 from apps.scoring.domain import FrameworkResult
 from apps.scoring.enums import FrameworkType, CertificationStatus
 
+from apps.scoring.test_support import fill_assessment, grant_review_scope
+
 User = get_user_model()
 
 
@@ -91,13 +93,14 @@ class CollegeReviewEndToEndTests(TestCase):
             password="SecurePassword2026!",
         )
 
-        # Ensure reviewer is authorized for College framework
-        ReviewerAuthorization.objects.create(
-            user=external_reviewer,
-            framework=COLLEGE_FRAMEWORK_CODE,
-            institution_id="",
-            is_active=True,
-        )
+        # Ensure reviewer and Chair are authorized for the College framework (no implicit review scope)
+        for authorized in (external_reviewer, chair_user):
+            ReviewerAuthorization.objects.create(
+                user=authorized,
+                framework=COLLEGE_FRAMEWORK_CODE,
+                institution_id="",
+                is_active=True,
+            )
 
         # ---------------------------------------------------------------------
         # Step 2: Assessment Creation in DRAFT
@@ -158,8 +161,9 @@ class CollegeReviewEndToEndTests(TestCase):
         )
 
         # ---------------------------------------------------------------------
-        # Step 5: Assessment Submission (DRAFT -> SUBMITTED)
+        # Step 5: Assessment Submission (DRAFT -> SUBMITTED); every parameter must be answered (C1 kept)
         # ---------------------------------------------------------------------
+        fill_assessment(CollegeAssessment.objects.get(assessment_id=assessment_id))
         submit_res = client.post(
             f"/api/v1/college/assessments/{assessment_id}/submit/",
             {},
@@ -244,7 +248,12 @@ class CollegeReviewEndToEndTests(TestCase):
         # ---------------------------------------------------------------------
         # Step 10: Review Completion (Status remains UNDER_REVIEW)
         # ---------------------------------------------------------------------
+        # Evidence readiness is mocked as complete (this test exercises the review lifecycle, not coverage).
+        from types import SimpleNamespace
+        ready = SimpleNamespace(blocking_reasons=[], correction_required_reasons=[], governance_reasons=[],
+                                source_silent_subcriteria=[])
         with patch.object(CollegeAssessmentService, "check_assessment_readiness", return_value=(True, [], None)), \
+             patch.object(CollegeAssessmentService, "get_review_readiness", return_value=(True, ready, None)), \
              patch.object(CollegeAssessmentService, "evaluate_assessment_scoring", side_effect=mock_scoring_eval):
             comp_res = client.post(
                 f"/api/v1/college/assessments/{assessment_id}/review/complete/",
@@ -342,6 +351,7 @@ class CollegeReviewEndToEndTests(TestCase):
             role="committee_chair",
             password="SecurePassword2026!",
         )
+        grant_review_scope(chair, framework=COLLEGE_FRAMEWORK_CODE)
 
         assessment = CollegeAssessmentService.create_assessment(
             college_id=college.pk, academic_year="2025-26", created_by=principal
@@ -430,6 +440,7 @@ class CollegeReviewEndToEndTests(TestCase):
             role="committee_chair",
             password="SecurePassword2026!",
         )
+        grant_review_scope(chair, framework=COLLEGE_FRAMEWORK_CODE)
         ReviewerAuthorization.objects.create(
             user=reviewer,
             framework=COLLEGE_FRAMEWORK_CODE,
@@ -481,9 +492,9 @@ class CollegeReviewEndToEndTests(TestCase):
     def test_negative_e2e_unresolved_statutory_rules_block_certification(self):
         """
         Unmocked Negative E2E Test:
-        Frozen scoring engine leaves C7, C8, and C16 as UNRESOLVED_RULE (and C5 boundary void).
-        When the real unmocked scoring engine evaluates the assessment, it returns
-        BLOCKED_BY_SPECIFICATION with final_certified_total = None.
+        The assessment claims inputs the source leaves undefined: exactly 75% for C5 (boundary void) and a Scopus
+        index for C19.III (metric not defined, policy SCOPUS_METRIC). The real unmocked scoring engine returns a
+        BLOCKED_* certification status with final_certified_total = None.
         Statutory Gate 8/11 detects this and strictly blocks certification (HTTP 400).
         The assessment remains non-CERTIFIED.
         """
@@ -507,6 +518,7 @@ class CollegeReviewEndToEndTests(TestCase):
             role="committee_chair",
             password="SecurePassword2026!",
         )
+        grant_review_scope(chair, framework=COLLEGE_FRAMEWORK_CODE)
         ReviewerAuthorization.objects.create(
             user=reviewer,
             framework=COLLEGE_FRAMEWORK_CODE,
@@ -517,11 +529,11 @@ class CollegeReviewEndToEndTests(TestCase):
         assessment = CollegeAssessmentService.create_assessment(
             college_id=college.pk, academic_year="2025-26", created_by=principal
         )
-        assessment.parameter_data = {
-            "C1": {
-                "raw_inputs": {"C1.1": {"achieved_targets_2024_25": 90, "fixed_targets_2024_25": 100}}
-            }
-        }
+        fill_assessment(assessment, overrides={
+            "C1": {"C1.1": {"achieved_targets_2024_25": 90, "fixed_targets_2024_25": 100}},
+            "C5": {"C5.1": {"admitted_students": 75, "sanctioned_intake": 100}},
+            "C19": {"C19.III": {"scopus_index": 50}},
+        })
         assessment.status = "SUBMITTED"
         assessment.save()
 

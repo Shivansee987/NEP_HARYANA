@@ -170,9 +170,9 @@ class UniversityRegistrationTests(TestCase):
 
         res = self.client.post("/api/auth/university/register/", payload, format="json")
         self.assertEqual(res.status_code, status.HTTP_201_CREATED, res.data)
-        self.assertIn("tokens", res.data)
-        self.assertIn("access", res.data["tokens"])
-        self.assertIn("refresh", res.data["tokens"])
+        self.assertNotIn("tokens", res.data)
+        self.assertTrue(res.data.get("verification_sent"))
+        self.assertFalse(res.data["user"]["is_email_verified"])
         self.assertEqual(res.data["user"]["email"], "nodal.ramesh@kuk.ac.in")
         self.assertEqual(res.data["user"]["role"], "nodal_officer")
         # Ownership is only requested: no institution binding until an administrator approves it.
@@ -376,7 +376,9 @@ class UniversityRegistrationTests(TestCase):
         payload = self._verified(payload, "9876500104")
         res = self.client.post("/api/auth/signup/", payload, format="json")
         self.assertEqual(res.status_code, status.HTTP_201_CREATED, res.data)
-        self.assertIn("tokens", res.data)
+        self.assertNotIn("tokens", res.data)
+        self.assertTrue(res.data.get("verification_sent"))
+        self.assertFalse(res.data["user"]["is_email_verified"])
         self.assertEqual(res.data["user"]["role"], "principal")
         self.assertEqual(res.data["user"]["institution_status"], "PENDING")
         self.assertIsNone(res.data["user"]["college_id"])
@@ -514,22 +516,21 @@ class UniversityRegistrationTests(TestCase):
         self.assertFalse(res_verify.data["verified"])
 
     def test_verify_otp_success_and_registration(self):
-        """Applicant verifies phone number via OTP and successfully registers with phone saved."""
+        """Applicant can register with phone number saved without phone OTP gating."""
         phone = "9876543212"
+        # Standalone OTP endpoints still function
         send_res = self.client.post("/api/auth/otp/send/", {"phone_number": phone}, format="json")
         self.assertEqual(send_res.status_code, status.HTTP_200_OK)
 
         verify_res = self.client.post("/api/auth/otp/verify/", {"phone_number": phone, "otp": last_sms_code(phone)}, format="json")
         self.assertEqual(verify_res.status_code, status.HTTP_200_OK)
         self.assertTrue(verify_res.data["verified"])
-        token = verify_res.data["verification_token"]
 
-        # Now register University applicant with this verified phone number
+        # Register University applicant with phone number (phone OTP is no longer mandatory for signup)
         payload = {
             "fullName": "Dr. Vikas Verma",
             "email": "vikas.verma@kuk.ac.in",
             "phoneNumber": phone,
-            "phoneVerificationToken": token,
             "aisheCode": "U-0160",
             "designation": "University Nodal Officer",
             "institutionType": "UNIVERSITY",
@@ -539,17 +540,16 @@ class UniversityRegistrationTests(TestCase):
         reg_res = self.client.post("/api/auth/university/register/", payload, format="json")
         self.assertEqual(reg_res.status_code, status.HTTP_201_CREATED)
         self.assertEqual(reg_res.data["user"]["phone_number"], phone)
+        self.assertEqual(reg_res.data["user"]["is_email_verified"], False)
+        self.assertTrue(reg_res.data.get("verification_sent"))
 
         user = User.objects.get(email="vikas.verma@kuk.ac.in")
         self.assertEqual(user.phone_number, phone)
+        self.assertFalse(user.is_email_verified)
 
-        # The verification is single use: a second registration with the same token is refused.
-        payload.update(email="second.applicant@kuk.ac.in")
-        again = self.client.post("/api/auth/university/register/", payload, format="json")
-        self.assertEqual(again.status_code, status.HTTP_400_BAD_REQUEST)
-
-    def test_registration_rejects_unverified_phone(self):
-        """Applicant providing an unverified phone number is rejected during registration."""
+    def test_registration_without_phone_otp_and_rejects_invalid_phone_format(self):
+        """Phone OTP is not required for signup; invalid phone formats are rejected."""
+        # 1. Valid 10-digit phone without OTP succeeds
         payload = {
             "fullName": "Unverified Phone Applicant",
             "email": "unverified@kuk.ac.in",
@@ -558,8 +558,73 @@ class UniversityRegistrationTests(TestCase):
             "password": "SecurePassword2026!",
         }
         res = self.client.post("/api/auth/university/register/", payload, format="json")
-        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("phoneNumber", res.data)
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        self.assertFalse(res.data["user"]["is_email_verified"])
+
+        # 2. Malformed phone number (non-10-digit) is rejected with 400
+        payload_bad = {
+            "fullName": "Bad Phone Applicant",
+            "email": "badphone@kuk.ac.in",
+            "phoneNumber": "12345",
+            "aisheCode": "U-0160",
+            "password": "SecurePassword2026!",
+        }
+        res_bad = self.client.post("/api/auth/university/register/", payload_bad, format="json")
+        self.assertEqual(res_bad.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("phoneNumber", res_bad.data)
+
+    def test_public_universities_list_endpoint(self):
+        """Public /api/auth/universities/ lists all active universities for registration selector."""
+        res = self.client.get("/api/auth/universities/")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        names = [u["name"] for u in res.data]
+        self.assertIn(self.uni_a.name, names)
+        self.assertIn(self.uni_b.name, names)
+        # Inactive university should not be listed
+        self.assertNotIn(self.uni_inactive.name, names)
+
+    def test_lookup_university_by_name_without_aishe(self):
+        """Lookup endpoint successfully resolves university by name when AISHE is not provided."""
+        uni_no_aishe = University.objects.create(
+            name="Ashoka University Sonepat (Campus)",
+            aishe_code="",
+            university_type="Private University",
+            state="Haryana",
+            is_active=True,
+        )
+        res = self.client.get("/api/auth/university/lookup/", {"name": "Ashoka University Sonepat (Campus)"})
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertTrue(res.data["verified"])
+        self.assertEqual(res.data["institution"]["name"], uni_no_aishe.name)
+        self.assertEqual(res.data["institution"]["aishe_code"], "")
+
+    def test_registration_using_university_name_without_aishe(self):
+        """Nodal officer can register using University name when university has no AISHE code."""
+        uni_no_aishe = University.objects.create(
+            name="Sports University of Haryana, Rai, Sonipat",
+            aishe_code="",
+            university_type="State Public University",
+            state="Haryana",
+            is_active=True,
+        )
+        phone = "9876543220"
+        payload = self._verified({
+            "fullName": "Dr. Sunil Narwal",
+            "email": "nodal@sportsuni.ac.in",
+            "universityName": "Sports University of Haryana, Rai, Sonipat",
+            "universityId": uni_no_aishe.id,
+            "aisheCode": "",
+            "designation": "University Nodal Officer",
+            "institutionType": "UNIVERSITY",
+            "password": "SecurePassword2026!",
+            "confirmPassword": "SecurePassword2026!",
+        }, phone)
+        res = self.client.post("/api/auth/university/register/", payload, format="json")
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        user = User.objects.get(email="nodal@sportsuni.ac.in")
+        self.assertEqual(user.requested_university, uni_no_aishe)
+        self.assertEqual(user.institution_status, "PENDING")
+
 
 
 

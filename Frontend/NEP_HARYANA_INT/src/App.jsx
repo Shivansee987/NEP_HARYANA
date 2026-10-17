@@ -26,7 +26,10 @@ import Reports from "./pages/Admin/Reports";
 import Settings from "./pages/Admin/Settings";
 import UserManagement from "./pages/Admin/UserManagement";
 import CommitteeManagement from "./pages/Admin/CommitteeManagement";
+import InstitutionRequests from "./pages/Admin/InstitutionRequests";
+import EmpoweredCommitteeHome from "./pages/Empowered/EmpoweredCommitteeHome";
 import AccountActivation from "./pages/AuthRecovery/AccountActivation";
+import EmailVerification from "./pages/AuthRecovery/EmailVerification";
 
 
 import {
@@ -151,6 +154,22 @@ function App() {
             </GuestRoute>
           }
         />
+        <Route
+          path="/auth/verify-email/:token"
+          element={
+            <GuestRoute>
+              <EmailVerification />
+            </GuestRoute>
+          }
+        />
+        <Route
+          path="/auth/verify-email"
+          element={
+            <GuestRoute>
+              <EmailVerification />
+            </GuestRoute>
+          }
+        />
 
         {/* Protected Routes - College Dashboard & Assessment Workspace */}
         <Route
@@ -190,6 +209,7 @@ function App() {
           <Route path="/admin" element={<AdminOverview />} />
           <Route path="/admin/institutions" element={<StateInstitutions />} />
           <Route path="/admin/users" element={<UserManagement />} />
+          <Route path="/admin/institution-requests" element={<InstitutionRequests />} />
           <Route path="/admin/committees" element={<CommitteeManagement />} />
           <Route path="/admin/colleges/*" element={<Navigate to="/admin/institutions?type=COLLEGE" replace />} />
           <Route path="/admin/reviews" element={<Navigate to="/admin/institutions?stage=SUBMITTED" replace />} />
@@ -198,6 +218,16 @@ function App() {
           <Route path="/admin/reports" element={<Reports />} />
           <Route path="/admin/settings" element={<Settings />} />
         </Route>
+
+        {/* Empowered Committee: informational landing only until the stage's workflow rules are approved (FIN-05) */}
+        <Route
+          path="/empowered"
+          element={
+            <ProtectedRoute allowedRoles={["empowered_committee", "empowered_committee_chair"]}>
+              <EmpoweredCommitteeHome />
+            </ProtectedRoute>
+          }
+        />
 
         {/* Protected Routes - Modern Screening Committee / Checker Console (Phase W4) */}
         <Route

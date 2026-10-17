@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   Search,
   Filter,
@@ -24,7 +24,10 @@ import CheckerQueueAnalyticsSection from "../../components/Analytics/CheckerQueu
 
 export default function CheckerQueue() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
+  // Outcome message handed over by the review page after Return for Correction / Reject.
+  const decisionNotice = location.state?.notice || "";
 
   // State
   const [loading, setLoading] = useState(true);
@@ -88,6 +91,11 @@ export default function CheckerQueue() {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
+      {decisionNotice && (
+        <div role="status" className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-sm text-emerald-900 font-medium">
+          {decisionNotice}
+        </div>
+      )}
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-6 rounded-2xl border border-[#ebdcd0] shadow-sm">
         <div>

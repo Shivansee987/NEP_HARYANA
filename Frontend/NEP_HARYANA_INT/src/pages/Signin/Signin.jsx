@@ -17,7 +17,9 @@ import {
   Loader2,
 } from "lucide-react";
 
-const APPLICANT_DEV_ACCOUNTS = [
+// Development-only quick logins. `import.meta.env.DEV` is a build-time constant, so production builds drop this
+// list (and its credentials) entirely and render no quick-login section (FIN-02).
+const APPLICANT_DEV_ACCOUNTS = import.meta.env.DEV ? [
   {
     key: "demo_college",
     role: "Dyal Singh College, Karnal",
@@ -58,7 +60,7 @@ const APPLICANT_DEV_ACCOUNTS = [
     icon: Landmark,
     themeClass: devStyles.themeSlate,
   },
-];
+] : [];
 
 function Signin() {
   const navigate = useNavigate();
@@ -105,10 +107,19 @@ function Signin() {
       });
       navigate(getDashboardPathForUser(response.user));
     } catch (error) {
-      setStatus({
-        type: "error",
-        message: error.message || "Could not sign in.",
-      });
+      if (error.code === "EMAIL_NOT_VERIFIED") {
+        setStatus({
+          type: "error",
+          message: error.message || "Please verify your email address before logging in.",
+          needsEmailVerification: true,
+          email: error.email || formData.email,
+        });
+      } else {
+        setStatus({
+          type: "error",
+          message: error.message || "Could not sign in.",
+        });
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -170,7 +181,17 @@ function Signin() {
             <div
               className={`${styles.statusMessage} ${status.type === "success" ? styles.statusSuccess : styles.statusError}`}
             >
-              {status.message}
+              <div>{status.message}</div>
+              {status.needsEmailVerification && (
+                <div style={{ marginTop: "8px", fontSize: "12px" }}>
+                  <Link
+                    to={`/auth/verify-email?email=${encodeURIComponent(status.email || formData.email)}`}
+                    style={{ color: "#600b0b", fontWeight: "bold", textDecoration: "underline" }}
+                  >
+                    Go to Email Verification / Resend Link →
+                  </Link>
+                </div>
+              )}
             </div>
           )}
 
@@ -307,7 +328,8 @@ function Signin() {
             </div>
           </form>
 
-          {/* Quick Dev Login Buttons */}
+          {/* Quick Dev Login Buttons (development builds only) */}
+          {import.meta.env.DEV && APPLICANT_DEV_ACCOUNTS.length > 0 && (
           <div className={devStyles.devLoginSection}>
             <div className={devStyles.devHeader}>
               <span className={devStyles.devBadge}>
@@ -360,6 +382,7 @@ function Signin() {
               })}
             </div>
           </div>
+          )}
         </section>
       </div>
     </main>

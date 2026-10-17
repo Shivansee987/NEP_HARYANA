@@ -117,7 +117,12 @@ class UniversityMultiSubcriterionTests(SimpleTestCase):
         self.assertEqual(raw_u16["subcriteria"]["U16.I"]["max_score"], 2.0)
         self.assertEqual(raw_u16["subcriteria"]["U16.II"]["max_score"], 2.0)
         self.assertEqual(raw_u16["subcriteria"]["U16.III"]["max_score"], 4.0)
-        self.assertEqual(raw_u16["subcriteria"]["U16.III"]["resolution_status"], "UNRESOLVED_RULE")
+        # The Scopus metric is undefined in the source: it is held by policy SCOPUS_METRIC (a claimed value blocks
+        # certification) rather than scored by an invented rule.
+        from apps.scoring.policy import BLOCKS_WHEN_TRIGGERED, POLICY_ITEMS, is_resolved
+        self.assertIn("U16", POLICY_ITEMS["SCOPUS_METRIC"].parameters)
+        self.assertEqual(POLICY_ITEMS["SCOPUS_METRIC"].certification_impact, BLOCKS_WHEN_TRIGGERED)
+        self.assertFalse(is_resolved("SCOPUS_METRIC"))
 
     def test_u17_nirf_subcriteria(self):
         p = get_university_parameter("U17")
@@ -145,7 +150,9 @@ class UniversityMultiSubcriterionTests(SimpleTestCase):
         p = get_university_parameter("U20")
         self.assertEqual(Decimal(str(p["max_marks"])), Decimal("4.0"))
         raw_u20 = UNIVERSITY_PARAMETERS["U20"]
-        self.assertEqual(raw_u20["resolution_status"], "SOURCE_INCONSISTENCY")
+        # Components total 5 against a stated maximum of 4: ADVISORY policy, scored as written and capped at 4.
+        self.assertEqual(raw_u20["resolution_status"], "CALCULABLE")
+        self.assertEqual(raw_u20["advisory_policy"], "U20_ITEMS_EXCEED_MAXIMUM")
         sub_dict = {k: Decimal(str(v["max_score"])) for k, v in p["subcriteria"].items()}
         self.assertEqual(sub_dict["U20.1"], Decimal("2.0"))
         self.assertEqual(sub_dict["U20.2"], Decimal("2.0"))

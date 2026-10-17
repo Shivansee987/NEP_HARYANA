@@ -126,6 +126,27 @@ export function fetchAdminUsers(params = {}) {
 }
 
 /**
+ * GET /api/v1/admin/users/?institution_status=PENDING
+ * Self-registered applicants waiting for approval of their institution request.
+ */
+export function fetchPendingInstitutionRequests(params = {}) {
+  return fetchAdminUsers({ page_size: 100, ...params, institution_status: "PENDING" });
+}
+
+/**
+ * POST /api/v1/admin/users/<user_id>/institution-access/
+ * Approve (binds the account to the requested institution) or reject (reason of at least 10 characters).
+ * Head Admin, State Admin, Sub-Admin and legacy Admin; the Council Admin Overseer is refused by the API.
+ */
+export function decideInstitutionAccess(userId, decision, reason = "") {
+  return request(`/v1/admin/users/${userId}/institution-access/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ decision, reason }),
+  });
+}
+
+/**
  * GET /api/v1/admin/users/<user_id>/
  * Retrieve user details, institution, and recent audit trail.
  */

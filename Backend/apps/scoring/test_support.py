@@ -106,3 +106,39 @@ def submit_complete(service, assessment_id, *args, **kwargs):
     model = UniversityAssessment if "University" in service.__name__ else CollegeAssessment
     fill_assessment(model.objects.get(assessment_id=assessment_id))
     return service.submit_assessment(assessment_id, *args, **kwargs)
+
+
+def record_complete_review(assessment, reviewer, remarks="Screening committee review completed."):
+    """Records the committee's 'Complete Review' for the current submission (required before certification)."""
+    from apps.college.models import CollegeAssessment, CollegeReviewAction, CollegeReviewRecord
+    from apps.university.models import UniversityReviewAction, UniversityReviewRecord
+    if isinstance(assessment, CollegeAssessment):
+        record, action = CollegeReviewRecord, CollegeReviewAction.COMPLETE_REVIEW
+    else:
+        record, action = UniversityReviewRecord, UniversityReviewAction.COMPLETE_REVIEW
+    return record.objects.create(assessment=assessment, reviewer=reviewer, action=action,
+                                 status_before=assessment.status, status_after=assessment.status, reason=remarks)
+
+
+def council_decision_resolved():
+    """
+    Simulates the evidence taxonomy after the council's U6 / U18.3 decision (FIN-03), so tests can exercise the
+    rest of the University certification path. The real taxonomy is unchanged; outside this context official
+    University certification stays on hold (apps.scoring.policy_gates).
+    """
+    from dataclasses import replace
+    from unittest import mock
+
+    from apps.evidence.taxonomy import ContractStatus, get_subcriterion_contract
+    from apps.scoring.policy_gates import PENDING_COUNCIL_DECISIONS
+
+    held = {s for items in PENDING_COUNCIL_DECISIONS.values() for item in items for s in item["subcriteria"]}
+
+    def resolved(framework, parameter_id, subcriterion_id):
+        contract = get_subcriterion_contract(framework, parameter_id, subcriterion_id)
+        if contract is not None and subcriterion_id in held:
+            return replace(contract, status=ContractStatus.ACTIVE,
+                           canonical_evidence_type=f"EVID_{subcriterion_id.replace('.', '_')}_COUNCIL_DECIDED")
+        return contract
+
+    return mock.patch("apps.scoring.policy_gates.get_subcriterion_contract", side_effect=resolved)

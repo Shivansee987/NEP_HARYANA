@@ -43,6 +43,9 @@ JWT_REFRESH_TOKEN_DAYS = int(os.environ.get('JWT_REFRESH_TOKEN_DAYS', 7))
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
+# Django admin site (read-only inspection; see config/urls.py). Off unless a settings module turns it on.
+ENABLE_DJANGO_ADMIN = False
+
 # Frontend Base URL
 FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:5173')
 

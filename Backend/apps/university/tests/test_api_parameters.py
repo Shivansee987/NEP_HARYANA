@@ -58,7 +58,6 @@ class UniversityAPIParameterTests(TestCase):
         """Valid U1 (Apprenticeship) input is accepted and stored."""
         payload = {
             "raw_inputs": {
-                "programmes_count": 8,
                 "U1.1": {"programmes_count": 8},
             },
             "entities": [
@@ -79,7 +78,7 @@ class UniversityAPIParameterTests(TestCase):
         self.assertEqual(data["code"], "U1")
         self.assertEqual(data["max_marks"], 4.0)
         self.assertIn("submitted_input", data)
-        self.assertEqual(data["submitted_input"]["raw_inputs"]["programmes_count"], 8)
+        self.assertEqual(data["submitted_input"]["raw_inputs"]["U1.1"]["programmes_count"], 8)
 
     def test_invalid_parameter_rejected(self):
         """Non-existent parameter code (e.g. U99) is rejected with INVALID_PARAMETER."""
@@ -107,10 +106,11 @@ class UniversityAPIParameterTests(TestCase):
         self.assertEqual(res.data.get("code"), "INVALID_SUBCRITERION")
 
     def test_invalid_percentage_rejected(self):
-        """Percentage > 100.0 or < 0.0 is rejected with INVALID_PARAMETER_INPUT."""
+        """A ratio above 100% (numerator larger than its denominator) is rejected with INVALID_PARAMETER_INPUT.
+        Under the NEP 2026 schema U5.A is entered as counts, and eligible students cannot exceed the total."""
         payload = {
             "raw_inputs": {
-                "placement_percentage": 110.0,
+                "U5.A": {"total_final_year_students": 100, "eligible_students": 110},
             }
         }
         res = self.client.put(
@@ -125,7 +125,7 @@ class UniversityAPIParameterTests(TestCase):
         """Negative count or non-integer is rejected with INVALID_PARAMETER_INPUT."""
         payload = {
             "raw_inputs": {
-                "programmes_count": -5,
+                "U1.1": {"programmes_count": -5},
             }
         }
         res = self.client.put(

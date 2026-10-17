@@ -25,6 +25,8 @@ from apps.college.models import CollegeAssessment, CollegeAssessmentAuditLog
 from apps.college.registry import COLLEGE_PARAMETER_CODES
 from apps.evidence.services import EvidenceService
 
+from apps.scoring.test_support import fill_assessment, grant_review_scope
+
 User = get_user_model()
 
 
@@ -39,6 +41,7 @@ class CollegeAPIE2ETests(TestCase):
             role="committee",
             password="ReviewerPassword2026!",
         )
+        grant_review_scope(self.reviewer)  # reviewers act only inside an explicit scope (COM-01)
 
     def test_full_college_api_assessment_e2e_flow(self):
         # 1. Create College
@@ -87,7 +90,8 @@ class CollegeAPIE2ETests(TestCase):
         # C10: Industry linkages
         put_c10 = self.client.put(
             f"/api/college/assessments/{assessment_id}/parameters/C10/",
-            {"raw_inputs": {"C10.1": {"active_mous_count": 4}}},
+            {"raw_inputs": {"C10.1": {"active_mous_count": 4, "activity_period_start": "2025-08-01",
+                                      "activity_period_end": "2026-03-31"}}},
             format="json",
         )
         self.assertEqual(put_c10.status_code, status.HTTP_200_OK)
@@ -139,20 +143,9 @@ class CollegeAPIE2ETests(TestCase):
             academic_year="2025-26",
         )
 
-        # 6. Verify Evidence via Phase 5C
+        # 6. The institution submits its evidence for verification
         EvidenceService.submit_for_verification(doc_c1.pk, principal)
-        EvidenceService.verify_evidence(
-            evidence_id=doc_c1.pk,
-            verifier=self.reviewer,
-            reason="Approved verified IDP target report",
-        )
-
         EvidenceService.submit_for_verification(doc_c2.pk, principal)
-        EvidenceService.verify_evidence(
-            evidence_id=doc_c2.pk,
-            verifier=self.reviewer,
-            reason="Approved HOI internship certification",
-        )
 
         # 7. Request Coverage via GET /api/college/assessments/{id}/coverage/
         cov_resp = self.client.get(f"/api/college/assessments/{assessment_id}/coverage/")
@@ -167,23 +160,41 @@ class CollegeAPIE2ETests(TestCase):
         self.assertEqual(ready_resp.status_code, status.HTTP_200_OK)
         self.assertEqual(ready_resp.data["framework"], "COLLEGE_2026")
 
-        # 9. Request Evaluation via POST /api/college/assessments/{id}/evaluate/
-        eval_resp = self.client.post(f"/api/college/assessments/{assessment_id}/evaluate/", format="json")
-        self.assertEqual(eval_resp.status_code, status.HTTP_200_OK)
-        self.assertEqual(eval_resp.data["framework"], "COLLEGE_2026")
-        self.assertEqual(eval_resp.data["parameter_results"]["C1"]["final_score"], 6.0)
-        self.assertEqual(eval_resp.data["parameter_results"]["C2"]["final_score"], 4.0)
-
-        # 10. Formally Submit Assessment via POST /api/college/assessments/{id}/submit/
+        # 9. Formally Submit Assessment via POST /api/college/assessments/{id}/submit/ (every parameter answered;
+        #    the C1 / C2 / C10 values above are kept)
+        fill_assessment(CollegeAssessment.objects.get(assessment_id=assessment_id))
         submit_resp = self.client.post(f"/api/college/assessments/{assessment_id}/submit/", format="json")
         self.assertEqual(submit_resp.status_code, status.HTTP_200_OK)
         self.assertEqual(submit_resp.data["status"], "SUBMITTED")
         self.assertIsNotNone(submit_resp.data["submitted_at"])
 
+        # 10. The Screening Committee verifies the evidence (only after submission) and evaluates
+        EvidenceService.verify_evidence(
+            evidence_id=doc_c1.pk,
+            verifier=self.reviewer,
+            reason="Approved verified IDP target report",
+        )
+        EvidenceService.verify_evidence(
+            evidence_id=doc_c2.pk,
+            verifier=self.reviewer,
+            reason="Approved HOI internship certification",
+        )
+        self.client.force_authenticate(user=self.reviewer)
+        eval_resp = self.client.post(f"/api/college/assessments/{assessment_id}/evaluate/", format="json")
+        self.assertEqual(eval_resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(eval_resp.data["framework"], "COLLEGE_2026")
+        results = eval_resp.data["parameter_results"]
+        self.assertEqual(results["C1"]["evidence_gated_score"], 6.0)
+        self.assertEqual(results["C2"]["evidence_gated_score"], 4.0)
+        self.assertEqual(results["C10"]["evidence_gated_score"], 0.0)  # no proof uploaded -> no marks
+
         # 11. Immutability & Audit Trail Confirmation
         assessment = CollegeAssessment.objects.get(assessment_id=assessment_id)
         self.assertEqual(assessment.status, "SUBMITTED")
-        self.assertEqual(assessment.certified_score, 10.0)  # 6.0 (C1) + 4.0 (C2) = 10.0
+        # Persisted total = verified C1 (6) + C2 (4) + the marks the source awards without documentary evidence
+        # (C5 / C9, open council question POL-01).
+        self.assertEqual(assessment.certified_score,
+                         sum(r["evidence_gated_score"] for r in results.values() if r["evidence_gated_score"]))
 
         audit_actions = list(CollegeAssessmentAuditLog.objects.filter(assessment=assessment).values_list("action", flat=True))
         self.assertIn("CREATED", audit_actions)

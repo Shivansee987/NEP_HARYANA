@@ -57,6 +57,16 @@ class CollegeEvidenceIntegrationTests(TestCase):
             assessment_id="ASSESS-2026-COL-00101-EVTEST",
             created_by=self.principal_user,
         )
+        # Reviewers act only inside an explicit review scope (COM-01).
+        from apps.scoring.test_support import grant_review_scope
+        grant_review_scope(self.reviewer_user)
+
+    def _submit_assessment(self):
+        """The institution completes and submits; the committee reviews evidence only after that (WF-15)."""
+        from apps.scoring.test_support import fill_assessment
+        self.assessment.refresh_from_db()
+        fill_assessment(self.assessment)
+        CollegeAssessmentService.submit_assessment(self.assessment.assessment_id, submitting_user=self.principal_user)
 
     def _upload_college_doc(
         self,
@@ -154,17 +164,17 @@ class CollegeEvidenceIntegrationTests(TestCase):
             academic_year="2024-25",
         )
         EvidenceService.submit_for_verification(doc.pk, self.principal_user)
+        CollegeAssessmentService.update_parameter_inputs(
+            assessment_id=self.assessment.assessment_id,
+            parameter_code="C1",
+            raw_inputs={"C1.1": {"achieved_targets_2024_25": 95, "fixed_targets_2024_25": 100}},
+        )
+        self._submit_assessment()
         EvidenceService.reject_evidence(
             evidence_id=doc.pk,
             verifier=self.reviewer_user,
             reason="Blurry scanned copy",
             rejection_code="REJ_BLURRY",
-        )
-
-        CollegeAssessmentService.update_parameter_inputs(
-            assessment_id=self.assessment.assessment_id,
-            parameter_code="C1",
-            raw_inputs={"C1.1": {"achieved_targets_2024_25": 95, "fixed_targets_2024_25": 100}},
         )
 
         result = CollegeAssessmentService.evaluate_assessment_scoring(self.assessment.assessment_id)
@@ -183,16 +193,16 @@ class CollegeEvidenceIntegrationTests(TestCase):
             academic_year="2024-25",
         )
         EvidenceService.submit_for_verification(doc.pk, self.principal_user)
-        EvidenceService.verify_evidence(
-            evidence_id=doc.pk,
-            verifier=self.reviewer_user,
-            reason="Approved valid IDP targets",
-        )
-
         CollegeAssessmentService.update_parameter_inputs(
             assessment_id=self.assessment.assessment_id,
             parameter_code="C1",
             raw_inputs={"C1.1": {"achieved_targets_2024_25": 95, "fixed_targets_2024_25": 100}},
+        )
+        self._submit_assessment()
+        EvidenceService.verify_evidence(
+            evidence_id=doc.pk,
+            verifier=self.reviewer_user,
+            reason="Approved valid IDP targets",
         )
 
         result = CollegeAssessmentService.evaluate_assessment_scoring(self.assessment.assessment_id)

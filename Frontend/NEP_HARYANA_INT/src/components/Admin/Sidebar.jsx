@@ -32,6 +32,7 @@ const Sidebar = () => {
     { name: isHeadAdmin ? 'Control Centre' : 'Overview', path: '/admin', icon: LayoutDashboard },
     { name: 'Institutions', path: '/admin/institutions', icon: School },
     { name: 'Users', path: '/admin/users', icon: Users },
+    { name: 'Access Requests', path: '/admin/institution-requests', icon: UserCheck },
     { name: 'Committees', path: '/admin/committees', icon: GraduationCap },
     { name: 'Reports', path: '/admin/reports', icon: FileSpreadsheet },
     { name: 'Settings', path: '/admin/settings', icon: SettingsIcon },

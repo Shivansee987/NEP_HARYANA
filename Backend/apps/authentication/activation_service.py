@@ -204,9 +204,10 @@ class AccountActivationService:
         except ValidationError as e:
             raise DRFValidationError({"detail": e.messages[0]})
 
-        # Activate user and set password
+        # Activate user, mark email verified, and set password
         user.set_password(password)
         user.is_active = True
+        user.is_email_verified = True
         user.save()
 
         # Mark token consumed
