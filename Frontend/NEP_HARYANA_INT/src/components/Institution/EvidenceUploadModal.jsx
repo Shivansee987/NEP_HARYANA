@@ -130,6 +130,15 @@ export default function EvidenceUploadModal({
 
   const defaultAcademicYear = contract?.evidenceAcademicYear || "2025-26";
 
+  const allowedFormats = useMemo(() => {
+    if (Array.isArray(contract?.allowedFileFormats) && contract.allowedFileFormats.length > 0) {
+      return contract.allowedFileFormats.map((f) => f.toLowerCase());
+    }
+    return ["pdf", "png", "jpg", "jpeg", "webp", "docx", "xlsx"];
+  }, [contract]);
+
+  const isPdfOnly = allowedFormats.length === 1 && allowedFormats[0] === "pdf";
+
   const [activeTab, setActiveTab] = useState("upload"); // 'upload' | 'existing'
 
   // Multi-document state: each entry represents a document to be uploaded
@@ -172,6 +181,48 @@ export default function EvidenceUploadModal({
   const resolvedEvidenceType = defaultEvidenceType;
   const isBlocked = isSourceSilent || isUnresolved || !resolvedEvidenceType;
 
+  /**
+   * Validates file size, extension, and content signature for uploads.
+   * Strictly enforces PDF header (%PDF-) and %%EOF termination for PDF-only criteria.
+   */
+  const validateFile = async (file) => {
+    if (!file) {
+      return "No file selected.";
+    }
+    if (file.size === 0) {
+      return "The selected file is empty (0 bytes). Please upload a valid document.";
+    }
+    if (file.size > 25 * 1024 * 1024) {
+      return `File exceeds maximum allowed limit of 25 MB (${(file.size / 1024 / 1024).toFixed(2)} MB).`;
+    }
+    const ext = (file.name.split(".").pop() || "").toLowerCase();
+    if (!allowedFormats.includes(ext)) {
+      return `File format '.${ext}' is not permitted for this criterion. Allowed format(s): ${allowedFormats.map((f) => f.toUpperCase()).join(", ")}.`;
+    }
+
+    if (ext === "pdf" || isPdfOnly) {
+      if (file.size < 20) {
+        return "The file is too small to be a valid PDF document.";
+      }
+      try {
+        const headerBuffer = await file.slice(0, 5).arrayBuffer();
+        const headerStr = new TextDecoder("ascii").decode(headerBuffer);
+        if (!headerStr.startsWith("%PDF-")) {
+          return "Invalid file content: The file does not have a genuine PDF header signature (%PDF-). Renamed non-PDF files are strictly rejected.";
+        }
+        const tailSize = Math.min(file.size, 1024);
+        const tailBuffer = await file.slice(file.size - tailSize, file.size).arrayBuffer();
+        const tailStr = new TextDecoder("ascii").decode(tailBuffer);
+        if (!tailStr.includes("%%EOF")) {
+          return "Malformed PDF: The document is missing a valid %%EOF termination marker.";
+        }
+      } catch (err) {
+        return "Unable to verify PDF file integrity. Please ensure the file is an uncorrupted PDF document.";
+      }
+    }
+    return null;
+  };
+
   // Add another document slot
   const handleAddDocument = () => {
     const nextIndex = documents.length;
@@ -204,8 +255,23 @@ export default function EvidenceUploadModal({
     );
   };
 
-  // Update file for a slot
-  const handleDocFileChange = (id, newFile) => {
+  // Update file for a slot with signature validation
+  const handleDocFileChange = async (id, newFile) => {
+    setError(null);
+    if (!newFile) {
+      setDocuments((prev) =>
+        prev.map((d) => (d.id === id ? { ...d, file: null } : d))
+      );
+      return;
+    }
+    const valErr = await validateFile(newFile);
+    if (valErr) {
+      setError(valErr);
+      setDocuments((prev) =>
+        prev.map((d) => (d.id === id ? { ...d, file: null } : d))
+      );
+      return;
+    }
     setDocuments((prev) =>
       prev.map((d) => (d.id === id ? { ...d, file: newFile } : d))
     );
@@ -238,7 +304,7 @@ export default function EvidenceUploadModal({
 
     try {
       if (activeTab === "upload") {
-        // Validate that each document slot has a file selected
+        // Validate that each document slot has a valid file selected
         for (let i = 0; i < documents.length; i++) {
           if (!documents[i].file) {
             setError(
@@ -246,6 +312,12 @@ export default function EvidenceUploadModal({
                 documents[i].docType || "Proof"
               }).`
             );
+            setLoading(false);
+            return;
+          }
+          const valErr = await validateFile(documents[i].file);
+          if (valErr) {
+            setError(`Document #${i + 1} (${documents[i].file.name}): ${valErr}`);
             setLoading(false);
             return;
           }
@@ -298,6 +370,21 @@ export default function EvidenceUploadModal({
           setError("Please select an existing document from the assessment repository.");
           setLoading(false);
           return;
+        }
+
+        const selectedDoc = existingDocuments.find(
+          (d) => String(d.id || d.document_id) === String(selectedDocId)
+        );
+        if (isPdfOnly && selectedDoc) {
+          const docName = (selectedDoc.original_filename || "").toLowerCase();
+          const docMime = (selectedDoc.mime_type || "").toLowerCase();
+          if (!docName.endsWith(".pdf") && docMime !== "application/pdf") {
+            setError(
+              "Invalid document selection: This criterion mandates an approved/signed PDF document only. Selected repository document is not a PDF."
+            );
+            setLoading(false);
+            return;
+          }
         }
 
         setProgressText("Associating document...");
@@ -471,6 +558,17 @@ export default function EvidenceUploadModal({
             <form id="evidence-upload-form" onSubmit={handleSubmit} className="space-y-4">
               {activeTab === "upload" ? (
                 <>
+                  {/* PDF Mandate Banner when criterion strictly requires PDF */}
+                  {isPdfOnly && (
+                    <div className="p-3 bg-blue-50/80 border border-blue-200/90 rounded-xl flex items-center gap-2.5 text-xs text-blue-900">
+                      <FileCheck size={16} className="text-blue-700 shrink-0" />
+                      <div>
+                        <span className="font-bold">PDF Format Mandate: </span>
+                        <span>This criterion accepts authentic, approved/signed PDF files only. Renamed or non-PDF files will be rejected.</span>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Dynamic Document Upload Cards */}
                   <div className="space-y-3">
                     {documents.map((doc, idx) => (
@@ -533,7 +631,7 @@ export default function EvidenceUploadModal({
                             <input
                               type="file"
                               id={`evidence-file-${doc.id}`}
-                              accept=".pdf,.png,.jpg,.jpeg"
+                              accept={isPdfOnly ? ".pdf,application/pdf" : ".pdf,.png,.jpg,.jpeg,.webp,.docx,.xlsx"}
                               onChange={(e) => {
                                 if (e.target.files && e.target.files[0]) {
                                   handleDocFileChange(doc.id, e.target.files[0]);
@@ -565,7 +663,7 @@ export default function EvidenceUploadModal({
                                     Click to choose file
                                   </span>
                                   <span className="text-[10px] text-slate-400">
-                                    (PDF, PNG, JPG up to 25MB)
+                                    {isPdfOnly ? "(PDF only, up to 25MB)" : "(PDF, PNG, JPG up to 25MB)"}
                                   </span>
                                 </div>
                               )}
@@ -618,15 +716,22 @@ export default function EvidenceUploadModal({
                       className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#600b0b]/20 focus:border-[#600b0b]"
                     >
                       <option value="">-- Choose from uploaded repository --</option>
-                      {existingDocuments.map((doc) => (
-                        <option
-                          key={doc.id || doc.document_id}
-                          value={doc.id || doc.document_id}
-                        >
-                          {doc.original_filename} (Uploaded:{" "}
-                          {new Date(doc.upload_timestamp).toLocaleDateString()})
-                        </option>
-                      ))}
+                      {existingDocuments
+                        .filter(
+                          (doc) =>
+                            !isPdfOnly ||
+                            (doc.original_filename || "").toLowerCase().endsWith(".pdf") ||
+                            doc.mime_type === "application/pdf"
+                        )
+                        .map((doc) => (
+                          <option
+                            key={doc.id || doc.document_id}
+                            value={doc.id || doc.document_id}
+                          >
+                            {doc.original_filename} (Uploaded:{" "}
+                            {new Date(doc.upload_timestamp).toLocaleDateString()})
+                          </option>
+                        ))}
                     </select>
                   </div>
                 </div>

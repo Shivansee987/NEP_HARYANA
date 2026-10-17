@@ -44,6 +44,7 @@ def _with_evidence_contracts(schema, framework):
                 "status": getattr(c.status, "value", c.status),
                 "canonical_type": c.canonical_evidence_type,
                 "allowed_types": list(c.allowed_evidence_types),
+                "allowed_file_formats": list(getattr(c, "allowed_file_formats", ("pdf", "png", "jpg", "jpeg", "webp", "docx", "xlsx"))),
                 "documentary_requirement": c.source_documentary_requirement,
                 "is_source_silent": c.is_source_silent,
                 "is_unresolved": c.is_unresolved,

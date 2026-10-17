@@ -166,8 +166,36 @@ class EvidenceUploadPipeline:
         # Step 4: Validate Filename
         safe_filename, safe_ext = FilenameValidator.validate_and_sanitize(orig_filename)
 
+        # Step 4b: Enforce subcriterion file format restrictions (e.g. PDF-only for U6.A, U6.B, U18.3)
+        from apps.evidence.taxonomy import get_subcriterion_contract, SINGLE_SUBCRITERION_PARAMETERS
+        target_contract = None
+        if parameter_id and subcriterion_id:
+            target_contract = get_subcriterion_contract(clean_framework, parameter_id, subcriterion_id)
+        elif parameter_id:
+            p_clean = parameter_id.strip().upper()
+            if p_clean in SINGLE_SUBCRITERION_PARAMETERS:
+                target_contract = get_subcriterion_contract(clean_framework, p_clean, SINGLE_SUBCRITERION_PARAMETERS[p_clean][0])
+
+        is_pdf_only = (
+            target_contract is not None
+            and getattr(target_contract, "allowed_file_formats", None)
+            and tuple(target_contract.allowed_file_formats) == ("pdf",)
+        )
+
+        if target_contract and getattr(target_contract, "allowed_file_formats", None):
+            if safe_ext not in target_contract.allowed_file_formats:
+                from apps.evidence.validators import UnsupportedFileTypeError
+                raise UnsupportedFileTypeError(
+                    f"Subcriterion {parameter_id}:{subcriterion_id or ''} requires evidence in {list(target_contract.allowed_file_formats)} format; "
+                    f"file format '.{safe_ext}' is strictly not permitted."
+                )
+
         # Step 5: Validate Content & Magic Bytes
         detected_mime, file_size = ContentValidator.validate_content(content_bytes, safe_ext)
+
+        # Step 5b: Perform deep PDF structure verification for PDF-only criteria
+        if is_pdf_only:
+            ContentValidator.validate_pdf_structure(content_bytes)
 
         # Step 6: Cryptographic SHA-256 Hashing
         file_checksum = hashlib.sha256(content_bytes).hexdigest()

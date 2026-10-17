@@ -55,6 +55,15 @@ export const COLLEGE_FIELD_SCHEMA = {
           "allowed_types": [
             "EVID_C1_APPROVED_IDP"
           ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
+          ],
           "documentary_requirement": "Approved IDP, target-achievement report, minutes/records of review meetings.",
           "is_source_silent": false,
           "is_unresolved": false
@@ -98,6 +107,15 @@ export const COLLEGE_FIELD_SCHEMA = {
           "allowed_types": [
             "EVID_C2_HOI_CERT"
           ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
+          ],
           "documentary_requirement": "Certificate from Head of Institution, sample of completion certificate/industry certificate.",
           "is_source_silent": false,
           "is_unresolved": false
@@ -140,6 +158,15 @@ export const COLLEGE_FIELD_SCHEMA = {
           "canonical_type": "EVID_C3_ABC_DASHBOARD",
           "allowed_types": [
             "EVID_C3_ABC_DASHBOARD"
+          ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
           ],
           "documentary_requirement": "ABC registration report/downloaded dashboard.",
           "is_source_silent": false,
@@ -194,6 +221,15 @@ export const COLLEGE_FIELD_SCHEMA = {
           "canonical_type": "EVID_C4_INSTITUTE_CERTS",
           "allowed_types": [
             "EVID_C4_INSTITUTE_CERTS"
+          ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
           ],
           "documentary_requirement": "Certificate from the support receiving Head of Institution/ Schools.",
           "is_source_silent": false,
@@ -251,6 +287,15 @@ export const COLLEGE_FIELD_SCHEMA = {
           "allowed_types": [
             "EVID_C4_INSTITUTE_CERTS"
           ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
+          ],
           "documentary_requirement": "Certificate from the support receiving Head of Institution/ Schools.",
           "is_source_silent": false,
           "is_unresolved": false
@@ -291,6 +336,15 @@ export const COLLEGE_FIELD_SCHEMA = {
           "status": "SOURCE_SILENT",
           "canonical_type": null,
           "allowed_types": [],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
+          ],
           "documentary_requirement": null,
           "is_source_silent": true,
           "is_unresolved": false
@@ -333,6 +387,15 @@ export const COLLEGE_FIELD_SCHEMA = {
           "canonical_type": "EVID_C6_COURSE_APPROVAL",
           "allowed_types": [
             "EVID_C6_COURSE_APPROVAL"
+          ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
           ],
           "documentary_requirement": "Course approval, student enrolment, certificates, partner/awarding body details.",
           "is_source_silent": false,
@@ -377,6 +440,15 @@ export const COLLEGE_FIELD_SCHEMA = {
           "allowed_types": [
             "EVID_C7_OFFICE_ORDERS"
           ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
+          ],
           "documentary_requirement": "Relevant office orders.",
           "is_source_silent": false,
           "is_unresolved": false
@@ -407,6 +479,15 @@ export const COLLEGE_FIELD_SCHEMA = {
           "canonical_type": "EVID_C8_OFFICE_ORDERS",
           "allowed_types": [
             "EVID_C8_OFFICE_ORDERS"
+          ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
           ],
           "documentary_requirement": "Relevant office orders.",
           "is_source_silent": false,
@@ -449,6 +530,15 @@ export const COLLEGE_FIELD_SCHEMA = {
           "status": "SOURCE_SILENT",
           "canonical_type": null,
           "allowed_types": [],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
+          ],
           "documentary_requirement": null,
           "is_source_silent": true,
           "is_unresolved": false
@@ -475,6 +565,15 @@ export const COLLEGE_FIELD_SCHEMA = {
           "status": "SOURCE_SILENT",
           "canonical_type": null,
           "allowed_types": [],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
+          ],
           "documentary_requirement": null,
           "is_source_silent": true,
           "is_unresolved": false
@@ -524,6 +623,15 @@ export const COLLEGE_FIELD_SCHEMA = {
           "canonical_type": "EVID_C10_MOU_DOCS",
           "allowed_types": [
             "EVID_C10_MOU_DOCS"
+          ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
           ],
           "documentary_requirement": "MoUs and proof of activities such as internships, expert lectures, joint curriculum, projects, visits or placements.",
           "is_source_silent": false,
@@ -575,6 +683,15 @@ export const COLLEGE_FIELD_SCHEMA = {
           "allowed_types": [
             "EVID_C11_REGISTRATION"
           ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
+          ],
           "documentary_requirement": "Cell notification, activity report, registration/incubation records, funding/commercialisation proof.",
           "is_source_silent": false,
           "is_unresolved": false
@@ -599,6 +716,15 @@ export const COLLEGE_FIELD_SCHEMA = {
           "canonical_type": "EVID_C11_REGISTRATION",
           "allowed_types": [
             "EVID_C11_REGISTRATION"
+          ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
           ],
           "documentary_requirement": "Cell notification, activity report, registration/incubation records, funding/commercialisation proof.",
           "is_source_silent": false,
@@ -627,6 +753,15 @@ export const COLLEGE_FIELD_SCHEMA = {
           "canonical_type": "EVID_C11_REGISTRATION",
           "allowed_types": [
             "EVID_C11_REGISTRATION"
+          ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
           ],
           "documentary_requirement": "Cell notification, activity report, registration/incubation records, funding/commercialisation proof.",
           "is_source_silent": false,
@@ -658,6 +793,15 @@ export const COLLEGE_FIELD_SCHEMA = {
           "canonical_type": "EVID_C12_DATABASE",
           "allowed_types": [
             "EVID_C12_DATABASE"
+          ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
           ],
           "documentary_requirement": "Alumni database, event reports, invitation letters, photographs, attendance and feedback records.",
           "is_source_silent": false,
@@ -700,6 +844,15 @@ export const COLLEGE_FIELD_SCHEMA = {
           "allowed_types": [
             "EVID_C12_DATABASE"
           ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
+          ],
           "documentary_requirement": "Alumni database, event reports, invitation letters, photographs, attendance and feedback records.",
           "is_source_silent": false,
           "is_unresolved": false
@@ -724,6 +877,15 @@ export const COLLEGE_FIELD_SCHEMA = {
           "canonical_type": "EVID_C12_DATABASE",
           "allowed_types": [
             "EVID_C12_DATABASE"
+          ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
           ],
           "documentary_requirement": "Alumni database, event reports, invitation letters, photographs, attendance and feedback records.",
           "is_source_silent": false,
@@ -750,6 +912,15 @@ export const COLLEGE_FIELD_SCHEMA = {
           "allowed_types": [
             "EVID_C12_DATABASE"
           ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
+          ],
           "documentary_requirement": "Alumni database, event reports, invitation letters, photographs, attendance and feedback records.",
           "is_source_silent": false,
           "is_unresolved": false
@@ -774,6 +945,15 @@ export const COLLEGE_FIELD_SCHEMA = {
           "canonical_type": "EVID_C12_DATABASE",
           "allowed_types": [
             "EVID_C12_DATABASE"
+          ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
           ],
           "documentary_requirement": "Alumni database, event reports, invitation letters, photographs, attendance and feedback records.",
           "is_source_silent": false,
@@ -818,6 +998,15 @@ export const COLLEGE_FIELD_SCHEMA = {
           "allowed_types": [
             "EVID_C13_FDP_CERTS"
           ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
+          ],
           "documentary_requirement": "Certificates, HRDC/MMTTC/FDP reports, faculty list.",
           "is_source_silent": false,
           "is_unresolved": false
@@ -852,6 +1041,15 @@ export const COLLEGE_FIELD_SCHEMA = {
           "allowed_types": [
             "EVID_C14_MATERIAL_CERT"
           ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
+          ],
           "documentary_requirement": "Learning material certified by Head of Institution, activity reports (Ayurveda Garden Projects, IKS quizzes, traditional sports, artisanal internships with local artisans, etc.).",
           "is_source_silent": false,
           "is_unresolved": false
@@ -879,6 +1077,15 @@ export const COLLEGE_FIELD_SCHEMA = {
           "canonical_type": "EVID_C14_MATERIAL_CERT",
           "allowed_types": [
             "EVID_C14_MATERIAL_CERT"
+          ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
           ],
           "documentary_requirement": "Learning material certified by Head of Institution, activity reports (Ayurveda Garden Projects, IKS quizzes, traditional sports, artisanal internships with local artisans, etc.).",
           "is_source_silent": false,
@@ -911,6 +1118,15 @@ export const COLLEGE_FIELD_SCHEMA = {
           "allowed_types": [
             "EVID_C15_CENTRE_ORDER"
           ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
+          ],
           "documentary_requirement": "Centre notification, calendar, activity reports, participation certificates, photographs and attendance records.",
           "is_source_silent": false,
           "is_unresolved": false
@@ -935,6 +1151,15 @@ export const COLLEGE_FIELD_SCHEMA = {
           "canonical_type": "EVID_C15_CENTRE_ORDER",
           "allowed_types": [
             "EVID_C15_CENTRE_ORDER"
+          ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
           ],
           "documentary_requirement": "Centre notification, calendar, activity reports, participation certificates, photographs and attendance records.",
           "is_source_silent": false,
@@ -961,6 +1186,15 @@ export const COLLEGE_FIELD_SCHEMA = {
           "allowed_types": [
             "EVID_C15_CENTRE_ORDER"
           ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
+          ],
           "documentary_requirement": "Centre notification, calendar, activity reports, participation certificates, photographs and attendance records.",
           "is_source_silent": false,
           "is_unresolved": false
@@ -985,6 +1219,15 @@ export const COLLEGE_FIELD_SCHEMA = {
           "canonical_type": "EVID_C15_CENTRE_ORDER",
           "allowed_types": [
             "EVID_C15_CENTRE_ORDER"
+          ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
           ],
           "documentary_requirement": "Centre notification, calendar, activity reports, participation certificates, photographs and attendance records.",
           "is_source_silent": false,
@@ -1011,6 +1254,15 @@ export const COLLEGE_FIELD_SCHEMA = {
           "allowed_types": [
             "EVID_C15_CENTRE_ORDER"
           ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
+          ],
           "documentary_requirement": "Centre notification, calendar, activity reports, participation certificates, photographs and attendance records.",
           "is_source_silent": false,
           "is_unresolved": false
@@ -1035,6 +1287,15 @@ export const COLLEGE_FIELD_SCHEMA = {
           "canonical_type": "EVID_C15_CENTRE_ORDER",
           "allowed_types": [
             "EVID_C15_CENTRE_ORDER"
+          ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
           ],
           "documentary_requirement": "Centre notification, calendar, activity reports, participation certificates, photographs and attendance records.",
           "is_source_silent": false,
@@ -1067,6 +1328,15 @@ export const COLLEGE_FIELD_SCHEMA = {
           "allowed_types": [
             "EVID_C16_ICC_ORDERS"
           ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
+          ],
           "documentary_requirement": "Orders/notifications, photographs, SAKSHAM proof, workshop report and attendance.",
           "is_source_silent": false,
           "is_unresolved": false
@@ -1091,6 +1361,15 @@ export const COLLEGE_FIELD_SCHEMA = {
           "canonical_type": "EVID_C16_ICC_ORDERS",
           "allowed_types": [
             "EVID_C16_ICC_ORDERS"
+          ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
           ],
           "documentary_requirement": "Orders/notifications, photographs, SAKSHAM proof, workshop report and attendance.",
           "is_source_silent": false,
@@ -1117,6 +1396,15 @@ export const COLLEGE_FIELD_SCHEMA = {
           "allowed_types": [
             "EVID_C16_ICC_ORDERS"
           ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
+          ],
           "documentary_requirement": "Orders/notifications, photographs, SAKSHAM proof, workshop report and attendance.",
           "is_source_silent": false,
           "is_unresolved": false
@@ -1142,6 +1430,15 @@ export const COLLEGE_FIELD_SCHEMA = {
           "allowed_types": [
             "EVID_C16_ICC_ORDERS"
           ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
+          ],
           "documentary_requirement": "Orders/notifications, photographs, SAKSHAM proof, workshop report and attendance.",
           "is_source_silent": false,
           "is_unresolved": false
@@ -1166,6 +1463,15 @@ export const COLLEGE_FIELD_SCHEMA = {
           "canonical_type": "EVID_C16_ICC_ORDERS",
           "allowed_types": [
             "EVID_C16_ICC_ORDERS"
+          ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
           ],
           "documentary_requirement": "Orders/notifications, photographs, SAKSHAM proof, workshop report and attendance.",
           "is_source_silent": false,
@@ -1210,6 +1516,15 @@ export const COLLEGE_FIELD_SCHEMA = {
           "allowed_types": [
             "EVID_C17_STUDENT_LIST"
           ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
+          ],
           "documentary_requirement": "Student participation list, activity reports, photographs, certificates and community feedback.",
           "is_source_silent": false,
           "is_unresolved": false
@@ -1244,6 +1559,15 @@ export const COLLEGE_FIELD_SCHEMA = {
           "allowed_types": [
             "EVID_C18_ACTIVITY_REPORTS"
           ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
+          ],
           "documentary_requirement": "Activity reports with SDG mapping, photographs, audit reports, club notification and outcome records.",
           "is_source_silent": false,
           "is_unresolved": false
@@ -1268,6 +1592,15 @@ export const COLLEGE_FIELD_SCHEMA = {
           "canonical_type": "EVID_C18_ACTIVITY_REPORTS",
           "allowed_types": [
             "EVID_C18_ACTIVITY_REPORTS"
+          ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
           ],
           "documentary_requirement": "Activity reports with SDG mapping, photographs, audit reports, club notification and outcome records.",
           "is_source_silent": false,
@@ -1294,6 +1627,15 @@ export const COLLEGE_FIELD_SCHEMA = {
           "allowed_types": [
             "EVID_C18_ACTIVITY_REPORTS"
           ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
+          ],
           "documentary_requirement": "Activity reports with SDG mapping, photographs, audit reports, club notification and outcome records.",
           "is_source_silent": false,
           "is_unresolved": false
@@ -1318,6 +1660,15 @@ export const COLLEGE_FIELD_SCHEMA = {
           "canonical_type": "EVID_C18_ACTIVITY_REPORTS",
           "allowed_types": [
             "EVID_C18_ACTIVITY_REPORTS"
+          ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
           ],
           "documentary_requirement": "Activity reports with SDG mapping, photographs, audit reports, club notification and outcome records.",
           "is_source_silent": false,
@@ -1369,6 +1720,15 @@ export const COLLEGE_FIELD_SCHEMA = {
           "allowed_types": [
             "EVID_C19_FILING_CERTS"
           ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
+          ],
           "documentary_requirement": "Patent filing/grant certificates, IPR cell records, innovation reports.",
           "is_source_silent": false,
           "is_unresolved": false
@@ -1413,6 +1773,15 @@ export const COLLEGE_FIELD_SCHEMA = {
           "allowed_types": [
             "EVID_C19_GRANT_CERTS"
           ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
+          ],
           "documentary_requirement": "Patent filing/grant certificates, IPR cell records, innovation reports.",
           "is_source_silent": false,
           "is_unresolved": false
@@ -1455,6 +1824,15 @@ export const COLLEGE_FIELD_SCHEMA = {
           "status": "UNRESOLVED_MISSING",
           "canonical_type": null,
           "allowed_types": [],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
+          ],
           "documentary_requirement": null,
           "is_source_silent": false,
           "is_unresolved": true
@@ -1520,6 +1898,15 @@ export const COLLEGE_FIELD_SCHEMA = {
           "allowed_types": [
             "EVID_C20_NAAC_CERT"
           ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
+          ],
           "documentary_requirement": "NAAC certificate, NIRF submission proof, AISHE certificate, IQAC/AQAR records.",
           "is_source_silent": false,
           "is_unresolved": false
@@ -1544,6 +1931,15 @@ export const COLLEGE_FIELD_SCHEMA = {
           "canonical_type": "EVID_C20_NIRF_PROOF",
           "allowed_types": [
             "EVID_C20_NIRF_PROOF"
+          ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
           ],
           "documentary_requirement": "NAAC certificate, NIRF submission proof, AISHE certificate, IQAC/AQAR records.",
           "is_source_silent": false,
@@ -1570,6 +1966,15 @@ export const COLLEGE_FIELD_SCHEMA = {
           "allowed_types": [
             "EVID_C20_AISHE_CERT"
           ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
+          ],
           "documentary_requirement": "NAAC certificate, NIRF submission proof, AISHE certificate, IQAC/AQAR records.",
           "is_source_silent": false,
           "is_unresolved": false
@@ -1594,6 +1999,15 @@ export const COLLEGE_FIELD_SCHEMA = {
           "canonical_type": "EVID_C20_IQAC_MINUTES",
           "allowed_types": [
             "EVID_C20_IQAC_MINUTES"
+          ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
           ],
           "documentary_requirement": "NAAC certificate, NIRF submission proof, AISHE certificate, IQAC/AQAR records.",
           "is_source_silent": false,
@@ -1645,6 +2059,15 @@ export const COLLEGE_FIELD_SCHEMA = {
           "allowed_types": [
             "EVID_C21_ACTIVITY_REPORTS"
           ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
+          ],
           "documentary_requirement": "Activity reports, photographs, attendance, certificates and curriculum/activity calendar.",
           "is_source_silent": false,
           "is_unresolved": false
@@ -1669,6 +2092,15 @@ export const COLLEGE_FIELD_SCHEMA = {
           "canonical_type": "EVID_C21_ACTIVITY_REPORTS",
           "allowed_types": [
             "EVID_C21_ACTIVITY_REPORTS"
+          ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
           ],
           "documentary_requirement": "Activity reports, photographs, attendance, certificates and curriculum/activity calendar.",
           "is_source_silent": false,
@@ -1701,6 +2133,15 @@ export const COLLEGE_FIELD_SCHEMA = {
           "allowed_types": [
             "EVID_C22_NODAL_ORDER"
           ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
+          ],
           "documentary_requirement": "Office order for nomination of Student Feedback Nodal Officer, SOPs, Feedback forms/dashboard, analysis report, ATR and minutes of meeting.",
           "is_source_silent": false,
           "is_unresolved": false
@@ -1725,6 +2166,15 @@ export const COLLEGE_FIELD_SCHEMA = {
           "canonical_type": "EVID_C22_NODAL_ORDER",
           "allowed_types": [
             "EVID_C22_NODAL_ORDER"
+          ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
           ],
           "documentary_requirement": "Office order for nomination of Student Feedback Nodal Officer, SOPs, Feedback forms/dashboard, analysis report, ATR and minutes of meeting.",
           "is_source_silent": false,
@@ -1762,6 +2212,15 @@ export const UNIVERSITY_FIELD_SCHEMA = {
           "canonical_type": "EVID_U1_APPROVAL",
           "allowed_types": [
             "EVID_U1_APPROVAL"
+          ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
           ],
           "documentary_requirement": "Approved curriculum / scheme of examination / BoS or Academic Council approval.",
           "is_source_silent": false,
@@ -1806,6 +2265,15 @@ export const UNIVERSITY_FIELD_SCHEMA = {
           "allowed_types": [
             "EVID_U2_COURSE_LIST"
           ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
+          ],
           "documentary_requirement": "List of courses, language-wise material, timetable/exam support notification.",
           "is_source_silent": false,
           "is_unresolved": false
@@ -1848,6 +2316,15 @@ export const UNIVERSITY_FIELD_SCHEMA = {
           "canonical_type": "EVID_U3_SYLLABUS",
           "allowed_types": [
             "EVID_U3_SYLLABUS"
+          ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
           ],
           "documentary_requirement": "Syllabus, course outlines, approvals, activity/project records.",
           "is_source_silent": false,
@@ -1894,6 +2371,15 @@ export const UNIVERSITY_FIELD_SCHEMA = {
             "EVID_U4_IDP",
             "EVID_U4_TARGET_SHEET"
           ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
+          ],
           "documentary_requirement": "Approved IDP, target sheet, progress report, supporting records.",
           "is_source_silent": false,
           "is_unresolved": false
@@ -1932,6 +2418,15 @@ export const UNIVERSITY_FIELD_SCHEMA = {
             "EVID_U4_PROGRESS_REPORT",
             "EVID_U4_IDP",
             "EVID_U4_TARGET_SHEET"
+          ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
           ],
           "documentary_requirement": "Approved IDP, target sheet, progress report, supporting records.",
           "is_source_silent": false,
@@ -1976,6 +2471,15 @@ export const UNIVERSITY_FIELD_SCHEMA = {
           "allowed_types": [
             "EVID_U5_HOI_CERT"
           ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
+          ],
           "documentary_requirement": "Certificate from Head of Institution.",
           "is_source_silent": false,
           "is_unresolved": false
@@ -2004,6 +2508,15 @@ export const UNIVERSITY_FIELD_SCHEMA = {
           "allowed_types": [
             "EVID_U5_HOI_CERT"
           ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
+          ],
           "documentary_requirement": "Certificate from Head of Institution.",
           "is_source_silent": false,
           "is_unresolved": false
@@ -2013,7 +2526,7 @@ export const UNIVERSITY_FIELD_SCHEMA = {
   },
   "U6": {
     "code": "U6",
-    "evidence_text": "The source lists no parameter-specific evidence; the general instruction requires documentary evidence for all marks.",
+    "evidence_text": "U6.A: Examination amendment ordinance approved/signed by competent authority (PDF only). U6.B: Implemented pedagogical interventions or ICT tools documentation approved/signed by competent authority (PDF only).",
     "subcriteria": {
       "U6.A": {
         "code": "U6.A",
@@ -2027,7 +2540,7 @@ export const UNIVERSITY_FIELD_SCHEMA = {
           }
         ],
         "period_bound": false,
-        "note": "",
+        "note": "Requires relevant examination amendment ordinance approved/signed by competent authority (PDF only).",
         "evidence_academic_year": null,
         "evidence": {
           "status": "ACTIVE",
@@ -2035,7 +2548,10 @@ export const UNIVERSITY_FIELD_SCHEMA = {
           "allowed_types": [
             "EVID_U6_ORDINANCE_GAZETTE"
           ],
-          "documentary_requirement": "Amended Examination Ordinance for assessing learning outcomes (general instruction: documentary evidence required)",
+          "allowed_file_formats": [
+            "pdf"
+          ],
+          "documentary_requirement": "Relevant examination amendment ordinance, approved/signed by the competent authority",
           "is_source_silent": false,
           "is_unresolved": false
         }
@@ -2055,7 +2571,7 @@ export const UNIVERSITY_FIELD_SCHEMA = {
           }
         ],
         "period_bound": false,
-        "note": "",
+        "note": "Requires documentation demonstrating implemented pedagogical interventions or ICT tools approved/signed by competent authority (PDF only).",
         "evidence_academic_year": null,
         "evidence": {
           "status": "ACTIVE",
@@ -2063,7 +2579,10 @@ export const UNIVERSITY_FIELD_SCHEMA = {
           "allowed_types": [
             "EVID_U6_PEDAGOGY_RECORDS"
           ],
-          "documentary_requirement": "Records of experiential-learning / problem-solving interventions implemented (general instruction: documentary evidence required)",
+          "allowed_file_formats": [
+            "pdf"
+          ],
+          "documentary_requirement": "Relevant documentation demonstrating implemented pedagogical interventions or ICT tools, approved/signed by the competent authority",
           "is_source_silent": false,
           "is_unresolved": false
         }
@@ -2094,6 +2613,15 @@ export const UNIVERSITY_FIELD_SCHEMA = {
           "allowed_types": [
             "EVID_U7_APPOINTMENT"
           ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
+          ],
           "documentary_requirement": "Appointment order, workload/course record, attendance, activity report.",
           "is_source_silent": false,
           "is_unresolved": false
@@ -2118,6 +2646,15 @@ export const UNIVERSITY_FIELD_SCHEMA = {
           "canonical_type": "EVID_U7_TEACHING_LOGS",
           "allowed_types": [
             "EVID_U7_TEACHING_LOGS"
+          ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
           ],
           "documentary_requirement": "Appointment order, workload/course record, attendance, activity report.",
           "is_source_silent": false,
@@ -2144,6 +2681,15 @@ export const UNIVERSITY_FIELD_SCHEMA = {
           "allowed_types": [
             "EVID_U7_WORKSHOP_REPORTS"
           ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
+          ],
           "documentary_requirement": "Appointment order, workload/course record, attendance, activity report.",
           "is_source_silent": false,
           "is_unresolved": false
@@ -2168,6 +2714,15 @@ export const UNIVERSITY_FIELD_SCHEMA = {
           "canonical_type": "EVID_U7_PROJECT_REPORTS",
           "allowed_types": [
             "EVID_U7_PROJECT_REPORTS"
+          ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
           ],
           "documentary_requirement": "Appointment order, workload/course record, attendance, activity report.",
           "is_source_silent": false,
@@ -2219,6 +2774,15 @@ export const UNIVERSITY_FIELD_SCHEMA = {
           "allowed_types": [
             "EVID_U8_INCUBATION_REG"
           ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
+          ],
           "documentary_requirement": "Startup registration/incubation records, funding/revenue/commercialization proof.",
           "is_source_silent": false,
           "is_unresolved": false
@@ -2246,6 +2810,15 @@ export const UNIVERSITY_FIELD_SCHEMA = {
           "canonical_type": "EVID_U8_INCUBATION_REG",
           "allowed_types": [
             "EVID_U8_INCUBATION_REG"
+          ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
           ],
           "documentary_requirement": "Startup registration/incubation records, funding/revenue/commercialization proof.",
           "is_source_silent": false,
@@ -2306,6 +2879,15 @@ export const UNIVERSITY_FIELD_SCHEMA = {
           "allowed_types": [
             "EVID_U9_MOU"
           ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
+          ],
           "documentary_requirement": "Signed MoU/LoI, activity reports, participant list, credit/research outputs.",
           "is_source_silent": false,
           "is_unresolved": false
@@ -2350,6 +2932,15 @@ export const UNIVERSITY_FIELD_SCHEMA = {
           "allowed_types": [
             "EVID_U9_MOU"
           ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
+          ],
           "documentary_requirement": "Signed MoU/LoI, activity reports, participant list, credit/research outputs.",
           "is_source_silent": false,
           "is_unresolved": false
@@ -2381,6 +2972,15 @@ export const UNIVERSITY_FIELD_SCHEMA = {
           "allowed_types": [
             "EVID_U10_REG_CERT"
           ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
+          ],
           "documentary_requirement": "Alumni report, database summary, event reports, invitations, photographs, proceedings.",
           "is_source_silent": false,
           "is_unresolved": false
@@ -2405,6 +3005,15 @@ export const UNIVERSITY_FIELD_SCHEMA = {
           "canonical_type": "EVID_U10_PORTAL_PROOF",
           "allowed_types": [
             "EVID_U10_PORTAL_PROOF"
+          ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
           ],
           "documentary_requirement": "Alumni report, database summary, event reports, invitations, photographs, proceedings.",
           "is_source_silent": false,
@@ -2449,6 +3058,15 @@ export const UNIVERSITY_FIELD_SCHEMA = {
           "allowed_types": [
             "EVID_U10_FINANCIAL_RECORDS"
           ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
+          ],
           "documentary_requirement": "Alumni report, database summary, event reports, invitations, photographs, proceedings.",
           "is_source_silent": false,
           "is_unresolved": false
@@ -2490,6 +3108,15 @@ export const UNIVERSITY_FIELD_SCHEMA = {
           "allowed_types": [
             "EVID_U10_EVENT_REPORTS"
           ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
+          ],
           "documentary_requirement": "Alumni report, database summary, event reports, invitations, photographs, proceedings.",
           "is_source_silent": false,
           "is_unresolved": false
@@ -2521,6 +3148,15 @@ export const UNIVERSITY_FIELD_SCHEMA = {
           "allowed_types": [
             "EVID_U11_BOARDS"
           ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
+          ],
           "documentary_requirement": "Orders, screenshots, photographs, workshop reports, attendance records.",
           "is_source_silent": false,
           "is_unresolved": false
@@ -2545,6 +3181,15 @@ export const UNIVERSITY_FIELD_SCHEMA = {
           "canonical_type": "EVID_U11_BOARDS",
           "allowed_types": [
             "EVID_U11_BOARDS"
+          ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
           ],
           "documentary_requirement": "Orders, screenshots, photographs, workshop reports, attendance records.",
           "is_source_silent": false,
@@ -2571,6 +3216,15 @@ export const UNIVERSITY_FIELD_SCHEMA = {
           "allowed_types": [
             "EVID_U11_BOARDS"
           ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
+          ],
           "documentary_requirement": "Orders, screenshots, photographs, workshop reports, attendance records.",
           "is_source_silent": false,
           "is_unresolved": false
@@ -2595,6 +3249,15 @@ export const UNIVERSITY_FIELD_SCHEMA = {
           "canonical_type": "EVID_U11_BOARDS",
           "allowed_types": [
             "EVID_U11_BOARDS"
+          ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
           ],
           "documentary_requirement": "Orders, screenshots, photographs, workshop reports, attendance records.",
           "is_source_silent": false,
@@ -2627,6 +3290,15 @@ export const UNIVERSITY_FIELD_SCHEMA = {
           "allowed_types": [
             "EVID_U12_CENTRE_NOTIF"
           ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
+          ],
           "documentary_requirement": "Notification, calendar, activity reports, attendance, counselling/support records.",
           "is_source_silent": false,
           "is_unresolved": false
@@ -2651,6 +3323,15 @@ export const UNIVERSITY_FIELD_SCHEMA = {
           "canonical_type": "EVID_U12_CENTRE_NOTIF",
           "allowed_types": [
             "EVID_U12_CENTRE_NOTIF"
+          ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
           ],
           "documentary_requirement": "Notification, calendar, activity reports, attendance, counselling/support records.",
           "is_source_silent": false,
@@ -2693,6 +3374,15 @@ export const UNIVERSITY_FIELD_SCHEMA = {
           "allowed_types": [
             "EVID_U12_CENTRE_NOTIF"
           ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
+          ],
           "documentary_requirement": "Notification, calendar, activity reports, attendance, counselling/support records.",
           "is_source_silent": false,
           "is_unresolved": false
@@ -2718,6 +3408,15 @@ export const UNIVERSITY_FIELD_SCHEMA = {
           "allowed_types": [
             "EVID_U12_CENTRE_NOTIF"
           ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
+          ],
           "documentary_requirement": "Notification, calendar, activity reports, attendance, counselling/support records.",
           "is_source_silent": false,
           "is_unresolved": false
@@ -2742,6 +3441,15 @@ export const UNIVERSITY_FIELD_SCHEMA = {
           "canonical_type": "EVID_U12_CENTRE_NOTIF",
           "allowed_types": [
             "EVID_U12_CENTRE_NOTIF"
+          ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
           ],
           "documentary_requirement": "Notification, calendar, activity reports, attendance, counselling/support records.",
           "is_source_silent": false,
@@ -2786,6 +3494,15 @@ export const UNIVERSITY_FIELD_SCHEMA = {
           "allowed_types": [
             "EVID_U13_POLICY"
           ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
+          ],
           "documentary_requirement": "MOOCs policy, Academic Council approval, list of courses, student enrolment/completion data.",
           "is_source_silent": false,
           "is_unresolved": false
@@ -2829,6 +3546,15 @@ export const UNIVERSITY_FIELD_SCHEMA = {
           "allowed_types": [
             "EVID_U14_CURRICULUM"
           ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
+          ],
           "documentary_requirement": "Curriculum, course structure, elective basket, approvals, student enrolment.",
           "is_source_silent": false,
           "is_unresolved": false
@@ -2854,6 +3580,15 @@ export const UNIVERSITY_FIELD_SCHEMA = {
           "allowed_types": [
             "EVID_U14_CURRICULUM"
           ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
+          ],
           "documentary_requirement": "Curriculum, course structure, elective basket, approvals, student enrolment.",
           "is_source_silent": false,
           "is_unresolved": false
@@ -2878,6 +3613,15 @@ export const UNIVERSITY_FIELD_SCHEMA = {
           "canonical_type": "EVID_U14_CURRICULUM",
           "allowed_types": [
             "EVID_U14_CURRICULUM"
+          ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
           ],
           "documentary_requirement": "Curriculum, course structure, elective basket, approvals, student enrolment.",
           "is_source_silent": false,
@@ -2910,6 +3654,15 @@ export const UNIVERSITY_FIELD_SCHEMA = {
           "allowed_types": [
             "EVID_U15_ORDINANCE"
           ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
+          ],
           "documentary_requirement": "Notification/ordinance, MEME student format.",
           "is_source_silent": false,
           "is_unresolved": false
@@ -2934,6 +3687,15 @@ export const UNIVERSITY_FIELD_SCHEMA = {
           "canonical_type": "EVID_U15_ORDINANCE",
           "allowed_types": [
             "EVID_U15_ORDINANCE"
+          ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
           ],
           "documentary_requirement": "Notification/ordinance, MEME student format.",
           "is_source_silent": false,
@@ -2985,6 +3747,15 @@ export const UNIVERSITY_FIELD_SCHEMA = {
           "allowed_types": [
             "EVID_U16_FILING"
           ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
+          ],
           "documentary_requirement": "Patent filing acknowledgement, grant certificate, commercialisation/licensing proof.",
           "is_source_silent": false,
           "is_unresolved": false
@@ -3029,6 +3800,15 @@ export const UNIVERSITY_FIELD_SCHEMA = {
           "allowed_types": [
             "EVID_U16_GRANT"
           ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
+          ],
           "documentary_requirement": "Patent filing acknowledgement, grant certificate, commercialisation/licensing proof.",
           "is_source_silent": false,
           "is_unresolved": false
@@ -3071,6 +3851,15 @@ export const UNIVERSITY_FIELD_SCHEMA = {
           "status": "UNRESOLVED_MISSING",
           "canonical_type": null,
           "allowed_types": [],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
+          ],
           "documentary_requirement": null,
           "is_source_silent": false,
           "is_unresolved": true
@@ -3102,6 +3891,15 @@ export const UNIVERSITY_FIELD_SCHEMA = {
           "allowed_types": [
             "EVID_U17_NIRF_2026_PROOF"
           ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
+          ],
           "documentary_requirement": "NIRF submission proof and ranking/band proof.",
           "is_source_silent": false,
           "is_unresolved": false
@@ -3127,6 +3925,15 @@ export const UNIVERSITY_FIELD_SCHEMA = {
           "allowed_types": [
             "EVID_U17_NIRF_2025_RANK"
           ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
+          ],
           "documentary_requirement": "NIRF submission proof and ranking/band proof.",
           "is_source_silent": false,
           "is_unresolved": false
@@ -3136,7 +3943,7 @@ export const UNIVERSITY_FIELD_SCHEMA = {
   },
   "U18": {
     "code": "U18",
-    "evidence_text": "Adopted policy, programme list, applications assessed, credits awarded, approval records.",
+    "evidence_text": "Adopted policy, programme list, applications assessed, credits awarded, approval records, RPL format notification.",
     "subcriteria": {
       "U18.1": {
         "code": "U18.1",
@@ -3157,6 +3964,15 @@ export const UNIVERSITY_FIELD_SCHEMA = {
           "canonical_type": "EVID_U18_POLICY",
           "allowed_types": [
             "EVID_U18_POLICY"
+          ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
           ],
           "documentary_requirement": "Approved institutional RPL policy/guidelines",
           "is_source_silent": false,
@@ -3199,6 +4015,15 @@ export const UNIVERSITY_FIELD_SCHEMA = {
           "allowed_types": [
             "EVID_U18_WORKSHOP_RECORDS"
           ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
+          ],
           "documentary_requirement": "Approval records and report of the RPL awareness workshop for faculty/staff/students",
           "is_source_silent": false,
           "is_unresolved": false
@@ -3216,16 +4041,18 @@ export const UNIVERSITY_FIELD_SCHEMA = {
           }
         ],
         "period_bound": false,
-        "note": "",
+        "note": "Requires relevant notification approved/signed by competent authority (PDF only). Additional records (applications assessed, credits awarded) are not mandatory.",
         "evidence_academic_year": null,
         "evidence": {
           "status": "ACTIVE",
           "canonical_type": "EVID_U18_RPL_FORMAT",
           "allowed_types": [
-            "EVID_U18_RPL_FORMAT",
-            "EVID_U18_LEARNER_CERTS"
+            "EVID_U18_RPL_FORMAT"
           ],
-          "documentary_requirement": "RPL format for students circulated with guidelines (approval records; applications assessed / credits awarded)",
+          "allowed_file_formats": [
+            "pdf"
+          ],
+          "documentary_requirement": "Relevant notification of RPL format for students circulated with guidelines, approved/signed by the competent authority",
           "is_source_silent": false,
           "is_unresolved": false
         }
@@ -3268,6 +4095,15 @@ export const UNIVERSITY_FIELD_SCHEMA = {
           "allowed_types": [
             "EVID_U19_OBE_FRAMEWORK"
           ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
+          ],
           "documentary_requirement": "OBE framework, CO-PO mapping, attainment reports, examination/assessment records.",
           "is_source_silent": false,
           "is_unresolved": false
@@ -3292,6 +4128,15 @@ export const UNIVERSITY_FIELD_SCHEMA = {
           "canonical_type": "EVID_U19_OBE_FRAMEWORK",
           "allowed_types": [
             "EVID_U19_OBE_FRAMEWORK"
+          ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
           ],
           "documentary_requirement": "OBE framework, CO-PO mapping, attainment reports, examination/assessment records.",
           "is_source_silent": false,
@@ -3343,6 +4188,15 @@ export const UNIVERSITY_FIELD_SCHEMA = {
           "allowed_types": [
             "EVID_U20_ACTIVITY_REPORTS"
           ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
+          ],
           "documentary_requirement": "Activity reports, SDG mapping sheet, photographs, beneficiary records, annual report.",
           "is_source_silent": false,
           "is_unresolved": false
@@ -3369,6 +4223,15 @@ export const UNIVERSITY_FIELD_SCHEMA = {
             "EVID_U20_CURRICULUM_MAP",
             "EVID_U20_ACTIVITY_REPORTS"
           ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
+          ],
           "documentary_requirement": "Activity reports, SDG mapping sheet, photographs, beneficiary records, annual report.",
           "is_source_silent": false,
           "is_unresolved": false
@@ -3394,6 +4257,15 @@ export const UNIVERSITY_FIELD_SCHEMA = {
           "allowed_types": [
             "EVID_U20_SUSTAINABILITY_REPORT",
             "EVID_U20_ACTIVITY_REPORTS"
+          ],
+          "allowed_file_formats": [
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "docx",
+            "xlsx"
           ],
           "documentary_requirement": "Activity reports, SDG mapping sheet, photographs, beneficiary records, annual report.",
           "is_source_silent": false,

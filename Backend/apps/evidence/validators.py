@@ -47,6 +47,11 @@ class MimeMismatchError(FileValidationError):
     pass
 
 
+class MalformedFileError(FileValidationError):
+    """Raised when a file has matching magic bytes or headers but is structurally corrupt, malformed, or incomplete."""
+    pass
+
+
 # Disallowed executable / script extensions
 DANGEROUS_EXTENSIONS = {
     'exe', 'dll', 'so', 'dylib', 'bin', 'com', 'scr', 'msi',
@@ -233,3 +238,47 @@ class ContentValidator:
             return 'application/zip'
 
         return ""
+
+    @classmethod
+    def validate_pdf_structure(cls, content: bytes) -> None:
+        """
+        Performs deep structural verification of PDF byte content.
+        Enforces:
+        - Non-empty content (FileEmptyError).
+        - Authentic PDF magic bytes header '%PDF-' (MimeMismatchError).
+        - Minimum file length of at least 20 bytes (MalformedFileError).
+        - Terminal end-of-file marker '%%EOF' within trailing bytes (MalformedFileError).
+        - Structural parse verification when xref table is present (MalformedFileError).
+        """
+        if not content or len(content) == 0:
+            raise FileEmptyError("Uploaded file is empty (0 bytes).")
+
+        if not content.startswith(b'%PDF-'):
+            raise MimeMismatchError(
+                "File header signature does not match PDF specification (missing '%PDF-' magic bytes)."
+            )
+
+        if len(content) < 20:
+            raise MalformedFileError(
+                f"PDF file is truncated or too small ({len(content)} bytes) to contain a valid PDF structure."
+            )
+
+        # Check for %%EOF marker within the last 1024 bytes (or entire content if smaller)
+        tail = content[-1024:] if len(content) > 1024 else content
+        if b'%%EOF' not in tail:
+            raise MalformedFileError(
+                "PDF file is malformed or truncated: missing terminal '%%EOF' end-of-file marker."
+            )
+
+        # Deep PDF structural inspection if cross-reference or object table is present
+        if b'startxref' in content or b'xref' in content:
+            try:
+                import io
+                from pypdf import PdfReader
+                reader = PdfReader(io.BytesIO(content))
+                if len(reader.pages) == 0:
+                    raise MalformedFileError("PDF document is malformed: contains zero readable pages.")
+            except MalformedFileError:
+                raise
+            except Exception as read_err:
+                raise MalformedFileError(f"PDF structural parsing failed: {str(read_err)}")

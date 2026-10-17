@@ -1778,7 +1778,8 @@ export const UNIVERSITY_FRAMEWORK_DATA = {
     "aggregationStrategy": "SUM",
     "resolutionStatus": "CALCULABLE",
     "mandatoryEvidence": [
-      "EVID_U6_ORDINANCE_GAZETTE"
+      "EVID_U6_ORDINANCE_GAZETTE",
+      "EVID_U6_PEDAGOGY_RECORDS"
     ],
     "allowedEvidence": [],
     "subcriteria": [
@@ -1786,11 +1787,14 @@ export const UNIVERSITY_FRAMEWORK_DATA = {
         "code": "U6.A",
         "title": "Academic Council / EC Ordinance Notification for Exam Reforms (4 Marks)",
         "maxScore": 4.0,
-        "documentaryRequirement": "Source silent: No documentary evidence required by council specification.",
-        "canonicalEvidenceType": null,
-        "allowedEvidenceTypes": [],
-        "contractStatus": "SOURCE_SILENT",
-        "isSourceSilent": true,
+        "documentaryRequirement": "Relevant examination amendment ordinance, approved/signed by the competent authority (PDF only).",
+        "canonicalEvidenceType": "EVID_U6_ORDINANCE_GAZETTE",
+        "allowedEvidenceTypes": [
+          "EVID_U6_ORDINANCE_GAZETTE"
+        ],
+        "allowedFileFormats": ["pdf"],
+        "contractStatus": "ACTIVE",
+        "isSourceSilent": false,
         "isUnresolved": false,
         "fields": [
           {
@@ -1804,11 +1808,14 @@ export const UNIVERSITY_FRAMEWORK_DATA = {
         "code": "U6.B",
         "title": "Pedagogical Interventions & Digital Tools Implemented (4 Marks)",
         "maxScore": 4.0,
-        "documentaryRequirement": "Source silent: No documentary evidence required by council specification.",
-        "canonicalEvidenceType": null,
-        "allowedEvidenceTypes": [],
-        "contractStatus": "SOURCE_SILENT",
-        "isSourceSilent": true,
+        "documentaryRequirement": "Documentation demonstrating implemented pedagogical interventions or ICT tools, approved/signed by the competent authority (PDF only).",
+        "canonicalEvidenceType": "EVID_U6_PEDAGOGY_RECORDS",
+        "allowedEvidenceTypes": [
+          "EVID_U6_PEDAGOGY_RECORDS"
+        ],
+        "allowedFileFormats": ["pdf"],
+        "contractStatus": "ACTIVE",
+        "isSourceSilent": false,
         "isUnresolved": false,
         "fields": [
           {
@@ -2649,7 +2656,9 @@ export const UNIVERSITY_FRAMEWORK_DATA = {
     "aggregationStrategy": "SUM",
     "resolutionStatus": "CALCULABLE",
     "mandatoryEvidence": [
-      "EVID_U18_POLICY"
+      "EVID_U18_POLICY",
+      "EVID_U18_WORKSHOP_RECORDS",
+      "EVID_U18_RPL_FORMAT"
     ],
     "allowedEvidence": [],
     "subcriteria": [
@@ -2677,10 +2686,10 @@ export const UNIVERSITY_FRAMEWORK_DATA = {
         "code": "U18.2",
         "title": "Learners Formally Assessed & Awarded Credits under RPL (1 Mark)",
         "maxScore": 1.0,
-        "documentaryRequirement": "Certificates issued to learners under RPL",
-        "canonicalEvidenceType": "EVID_U18_LEARNER_CERTS",
+        "documentaryRequirement": "Approval records and report of the RPL awareness workshop for faculty/staff/students",
+        "canonicalEvidenceType": "EVID_U18_WORKSHOP_RECORDS",
         "allowedEvidenceTypes": [
-          "EVID_U18_LEARNER_CERTS"
+          "EVID_U18_WORKSHOP_RECORDS"
         ],
         "contractStatus": "ACTIVE",
         "isSourceSilent": false,
@@ -2695,14 +2704,17 @@ export const UNIVERSITY_FRAMEWORK_DATA = {
       },
       {
         "code": "U18.3",
-        "title": "Workshops / Capacity Building Conducted on RPL (2 Marks) [UNRESOLVED_MISSING]",
+        "title": "RPL format for students circulated with guidelines (2 Marks)",
         "maxScore": 2.0,
-        "documentaryRequirement": "Documentary proof required as per guidelines.",
-        "canonicalEvidenceType": null,
-        "allowedEvidenceTypes": [],
-        "contractStatus": "UNRESOLVED_MISSING",
+        "documentaryRequirement": "Relevant notification approved/signed by the competent authority (PDF only).",
+        "canonicalEvidenceType": "EVID_U18_RPL_FORMAT",
+        "allowedEvidenceTypes": [
+          "EVID_U18_RPL_FORMAT"
+        ],
+        "allowedFileFormats": ["pdf"],
+        "contractStatus": "ACTIVE",
         "isSourceSilent": false,
-        "isUnresolved": true,
+        "isUnresolved": false,
         "fields": [
           {
             "key": "verified",
@@ -2951,6 +2963,7 @@ function applyBackendSchema(frameworkData, fieldSchema) {
         sub.contractStatus = ev.status;
         sub.canonicalEvidenceType = ev.canonical_type || "";
         sub.allowedEvidenceTypes = ev.allowed_types;
+        sub.allowedFileFormats = ev.allowed_file_formats || sub.allowedFileFormats || ["pdf", "png", "jpg", "jpeg", "webp", "docx", "xlsx"];
         sub.documentaryRequirement = ev.documentary_requirement || sub.documentaryRequirement;
         sub.isSourceSilent = ev.is_source_silent;
         sub.isUnresolved = ev.is_unresolved;

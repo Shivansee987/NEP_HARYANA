@@ -270,21 +270,9 @@ class UniversityReviewEndToEndTests(TestCase):
         # ---------------------------------------------------------------------
         # Step 12: Statutory Certification by Committee Chair
         # ---------------------------------------------------------------------
-        # Official University certification is held until the U6 / U18.3 council decision (FIN-03) ...
+        # With U6 and U18.3 approved and active in the evidence taxonomy, certification proceeds directly:
         with patch.object(UniversityAssessmentService, "check_assessment_readiness", return_value=(True, [], None)), \
              patch.object(UniversityAssessmentService, "evaluate_assessment_scoring", side_effect=mock_eval_scoring):
-            held_res = client.post(
-                f"/api/v1/university/assessments/{assessment_id}/certify/",
-                {"remarks": "Statutory audit completed. Merit score certified by Chair."},
-                format="json",
-            )
-        self.assertEqual(held_res.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(held_res.data["code"], "POLICY_DECISION_REQUIRED")
-
-        # ... and proceeds once the decision is reflected in the evidence taxonomy (simulated here).
-        with patch.object(UniversityAssessmentService, "check_assessment_readiness", return_value=(True, [], None)), \
-             patch.object(UniversityAssessmentService, "evaluate_assessment_scoring", side_effect=mock_eval_scoring), \
-             council_decision_resolved():
             cert_res = client.post(
                 f"/api/v1/university/assessments/{assessment_id}/certify/",
                 {"remarks": "Statutory audit completed. Merit score certified by Chair."},

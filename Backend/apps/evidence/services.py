@@ -887,6 +887,21 @@ class EvidenceService:
                 doc.evidence_type = derived_type
                 doc.save(update_fields=['evidence_type'])
 
+        # Enforce subcriterion file format restrictions
+        if contract and getattr(contract, 'allowed_file_formats', None):
+            doc_ext = (doc.original_filename or "").split(".")[-1].lower().strip()
+            if doc_ext not in contract.allowed_file_formats:
+                from apps.evidence.validators import UnsupportedFileTypeError
+                raise UnsupportedFileTypeError(
+                    f"Subcriterion {param_clean}:{sub_clean} requires evidence in {list(contract.allowed_file_formats)} format; "
+                    f"document '{doc.original_filename}' is not permitted."
+                )
+            if tuple(contract.allowed_file_formats) == ("pdf",) and doc.mime_type != "application/pdf":
+                from apps.evidence.validators import MimeMismatchError
+                raise MimeMismatchError(
+                    f"Subcriterion {param_clean}:{sub_clean} requires a PDF document, but document MIME is '{doc.mime_type}'."
+                )
+
         association, created = EvidenceSubcriterionAssociation.objects.get_or_create(
             evidence=doc,
             parameter_id=param_clean,

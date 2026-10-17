@@ -798,7 +798,7 @@ export default function CheckerAssessmentReview() {
   // Only Screening Committee members act on an assessment; administrators have read-only oversight.
   const isReviewer = user?.role === "committee" || user?.role === "committee_chair";
   const canDecide = isReviewer && canReview;
-  // Official certification held by an open council decision (e.g. University U6 / U18.3 evidence, FIN-03).
+  // Official certification held by any remaining open council decisions (e.g. Scopus undefined metric).
   const certificationHolds = (scoringEvaluation?.policy_register || []).filter(
     (p) => p.blocks_certification && p.certification_impact === "BLOCKS_OFFICIAL_CERTIFICATION"
       && (p.parameters || []).some((code) => frameworkParamCodes.includes(code))
