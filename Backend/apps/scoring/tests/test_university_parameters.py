@@ -680,9 +680,24 @@ class UniversityParametersTests(TestCase):
         )
         res = eval_fn(p_in, self.context, self.validator)
         self.assertEqual(res.raw_score, 4.0)
-        # U18.3 (2 marks) is UNRESOLVED_MISSING under Step 4C evidence taxonomy (source PDF silent on documentation)
-        self.assertEqual(res.subcriteria_results["U18.3"].evidence_gated_score, 0.0)
-        self.assertEqual(res.evidence_gated_score, 2.0)
+        # U18.3 (2 marks) has active contract EVID_U18_RPL_FORMAT
+        self.assertEqual(res.subcriteria_results["U18.3"].evidence_gated_score, 2.0)
+        self.assertEqual(res.evidence_gated_score, 4.0)
+
+        # Without evidence for U18.3, score is gated to 0.0
+        p_in_missing = ParameterInput(
+            parameter_code="U18",
+            subcriteria_inputs={
+                "U18.1": SubcriterionInput(subcriterion_code="U18.1", raw_inputs={"verified": True}, evidence_docs=[doc]),
+                "U18.2": SubcriterionInput(subcriterion_code="U18.2", raw_inputs={"verified": True},
+                                           evidence_docs=[self._make_verified_doc("EVID_U18_WORKSHOP_RECORDS")], activity_date=IN_PERIOD),
+                "U18.3": SubcriterionInput(subcriterion_code="U18.3", raw_inputs={"verified": True},
+                                           evidence_docs=[]),
+            }
+        )
+        res_missing = eval_fn(p_in_missing, self.context, self.validator)
+        self.assertEqual(res_missing.subcriteria_results["U18.3"].evidence_gated_score, 0.0)
+        self.assertEqual(res_missing.evidence_gated_score, 2.0)
 
     # -------------------------------------------------------------
     # U19: Adoption of Outcome-Based Education (OBE) (Max: 8)

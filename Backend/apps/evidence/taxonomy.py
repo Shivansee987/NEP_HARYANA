@@ -95,6 +95,7 @@ class SubcriterionEvidenceContract:
     score_unlock_requirement: Optional[str]
     status: ContractStatus = ContractStatus.ACTIVE
     allowed_evidence_types: Tuple[str, ...] = ()
+    allowed_file_formats: Tuple[str, ...] = ("pdf", "png", "jpg", "jpeg", "webp", "docx", "xlsx")
     is_source_silent: bool = False
     is_unresolved: bool = False
     is_quarantined: bool = False
@@ -130,7 +131,7 @@ MULTI_SUBCRITERION_PARAMETERS: Set[str] = {
 }
 
 # Source-silent parameters where the authoritative source specifies no documentary evidence.
-SOURCE_SILENT_PARAMETERS: Set[str] = {"U6", "C5", "C9"}
+SOURCE_SILENT_PARAMETERS: Set[str] = {"C5", "C9"}
 
 # Legacy coarse evidence types that must be quarantined from unlocking multi-subcriterion requirements
 LEGACY_COARSE_EVIDENCE_TYPES: Set[str] = {
@@ -139,7 +140,6 @@ LEGACY_COARSE_EVIDENCE_TYPES: Set[str] = {
     "EVID_U10_REG_CERT",
     "EVID_U17_NIRF_2026_PROOF",
     "EVID_C20_NAAC_CERT",
-    "EVID_U6_ORDINANCE_GAZETTE",
     "EVID_C5_SANCTION_LETTER",
     "EVID_C9_FAIR_REGISTER",
 }
@@ -225,6 +225,7 @@ def _register_contract(
     score_unlock_requirement: Optional[str],
     status: ContractStatus = ContractStatus.ACTIVE,
     allowed_evidence_types: Tuple[str, ...] = (),
+    allowed_file_formats: Tuple[str, ...] = ("pdf", "png", "jpg", "jpeg", "webp", "docx", "xlsx"),
     is_source_silent: bool = False,
     is_unresolved: bool = False,
     is_quarantined: bool = False,
@@ -242,6 +243,7 @@ def _register_contract(
         score_unlock_requirement=score_unlock_requirement,
         status=status,
         allowed_evidence_types=allowed_evidence_types,
+        allowed_file_formats=allowed_file_formats,
         is_source_silent=is_source_silent,
         is_unresolved=is_unresolved,
         is_quarantined=is_quarantined,
@@ -316,21 +318,36 @@ for sub_id, alias in [("U5.A", "U5.1"), ("U5.B", "U5.2")]:
         aliases=(alias,),
     )
 
-# U6 (2 subcriteria: U6.A, U6.B: SOURCE_SILENT)
-for sub_id, alias in [("U6.A", "U6.1"), ("U6.B", "U6.2")]:
-    _register_contract(
-        framework="UNIVERSITY_2026",
-        parameter_id="U6",
-        subcriterion_id=sub_id,
-        source_documentary_requirement=None,
-        canonical_evidence_type=None,
-        score_unlock_requirement="SOURCE_SILENT_UNRESOLVED_NO_UNLOCK",
-        status=ContractStatus.SOURCE_SILENT,
-        allowed_evidence_types=(),
-        is_source_silent=True,
-        notes="Authoritative NEP 2026 specification has no documentary evidence clause for U6. Fails closed.",
-        aliases=(alias,),
-    )
+# U6 (2 subcriteria: U6.A, U6.B: PDF only)
+_register_contract(
+    framework="UNIVERSITY_2026",
+    parameter_id="U6",
+    subcriterion_id="U6.A",
+    source_documentary_requirement="Relevant examination amendment ordinance, approved/signed by the competent authority",
+    canonical_evidence_type="EVID_U6_ORDINANCE_GAZETTE",
+    score_unlock_requirement="Verified examination amendment ordinance approved/signed by competent authority (PDF only)",
+    status=ContractStatus.ACTIVE,
+    allowed_evidence_types=("EVID_U6_ORDINANCE_GAZETTE",),
+    allowed_file_formats=("pdf",),
+    quarantined_types=("EVID_U6_PEDAGOGY_RECORDS",),
+    notes="Examination ordinance amendment requires signed ordinance in PDF format.",
+    aliases=("U6.1",),
+)
+
+_register_contract(
+    framework="UNIVERSITY_2026",
+    parameter_id="U6",
+    subcriterion_id="U6.B",
+    source_documentary_requirement="Relevant documentation demonstrating implemented pedagogical interventions or ICT tools, approved/signed by the competent authority",
+    canonical_evidence_type="EVID_U6_PEDAGOGY_RECORDS",
+    score_unlock_requirement="Verified documentation demonstrating implemented pedagogical interventions or ICT tools approved/signed by competent authority (PDF only)",
+    status=ContractStatus.ACTIVE,
+    allowed_evidence_types=("EVID_U6_PEDAGOGY_RECORDS",),
+    allowed_file_formats=("pdf",),
+    quarantined_types=("EVID_U6_ORDINANCE_GAZETTE",),
+    notes="Pedagogical interventions / ICT tools documentation in PDF format.",
+    aliases=("U6.2",),
+)
 
 # U7 (4 subcriteria: Independent, no sibling leakage)
 _register_contract(
@@ -585,6 +602,7 @@ _register_contract(
     canonical_evidence_type="EVID_U18_POLICY",
     score_unlock_requirement="Verified approved institutional RPL policy",
     allowed_evidence_types=("EVID_U18_POLICY",),
+    quarantined_types=("EVID_U18_RPL_FORMAT",),
 )
 
 _register_contract(
@@ -595,19 +613,21 @@ _register_contract(
     canonical_evidence_type="EVID_U18_WORKSHOP_RECORDS",
     score_unlock_requirement="Verified RPL awareness workshop records",
     allowed_evidence_types=("EVID_U18_WORKSHOP_RECORDS",),
+    quarantined_types=("EVID_U18_RPL_FORMAT",),
 )
 
 _register_contract(
     framework="UNIVERSITY_2026",
     parameter_id="U18",
     subcriterion_id="U18.3",
-    source_documentary_requirement=None,
-    canonical_evidence_type=None,
-    score_unlock_requirement="UNRESOLVED_MISSING_NO_UNLOCK",
-    status=ContractStatus.UNRESOLVED_MISSING,
-    allowed_evidence_types=(),
-    is_unresolved=True,
-    notes="Authoritative PDF specifies metric but evidence table is silent on required documentation. Fails closed.",
+    source_documentary_requirement="Relevant notification of RPL format for students circulated with guidelines, approved/signed by the competent authority",
+    canonical_evidence_type="EVID_U18_RPL_FORMAT",
+    score_unlock_requirement="Verified notification of RPL format approved/signed by competent authority (PDF only)",
+    status=ContractStatus.ACTIVE,
+    allowed_evidence_types=("EVID_U18_RPL_FORMAT",),
+    allowed_file_formats=("pdf",),
+    quarantined_types=("EVID_U18_POLICY", "EVID_U18_WORKSHOP_RECORDS"),
+    notes="RPL format circulation notification requires signed notification in PDF format. Additional records are not mandatory.",
 )
 
 # U19 (2 subcriteria: U19.A, U19.B)
@@ -1047,6 +1067,7 @@ def _policy_scopus_contract(contract: SubcriterionEvidenceContract) -> Subcriter
         score_unlock_requirement="Verified proof of the configured Scopus metric",
         status=ContractStatus.ACTIVE,
         allowed_evidence_types=(ev_type,),
+        allowed_file_formats=contract.allowed_file_formats,
         notes="Activated by policy SCOPUS_METRIC.",
     )
 

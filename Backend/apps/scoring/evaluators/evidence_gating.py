@@ -171,24 +171,6 @@ def evaluate_subcriterion_contract_evidence(
     #    For University U6: the University PDF general instructions mandate documentary evidence for all marks,
     #    so without approved evidence U6 fails closed (0.0, FAILED_EVIDENCE_ABSENT).
     if (contract and contract.status == ContractStatus.SOURCE_SILENT) or param_clean in SOURCE_SILENT_PARAMETERS:
-        if clean_fw == "UNIVERSITY_2026" and param_clean == "U6":
-            valid_types = ("EVID_U6_ORDINANCE_GAZETTE",) if sub_clean in ("U6.A", "U6.1") else ("EVID_U6_PEDAGOGY_RECORDS",)
-            has_verified = any(
-                doc.document_type in valid_types and doc.status == EvidenceState.EVIDENCE_VERIFIED
-                for doc in uploaded_docs
-            )
-            if has_verified:
-                trace["contract_status"] = "SOURCE_SILENT_VERIFIED"
-                trace["gating_decision"] = f"Subcriterion {sub_clean} satisfied by verified documentary proof {valid_types}."
-                return GatingStatus.PASSED_EVIDENCE_VERIFIED, 1.0, trace
-
-            trace["contract_status"] = "SOURCE_SILENT"
-            trace["gating_decision"] = (
-                f"Subcriterion {sub_clean} is SOURCE_SILENT in University framework: general instructions require "
-                f"documentary evidence for all marks, so without evidence it fails closed."
-            )
-            return GatingStatus.FAILED_EVIDENCE_ABSENT, 0.0, trace
-
         trace["contract_status"] = "SOURCE_SILENT"
         trace["gating_decision"] = (
             f"Subcriterion {sub_clean} is SOURCE_SILENT: the source defines no documentary requirement; "

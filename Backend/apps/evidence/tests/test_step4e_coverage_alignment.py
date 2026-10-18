@@ -722,27 +722,16 @@ class Step4ECoverageAlignmentTestCase(TestCase):
         self.assertNotEqual(results["U7.2"].coverage_state, CoverageState.COVERED)
 
     # =========================================================================
+    # =========================================================================
     # PHASE 4 — CASE N: Source-Silent Contracts
     # =========================================================================
     def test_case_n_source_silent_contracts(self):
         """
         Verify:
-        - U6, C5, C9 remain governed by their Step 4C SOURCE_SILENT contract state.
+        - C5, C9 remain governed by their Step 4C SOURCE_SILENT contract state.
         - Without evidence, coverage state is SOURCE_SILENT.
         - Does not invent documentary requirements or mark COVERED.
         """
-        # Test U6 (U6.A)
-        report_u = EvidenceService.evaluate_evidence_coverage(
-            assessment_id="ASSESS-SOURCE-SILENT",
-            framework="UNIVERSITY_2026",
-            institution_id="UNIV-001",
-            subcriterion_codes=["U6.A"],
-        )
-        sub_u6 = report_u.parameters[0].subcriteria[0]
-        self.assertEqual(sub_u6.coverage_state, CoverageState.SOURCE_SILENT)
-        self.assertIn(CoverageDeficiencyCode.CONTRACT_SOURCE_SILENT.value, sub_u6.deficiency_codes)
-        self.assertNotEqual(sub_u6.coverage_state, CoverageState.COVERED)
-
         # Test C5 and C9 (C5.1 and C9.I)
         report_c = EvidenceService.evaluate_evidence_coverage(
             assessment_id="ASSESS-SOURCE-SILENT-C",
@@ -767,15 +756,15 @@ class Step4ECoverageAlignmentTestCase(TestCase):
     def test_case_o_unresolved_contracts(self):
         """
         Verify:
-        - U16.III Scopus, C19.III Scopus, U18.3 RPL workshop must remain UNRESOLVED.
+        - U16.III Scopus, C19.III Scopus must remain UNRESOLVED.
         - Cannot be marked COVERED.
         """
-        # Test U16.III and U18.3
+        # Test U16.III
         report_u = EvidenceService.evaluate_evidence_coverage(
             assessment_id="ASSESS-UNRESOLVED",
             framework="UNIVERSITY_2026",
             institution_id="UNIV-001",
-            subcriterion_codes=["U16.III", "U18.3"],
+            subcriterion_codes=["U16.III"],
         )
         results_u = {s.subcriterion_id: s for p in report_u.parameters for s in p.subcriteria}
 
@@ -783,9 +772,48 @@ class Step4ECoverageAlignmentTestCase(TestCase):
         self.assertIn(CoverageDeficiencyCode.CONTRACT_UNRESOLVED.value, results_u["U16.III"].deficiency_codes)
         self.assertNotEqual(results_u["U16.III"].coverage_state, CoverageState.COVERED)
 
-        self.assertEqual(results_u["U18.3"].coverage_state, CoverageState.UNRESOLVED)
-        self.assertIn(CoverageDeficiencyCode.CONTRACT_UNRESOLVED.value, results_u["U18.3"].deficiency_codes)
-        self.assertNotEqual(results_u["U18.3"].coverage_state, CoverageState.COVERED)
+    # =========================================================================
+    # PHASE 4 — CASE P: U6 and U18.3 Coverage Alignment
+    # =========================================================================
+    def test_case_p_u6_and_u18_3_coverage_alignment(self):
+        """
+        Verify:
+        - U6.A, U6.B, and U18.3 have active contracts requiring evidence.
+        - Without evidence, they report MISSING (NO_EVIDENCE).
+        - With verified evidence, they report COVERED.
+        """
+        # Without evidence: MISSING
+        report_missing = EvidenceService.evaluate_evidence_coverage(
+            assessment_id="ASSESS-U6-U18",
+            framework="UNIVERSITY_2026",
+            institution_id="UNIV-001",
+            subcriterion_codes=["U6.A", "U6.B", "U18.3"],
+        )
+        res_missing = {s.subcriterion_id: s for p in report_missing.parameters for s in p.subcriteria}
+        self.assertEqual(res_missing["U6.A"].coverage_state, CoverageState.MISSING)
+        self.assertEqual(res_missing["U6.B"].coverage_state, CoverageState.MISSING)
+        self.assertEqual(res_missing["U18.3"].coverage_state, CoverageState.MISSING)
+
+        # Upload & verify valid evidence
+        doc_u6a = self._create_doc("UNIVERSITY_2026", "UNIV-001", "ASSESS-U6-U18", "EVID_U6_ORDINANCE_GAZETTE")
+        self._associate(doc_u6a, "U6", "U6.A", "EVID_U6_ORDINANCE_GAZETTE", VerificationDecision.VERIFIED)
+
+        doc_u6b = self._create_doc("UNIVERSITY_2026", "UNIV-001", "ASSESS-U6-U18", "EVID_U6_PEDAGOGY_RECORDS")
+        self._associate(doc_u6b, "U6", "U6.B", "EVID_U6_PEDAGOGY_RECORDS", VerificationDecision.VERIFIED)
+
+        doc_u183 = self._create_doc("UNIVERSITY_2026", "UNIV-001", "ASSESS-U6-U18", "EVID_U18_RPL_FORMAT")
+        self._associate(doc_u183, "U18", "U18.3", "EVID_U18_RPL_FORMAT", VerificationDecision.VERIFIED)
+
+        report_covered = EvidenceService.evaluate_evidence_coverage(
+            assessment_id="ASSESS-U6-U18",
+            framework="UNIVERSITY_2026",
+            institution_id="UNIV-001",
+            subcriterion_codes=["U6.A", "U6.B", "U18.3"],
+        )
+        res_covered = {s.subcriterion_id: s for p in report_covered.parameters for s in p.subcriteria}
+        self.assertEqual(res_covered["U6.A"].coverage_state, CoverageState.COVERED)
+        self.assertEqual(res_covered["U6.B"].coverage_state, CoverageState.COVERED)
+        self.assertEqual(res_covered["U18.3"].coverage_state, CoverageState.COVERED)
 
         # Test C19.III
         report_c = EvidenceService.evaluate_evidence_coverage(

@@ -123,9 +123,9 @@ UNIVERSITY_PARAMETERS: Dict[str, Dict[str, Any]] = {
            [_gt(75, 2), _gt_lte(50, 75, 1), _gt_lte(25, 50, 0.5), _lte(25, 0)]),
     ], ["EVID_U5_HOI_CERT"]),
     "U6": _param(U, "U6", "Academic Reforms", 8, PS, EvaluationType.SUM, [
-        _s("U6.A", 4, boolean("ordinance_notified")),
-        _s("U6.B", 4, per_unit("tools_count", 1)),
-    ], ["EVID_U6_ORDINANCE_GAZETTE"]),
+        _s("U6.A", 4, boolean("ordinance_notified"), mandatory_evidence=["EVID_U6_ORDINANCE_GAZETTE"]),
+        _s("U6.B", 4, per_unit("tools_count", 1), mandatory_evidence=["EVID_U6_PEDAGOGY_RECORDS"]),
+    ], ["EVID_U6_ORDINANCE_GAZETTE", "EVID_U6_PEDAGOGY_RECORDS"]),
     "U7": _param(U, "U7", "Professor of Practice (PoP) Engagement", 4, PS, EvaluationType.FIXED_ITEM_SUM, [
         _s(f"U7.{i}", 1, boolean()) for i in range(1, 5)
     ], ["EVID_U7_APPOINTMENT"]),
@@ -181,10 +181,10 @@ UNIVERSITY_PARAMETERS: Dict[str, Dict[str, Any]] = {
         _s("U17.2", 1, boolean()),
     ], ["EVID_U17_NIRF_2026_PROOF"]),
     "U18": _param(U, "U18", "Recognition of Prior Learning (RPL) Adoption and Implementation", 4, PS, EvaluationType.SUM, [
-        _s("U18.1", 1, boolean()),
-        _s("U18.2", 1, boolean()),
-        _s("U18.3", 2, boolean()),
-    ], ["EVID_U18_POLICY"]),
+        _s("U18.1", 1, boolean(), mandatory_evidence=["EVID_U18_POLICY"]),
+        _s("U18.2", 1, boolean(), mandatory_evidence=["EVID_U18_WORKSHOP_RECORDS"]),
+        _s("U18.3", 2, boolean(), mandatory_evidence=["EVID_U18_RPL_FORMAT"]),
+    ], ["EVID_U18_POLICY", "EVID_U18_WORKSHOP_RECORDS", "EVID_U18_RPL_FORMAT"]),
     "U19": _param(U, "U19", "Adoption of Outcome-Based Education (OBE)", 8, PS, EvaluationType.SUM, [
         _s("U19.A", 6, ratio("obe_programmes", "total_degree_programmes"),
            [_gt(90, 6), _gt_lte(80, 90, 5), _gt_lte(70, 80, 4), _gt_lte(60, 70, 3), _gt_lte(50, 60, 2),

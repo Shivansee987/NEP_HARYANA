@@ -49,40 +49,46 @@ class UniversityCertificationPolicyGateTests(TestCase):
              patch.object(UniversityAssessmentService, "evaluate_assessment_scoring", return_value=result):
             return UniversityReviewService.certify_assessment(self.assessment.assessment_id, actor=self.chair)
 
-    def test_open_blockers_are_reported(self):
+    def test_open_blockers_are_cleared_for_university_2026(self):
+        """Now that U6.A, U6.B, and U18.3 evidence rules are approved and active, no blockers remain for them."""
         blockers = open_certification_policy_blockers("UNIVERSITY_2026")
-        self.assertEqual(sorted(s for b in blockers for s in b["unresolved_subcriteria"]), ["U18.3", "U6.A", "U6.B"])
-        self.assertEqual(sum(b["marks"] for b in blockers), 10.0)
+        self.assertEqual(blockers, [])
         self.assertEqual(open_certification_policy_blockers("COLLEGE_2026"), [])
 
-    def test_otherwise_ready_university_is_held(self):
-        with self.assertRaises(CertificationBlockedError) as ctx:
-            self._certify_with_all_other_gates_passing()
-        self.assertEqual(ctx.exception.code, "POLICY_DECISION_REQUIRED")
-        for sub in ("U6.A", "U6.B", "U18.3"):
-            self.assertIn(sub, ctx.exception.message)
-        self.assessment.refresh_from_db()
-        self.assertEqual(self.assessment.status, "CERTIFICATION_PENDING")
-        self.assertIsNone(self.assessment.certified_score)
-
-    def test_hold_lifts_only_when_taxonomy_resolves(self):
-        with council_decision_resolved():
-            self.assertEqual(open_certification_policy_blockers("UNIVERSITY_2026"), [])
-            assessment, _ = self._certify_with_all_other_gates_passing()
+    def test_otherwise_ready_university_certifies_successfully(self):
+        """With U6 and U18.3 rules resolved in the taxonomy, certification succeeds directly."""
+        assessment, _ = self._certify_with_all_other_gates_passing()
         self.assertEqual(assessment.status, "CERTIFIED")
+        self.assertEqual(assessment.certification_status, "CERTIFIED")
+        self.assertEqual(assessment.certified_score, 90.0)
 
-    def test_configuration_alone_cannot_lift_the_hold(self):
-        decisions = {"U6_U18_3_EVIDENCE": {"status": "RESOLVED", "decided_by": "configuration only"}}
-        with self.settings(NEP_2026_POLICY_DECISIONS=decisions):
+    def test_unresolved_council_blocker_still_blocks_certification(self):
+        """Simulating an unresolved policy blocker confirms that the certification safeguard remains active."""
+        from apps.evidence.taxonomy import ContractStatus, SubcriterionEvidenceContract
+        mock_unresolved = SubcriterionEvidenceContract(
+            framework="UNIVERSITY_2026",
+            parameter_id="U6",
+            subcriterion_id="U6.A",
+            source_documentary_requirement="Unresolved requirement",
+            canonical_evidence_type=None,
+            score_unlock_requirement="Score unlock requirement",
+            status=ContractStatus.UNRESOLVED_MISSING,
+            allowed_evidence_types=(),
+            allowed_file_formats=("pdf",),
+            is_source_silent=False,
+            is_unresolved=True,
+        )
+        with patch("apps.scoring.policy_gates.get_subcriterion_contract", return_value=mock_unresolved):
+            blockers = open_certification_policy_blockers("UNIVERSITY_2026")
+            self.assertTrue(len(blockers) > 0)
             with self.assertRaises(CertificationBlockedError) as ctx:
                 self._certify_with_all_other_gates_passing()
-        self.assertEqual(ctx.exception.code, "POLICY_DECISION_REQUIRED")
+            self.assertEqual(ctx.exception.code, "POLICY_DECISION_REQUIRED")
+            self.assertIn("Official certification is on hold", ctx.exception.message)
 
-    def test_hold_is_visible_in_policy_register(self):
+    def test_resolved_status_is_visible_in_policy_register(self):
+        """U6_U18_3_EVIDENCE is reported as RESOLVED without blocking certification."""
         item = next(p for p in get_policy_register() if p["policy_id"] == "U6_U18_3_EVIDENCE")
-        self.assertTrue(item["blocks_certification"])
-        self.assertEqual(item["status"], "UNRESOLVED")
+        self.assertFalse(item["blocks_certification"])
+        self.assertEqual(item["status"], "RESOLVED")
         self.assertEqual(sorted(item["parameters"]), ["U18", "U6"])
-        with council_decision_resolved():
-            item = next(p for p in get_policy_register() if p["policy_id"] == "U6_U18_3_EVIDENCE")
-            self.assertFalse(item["blocks_certification"])

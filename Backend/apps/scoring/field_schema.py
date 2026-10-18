@@ -403,15 +403,15 @@ _UNIVERSITY: Dict[str, Dict[str, Any]] = {
         ],
     },
     "U6": {
-        "evidence_text": "The source lists no parameter-specific evidence; the general instruction requires documentary evidence for all marks.",
+        "evidence_text": "U6.A: Examination amendment ordinance approved/signed by competent authority (PDF only). U6.B: Implemented pedagogical interventions or ICT tools documentation approved/signed by competent authority (PDF only).",
         "subcriteria": [
             _sub("U6.A", "6A Assessment / Examination Reforms: Amendment in Examination Ordinance for Assessing Learning Outcomes", 4, [
                 _bool("Examination Ordinance amended for assessing learning outcomes", key="ordinance_notified"),
-            ]),
+            ], note="Requires relevant examination amendment ordinance approved/signed by competent authority (PDF only)."),
             _sub("U6.B", "6B Pedagogical Reforms: major interventions/tools to ensure experiential learning/problem solving skill "
                          "implemented by the University (1 mark per intervention/tool, max 4)", 4, [
                 _int("tools_count", "Number of interventions/tools implemented", "e.g. 4"),
-            ]),
+            ], note="Requires documentation demonstrating implemented pedagogical interventions or ICT tools approved/signed by competent authority (PDF only)."),
         ],
     },
     "U7": {
@@ -551,14 +551,15 @@ _UNIVERSITY: Dict[str, Dict[str, Any]] = {
         ],
     },
     "U18": {
-        "evidence_text": "Adopted policy, programme list, applications assessed, credits awarded, approval records.",
+        "evidence_text": "Adopted policy, programme list, applications assessed, credits awarded, approval records, RPL format notification.",
         "subcriteria": [
             _sub("U18.1", "RPL guidelines/policy adopted by the university in line with UGC/State guidelines", 1,
                  [_bool("RPL guidelines/policy adopted in line with UGC/State guidelines")]),
             _sub("U18.2", "Awareness workshop for faculty/ staff/ students for RPL organised by the HEI during the evaluation year", 1,
                  [_bool("RPL awareness workshop organised")], period_bound=True),
             _sub("U18.3", "RPL format for students circulated with guidelines", 2,
-                 [_bool("RPL format for students circulated with guidelines")]),
+                 [_bool("RPL format for students circulated with guidelines")],
+                 note="Requires relevant notification approved/signed by competent authority (PDF only). Additional records (applications assessed, credits awarded) are not mandatory."),
         ],
     },
     "U19": {

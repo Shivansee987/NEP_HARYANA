@@ -476,17 +476,16 @@ class TestStep4CEvidenceContracts(TestCase):
             )
 
     # =========================================================================
-    # TEST K: Source-silent U6/C5/C9 remain unresolved and do not receive invented evidence policy
+    # TEST K: Source-silent C5/C9 remain unresolved and do not receive invented evidence policy
     # =========================================================================
     def test_k_source_silent_subcriteria_preserved(self):
         """
-        U6 (University Academic Reforms), C5 (College Student Enrollment),
-        and C9 (College Career Orientation) have NO evidence requirement in source PDF.
+        C5 (College Student Enrollment) and C9 (College Career Orientation) have
+        NO evidence requirement in source PDF.
         They must remain explicitly marked as SOURCE_SILENT.
         No evidence may be submitted, derived, or associated (fail closed).
         """
         for fw, param, subs in [
-            ("UNIVERSITY_2026", "U6", ["U6.A", "U6.B", "U6.1", "U6.2"]),
             ("COLLEGE_2026", "C5", ["C5.1"]),
             ("COLLEGE_2026", "C9", ["C9.I", "C9.II", "C9.1", "C9.2"]),
         ]:
@@ -511,18 +510,17 @@ class TestStep4CEvidenceContracts(TestCase):
                     derive_or_validate_evidence_type(fw, parameter_id=param, subcriterion_id=s)
 
     # =========================================================================
-    # TEST L: U16/C19 Scopus and U18 workshop remain unresolved/missing
+    # TEST L: U16/C19 Scopus remain unresolved/missing
     # =========================================================================
     def test_l_unresolved_missing_evidence_preserved(self):
         """
-        U16.III (University Scopus), C19.III (College Scopus), and U18.3 (RPL workshop)
+        U16.III (University Scopus) and C19.III (College Scopus)
         have metrics mentioned in source text but the documentary evidence section is silent.
         These must remain explicitly marked as UNRESOLVED_MISSING (no fabricated identifiers).
         """
         for fw, param, sub in [
             ("UNIVERSITY_2026", "U16", "U16.III"),
             ("COLLEGE_2026", "C19", "C19.III"),
-            ("UNIVERSITY_2026", "U18", "U18.3"),
         ]:
             contract = get_subcriterion_contract(fw, param, sub)
             self.assertIsNotNone(contract, f"Contract for {param}:{sub} must exist.")
@@ -539,6 +537,53 @@ class TestStep4CEvidenceContracts(TestCase):
 
             with self.assertRaises(UnresolvedEvidenceRequirementError):
                 derive_or_validate_evidence_type(fw, parameter_id=param, subcriterion_id=sub)
+
+    # =========================================================================
+    # TEST N: U6.A, U6.B, and U18.3 Active Contracts and PDF-Only Enforcement
+    # =========================================================================
+    def test_n_u6_and_u18_3_active_contracts_and_pdf_enforcement(self):
+        """
+        Verify that U6.A, U6.B, and U18.3 have active evidence contracts with PDF-only formats
+        and strict cross-subcriterion quarantine.
+        """
+        # U6.A
+        u6a = get_subcriterion_contract("UNIVERSITY_2026", "U6", "U6.A")
+        self.assertIsNotNone(u6a)
+        self.assertEqual(u6a.status, ContractStatus.ACTIVE)
+        self.assertEqual(u6a.canonical_evidence_type, "EVID_U6_ORDINANCE_GAZETTE")
+        self.assertEqual(u6a.allowed_file_formats, ("pdf",))
+        self.assertIn("EVID_U6_PEDAGOGY_RECORDS", u6a.quarantined_types)
+
+        # U6.B
+        u6b = get_subcriterion_contract("UNIVERSITY_2026", "U6", "U6.B")
+        self.assertIsNotNone(u6b)
+        self.assertEqual(u6b.status, ContractStatus.ACTIVE)
+        self.assertEqual(u6b.canonical_evidence_type, "EVID_U6_PEDAGOGY_RECORDS")
+        self.assertEqual(u6b.allowed_file_formats, ("pdf",))
+        self.assertIn("EVID_U6_ORDINANCE_GAZETTE", u6b.quarantined_types)
+
+        # U18.3
+        u183 = get_subcriterion_contract("UNIVERSITY_2026", "U18", "U18.3")
+        self.assertIsNotNone(u183)
+        self.assertEqual(u183.status, ContractStatus.ACTIVE)
+        self.assertEqual(u183.canonical_evidence_type, "EVID_U18_RPL_FORMAT")
+        self.assertEqual(u183.allowed_file_formats, ("pdf",))
+        self.assertIn("EVID_U18_POLICY", u183.quarantined_types)
+        self.assertIn("EVID_U18_WORKSHOP_RECORDS", u183.quarantined_types)
+
+        # Cross quarantine on U18.1 and U18.2
+        u181 = get_subcriterion_contract("UNIVERSITY_2026", "U18", "U18.1")
+        self.assertIn("EVID_U18_RPL_FORMAT", u181.quarantined_types)
+        u182 = get_subcriterion_contract("UNIVERSITY_2026", "U18", "U18.2")
+        self.assertIn("EVID_U18_RPL_FORMAT", u182.quarantined_types)
+
+        # Validation rejects non-canonical or quarantined types
+        with self.assertRaises(QuarantinedLegacyEvidenceError):
+            validate_subcriterion_evidence_contract("UNIVERSITY_2026", "U6", "U6.A", "EVID_U6_PEDAGOGY_RECORDS")
+        with self.assertRaises(QuarantinedLegacyEvidenceError):
+            validate_subcriterion_evidence_contract("UNIVERSITY_2026", "U6", "U6.B", "EVID_U6_ORDINANCE_GAZETTE")
+        with self.assertRaises(QuarantinedLegacyEvidenceError):
+            validate_subcriterion_evidence_contract("UNIVERSITY_2026", "U18", "U18.3", "EVID_U18_POLICY")
 
     # =========================================================================
     # TEST M: Legacy coarse evidence cannot unlock unrelated multi-subcriterion requirements
