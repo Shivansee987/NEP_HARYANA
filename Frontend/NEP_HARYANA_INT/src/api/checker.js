@@ -1,9 +1,4 @@
-import { request, getAccessToken } from "./auth.js";
-
-const API_BASE_URL = (
-  import.meta.env.VITE_API_BASE_URL ||
-  `http://${window.location.hostname}:8000/api`
-).replace(/\/$/, "");
+import { request, getAccessToken, API_BASE_URL } from "./auth.js";
 
 /**
  * Fetch binary document with authenticated JWT header.

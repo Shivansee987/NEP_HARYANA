@@ -212,8 +212,17 @@ class EvidenceUploadPipeline:
             detected_mime, file_size = ContentValidator.validate_content(content_bytes, safe_ext)
 
         # Step 5b: Perform deep PDF structure verification for PDF-only criteria
+        # The %%EOF trailer and the xref table sit at the end of the file, so a streamed upload is validated in full,
+        # not on the 8 KB header chunk read above (the size limit has already been enforced).
         if is_pdf_only:
-            ContentValidator.validate_pdf_structure(content_bytes)
+            pdf_bytes = content_bytes
+            if is_stream:
+                if hasattr(file_stream, 'seek'):
+                    file_stream.seek(0)
+                pdf_bytes = file_stream.read()
+                if hasattr(file_stream, 'seek'):
+                    file_stream.seek(0)
+            ContentValidator.validate_pdf_structure(pdf_bytes)
 
         # Step 6: Cryptographic SHA-256 Hashing (Chunked Streaming in 64KB buffers)
         sha256_hasher = hashlib.sha256()

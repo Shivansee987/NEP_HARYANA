@@ -1,9 +1,4 @@
-import { request, getAccessToken } from "./auth";
-
-const API_BASE_URL = (
-  import.meta.env.VITE_API_BASE_URL ||
-  `http://${window.location.hostname}:8000/api`
-).replace(/\/$/, "");
+import { request, getAccessToken, API_BASE_URL } from "./auth";
 
 /**
  * Phase 9 — NEP Excellence Awards 2026 Reports & Analytics API Client

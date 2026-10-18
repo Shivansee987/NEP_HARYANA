@@ -320,6 +320,42 @@ class U6AndU18RemediationTests(TestCase):
             self.assertIsNotNone(doc)
             self.assertEqual(doc.mime_type, "application/pdf")
 
+    def test_streamed_pdf_larger_than_header_chunk_is_validated_in_full(self):
+        """A streamed upload is checked on its first 8 KB for magic bytes, but the PDF structure check needs the
+        trailer at the end of the file: a valid PDF over 8 KB is accepted and a truncated one is still rejected."""
+        from pypdf import PdfWriter
+        writer = PdfWriter()
+        writer.add_blank_page(width=72, height=72)
+        writer.add_metadata({"/Subject": "NEP 2026 evidence " * 2000})
+        buf = BytesIO()
+        writer.write(buf)
+        large_pdf = buf.getvalue()
+        self.assertGreater(len(large_pdf), 8192 * 2)
+
+        upload = dict(
+            uploader=self.nodal_user,
+            assessment_id="ASSESS-REMED-2026",
+            framework="UNIVERSITY_2026",
+            institution_type="UNIVERSITY",
+            institution_id=self.uni.aishe_code,
+            filename="gazette.pdf",
+            evidence_type="EVID_U6_ORDINANCE_GAZETTE",
+            academic_year="2025-26",
+            document_date=date(2025, 10, 1),
+            parameter_id="U6",
+            subcriterion_id="U6.A",
+        )
+        doc = EvidenceUploadPipeline.process_upload(
+            file_data=SimpleUploadedFile("gazette.pdf", large_pdf, content_type="application/pdf"), **upload
+        )
+        self.assertEqual(doc.file_size, len(large_pdf))
+
+        with self.assertRaises(MalformedFileError):
+            EvidenceUploadPipeline.process_upload(
+                file_data=SimpleUploadedFile("gazette.pdf", large_pdf[:-2048], content_type="application/pdf"),
+                **upload,
+            )
+
     def test_pdf_upload_rejects_empty_file(self):
         """Reject empty files (0 bytes) for PDF criteria."""
         with self.assertRaises(FileEmptyError):

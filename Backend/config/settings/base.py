@@ -216,6 +216,8 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = 'static/'
+# collectstatic target, served by WhiteNoise. The repository ignores staticfiles/.
+STATIC_ROOT = Path(os.environ.get('STATIC_ROOT') or BASE_DIR / 'staticfiles')
 
 # Email configuration
 EMAIL_BACKEND = os.environ.get('EMAIL_BACKEND', 'django.core.mail.backends.smtp.EmailBackend')
@@ -235,11 +237,13 @@ if '@' not in DEFAULT_FROM_EMAIL:
 
 # Media Files (Uploads)
 MEDIA_URL = '/media/'
-MEDIA_ROOT = BASE_DIR / 'media'
+# In production point MEDIA_ROOT (or EVIDENCE_STORAGE_VAULT) at a persistent volume outside the code directory, so a
+# redeploy that replaces the code cannot remove uploaded evidence. `check --deploy` warns while it is inside BASE_DIR.
+MEDIA_ROOT = Path(os.environ.get('MEDIA_ROOT') or BASE_DIR / 'media')
 
 # Evidence Storage & Validation Pipeline (NEP 2026 Phase 5B)
 MAX_EVIDENCE_FILE_SIZE = int(os.environ.get('MAX_EVIDENCE_FILE_SIZE', 25 * 1024 * 1024))  # 25 MB default
-EVIDENCE_STORAGE_VAULT = MEDIA_ROOT / 'evidence_vault'
+EVIDENCE_STORAGE_VAULT = Path(os.environ.get('EVIDENCE_STORAGE_VAULT') or MEDIA_ROOT / 'evidence_vault')
 EVIDENCE_STORAGE_BACKEND = 'apps.evidence.storage.FileSystemEvidenceStorage'
 
 

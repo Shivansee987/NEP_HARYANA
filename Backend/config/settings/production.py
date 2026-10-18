@@ -1,3 +1,5 @@
+import re
+
 from django.core.exceptions import ImproperlyConfigured
 
 from .base import *  # noqa: F401,F403
@@ -55,6 +57,37 @@ if SMS_BACKEND in _DEV_SMS_BACKENDS:  # noqa: F405
 
 if EMAIL_BACKEND in ('django.core.mail.backends.console.EmailBackend', 'django.core.mail.backends.locmem.EmailBackend'):  # noqa: F405
 	raise ImproperlyConfigured("A development e-mail backend cannot be used in production.")
+
+# Login lockout, resend cooldowns, throttling and the JWT user cache must be shared by every Gunicorn worker. With the
+# per-process memory cache a lockout or a revoked session only reaches the worker that recorded it (FIN-11).
+# base.py switches CACHES to Redis whenever REDIS_URL is set.
+if not os.environ.get('REDIS_URL', '').strip().startswith(('redis://', 'rediss://', 'unix://')):
+	raise ImproperlyConfigured("REDIS_URL must point to the production Redis instance (redis://, rediss:// or unix://).")
+
+# Only the configured production origins: base.py's localhost development origins and regexes are dropped (FIN-18).
+CORS_ALLOWED_ORIGIN_REGEXES = []
+CORS_ALLOWED_ORIGINS = [  # noqa: F405
+	origin for origin in CORS_ALLOWED_ORIGINS  # noqa: F405
+	if not re.match(r'^https?://(localhost|127\.0\.0\.1)(:\d+)?$', origin)
+]
+
+# Application and Django logs go to stderr, for the process manager (systemd/journald, App Service log stream) to
+# collect (FIN-18). Nothing here changes what is logged.
+LOG_LEVEL = os.environ.get('LOG_LEVEL', 'INFO').upper()
+LOGGING = {
+	'version': 1,
+	'disable_existing_loggers': False,
+	'formatters': {
+		'standard': {'format': '%(asctime)s %(levelname)s %(name)s [%(process)d] %(message)s'},
+	},
+	'handlers': {
+		'console': {'class': 'logging.StreamHandler', 'formatter': 'standard'},
+	},
+	'root': {'handlers': ['console'], 'level': LOG_LEVEL},
+	'loggers': {
+		'django': {'handlers': ['console'], 'level': LOG_LEVEL, 'propagate': False},
+	},
+}
 
 SECURE_SSL_REDIRECT = os.environ.get('SECURE_SSL_REDIRECT', 'True').lower() in ('true', '1')
 SECURE_HSTS_SECONDS = int(os.environ.get('SECURE_HSTS_SECONDS', 60 * 60 * 24 * 30))

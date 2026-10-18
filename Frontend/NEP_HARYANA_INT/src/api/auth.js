@@ -1,6 +1,8 @@
+// Set VITE_API_BASE_URL at build time when the API is on another origin. Without it, production builds call the
+// same origin (/api behind the reverse proxy); the :8000 fallback is only for the local Django runserver.
 export const API_BASE_URL = (
   import.meta.env.VITE_API_BASE_URL ||
-  `http://${window.location.hostname}:8000/api`
+  (import.meta.env.DEV ? `http://${window.location.hostname}:8000/api` : "/api")
 ).replace(/\/$/, "");
 
 let isRefreshing = false;
