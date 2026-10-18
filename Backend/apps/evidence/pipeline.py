@@ -153,13 +153,22 @@ class EvidenceUploadPipeline:
             else:
                 resolved_evidence_type = evidence_type or "EVID_GENERAL"
 
-        # Step 3: Extract bytes and filename
+        # Step 3: Extract bytes or stream and filename
+        is_stream = hasattr(file_data, 'chunks') or (hasattr(file_data, 'read') and not isinstance(file_data, bytes))
         if isinstance(file_data, bytes):
             content_bytes = file_data
             orig_filename = filename or "evidence.pdf"
-        elif hasattr(file_data, 'read'):
-            content_bytes = file_data.read()
+            file_stream = None
+        elif is_stream:
             orig_filename = filename or getattr(file_data, 'name', 'evidence.pdf')
+            file_stream = file_data
+            # Read first 8KB to inspect magic bytes and header structure without loading full file
+            if hasattr(file_stream, 'seek'):
+                file_stream.seek(0)
+            initial_chunk = file_stream.read(8192)
+            if hasattr(file_stream, 'seek'):
+                file_stream.seek(0)
+            content_bytes = initial_chunk
         else:
             raise EvidenceDomainError("Invalid file_data provided. Expected bytes or file-like object.")
 
@@ -191,14 +200,40 @@ class EvidenceUploadPipeline:
                 )
 
         # Step 5: Validate Content & Magic Bytes
-        detected_mime, file_size = ContentValidator.validate_content(content_bytes, safe_ext)
+        if is_stream:
+            total_size = getattr(file_stream, 'size', None)
+            detected_mime, _ = ContentValidator.validate_content(content_bytes, safe_ext)
+            max_size = ContentValidator.get_max_file_size()
+            if total_size and total_size > max_size:
+                from apps.evidence.validators import FileTooLargeError
+                raise FileTooLargeError(f"Uploaded file size ({total_size} bytes) exceeds maximum limit ({max_size} bytes).")
+            file_size = total_size or len(content_bytes)
+        else:
+            detected_mime, file_size = ContentValidator.validate_content(content_bytes, safe_ext)
 
         # Step 5b: Perform deep PDF structure verification for PDF-only criteria
         if is_pdf_only:
             ContentValidator.validate_pdf_structure(content_bytes)
 
-        # Step 6: Cryptographic SHA-256 Hashing
-        file_checksum = hashlib.sha256(content_bytes).hexdigest()
+        # Step 6: Cryptographic SHA-256 Hashing (Chunked Streaming in 64KB buffers)
+        sha256_hasher = hashlib.sha256()
+        if is_stream:
+            if hasattr(file_stream, 'seek'):
+                file_stream.seek(0)
+            if hasattr(file_stream, 'chunks'):
+                for chunk in file_stream.chunks(65536):
+                    sha256_hasher.update(chunk)
+            else:
+                while True:
+                    chunk = file_stream.read(65536)
+                    if not chunk:
+                        break
+                    sha256_hasher.update(chunk)
+            if hasattr(file_stream, 'seek'):
+                file_stream.seek(0)
+            file_checksum = sha256_hasher.hexdigest()
+        else:
+            file_checksum = hashlib.sha256(content_bytes).hexdigest()
 
         # Step 7: Storage Key Generation & Storage Persistence
         doc_uuid = uuid.uuid4()
@@ -211,8 +246,11 @@ class EvidenceUploadPipeline:
             safe_ext=safe_ext,
         )
 
-        # Save to storage layer
-        storage.save(storage_key, content_bytes, mime_type=detected_mime)
+        # Save to storage layer (via streaming or bytes)
+        if is_stream:
+            storage.save_stream(storage_key, file_stream, mime_type=detected_mime)
+        else:
+            storage.save(storage_key, content_bytes, mime_type=detected_mime)
 
         # Step 8: Atomic Database Persistence with Rollback Cleanup
         try:

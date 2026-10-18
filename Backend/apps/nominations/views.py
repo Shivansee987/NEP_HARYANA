@@ -213,6 +213,13 @@ class NominationSubmitView(APIView):
         
         nom.save()
         
+        # Invalidate dashboard stats cache on submission
+        try:
+            from apps.admin_panel.services import invalidate_dashboard_stats_cache
+            invalidate_dashboard_stats_cache()
+        except Exception:
+            pass
+        
         serializer = NominationSerializer(nom)
         return Response({
             'message': 'Nomination submitted successfully. Form is now locked.',

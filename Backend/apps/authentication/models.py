@@ -124,6 +124,8 @@ class User(AbstractBaseUser, PermissionsMixin):
         User.objects.filter(pk=self.pk).update(token_version=models.F('token_version') + 1)
         self.refresh_from_db(fields=['token_version'])
         RefreshToken.objects.filter(user=self, is_revoked=False).update(is_revoked=True)
+        from django.core.cache import cache
+        cache.delete(f"jwt_user_auth_{self.pk}")
 
     def delete(self, *args, **kwargs):
         if self.role == 'head_admin' and self.is_active:

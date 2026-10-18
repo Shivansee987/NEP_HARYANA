@@ -36,6 +36,11 @@ class BaseEvidenceStorage(ABC):
         pass
 
     @abstractmethod
+    def save_stream(self, storage_key: str, stream, mime_type: str = "application/octet-stream") -> str:
+        """Save file stream in chunks under storage_key and return confirmed storage key."""
+        pass
+
+    @abstractmethod
     def retrieve(self, storage_key: str) -> bytes:
         """Retrieve raw file bytes for given storage_key."""
         pass
@@ -111,6 +116,31 @@ class FileSystemEvidenceStorage(BaseEvidenceStorage):
                 except OSError:
                     pass
             raise StorageError(f"Failed to save evidence object to storage: {str(e)}") from e
+
+    def save_stream(self, storage_key: str, stream, mime_type: str = "application/octet-stream") -> str:
+        target_path = self._resolve_safe_path(storage_key)
+        try:
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            temp_path = target_path.with_suffix(target_path.suffix + '.tmp')
+            with open(temp_path, 'wb') as f:
+                if hasattr(stream, 'chunks'):
+                    for chunk in stream.chunks(65536):
+                        f.write(chunk)
+                else:
+                    while True:
+                        chunk = stream.read(65536)
+                        if not chunk:
+                            break
+                        f.write(chunk)
+            temp_path.replace(target_path)
+            return storage_key
+        except Exception as e:
+            if 'temp_path' in locals() and temp_path.exists():
+                try:
+                    temp_path.unlink()
+                except OSError:
+                    pass
+            raise StorageError(f"Failed to save evidence stream to storage: {str(e)}") from e
 
     def retrieve(self, storage_key: str) -> bytes:
         target_path = self._resolve_safe_path(storage_key)

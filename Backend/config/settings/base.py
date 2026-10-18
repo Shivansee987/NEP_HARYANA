@@ -225,6 +225,7 @@ EMAIL_USE_TLS = os.environ.get('EMAIL_USE_TLS', 'True').lower() in ('true', '1',
 EMAIL_USE_SSL = os.environ.get('EMAIL_USE_SSL', 'False').lower() in ('true', '1', 't')
 EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', '')
 EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
+EMAIL_TIMEOUT = int(os.environ.get('EMAIL_TIMEOUT', 5))  # 5s max socket timeout to prevent worker starvation
 DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', EMAIL_HOST_USER or 'noreply@haryana.gov.in')
 if '@' not in DEFAULT_FROM_EMAIL:
     if EMAIL_HOST_USER:
@@ -262,6 +263,19 @@ EMAIL_OTP_MAX_SENDS_PER_HOUR = int(os.environ.get('EMAIL_OTP_MAX_SENDS_PER_HOUR'
 # Password reset links (Django's default token generator) expire after this many seconds.
 PASSWORD_RESET_TIMEOUT = int(os.environ.get('PASSWORD_RESET_TIMEOUT', 60 * 60 * 24))
 
-# Shared cache for login lockout, OTP cooldown and throttling. Set REDIS_URL in multi-process deployments.
+# Shared cache for login lockout, OTP cooldown, user validation and throttling.
+# In multi-process production deployments, set REDIS_URL to share cache across Gunicorn workers.
 if os.environ.get('REDIS_URL'):
-	CACHES = {'default': {'BACKEND': 'django.core.cache.backends.redis.RedisCache', 'LOCATION': os.environ['REDIS_URL']}}
+	CACHES = {
+		'default': {
+			'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+			'LOCATION': os.environ['REDIS_URL']
+		}
+	}
+else:
+	CACHES = {
+		'default': {
+			'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+			'LOCATION': 'nep-hary-default-locmem',
+		}
+	}

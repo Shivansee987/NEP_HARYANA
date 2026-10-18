@@ -58,6 +58,25 @@ class EvidenceService:
             raise EvidenceIntegrityError("Cannot calculate checksum for empty file bytes.")
         return hashlib.sha256(file_bytes).hexdigest()
 
+    @staticmethod
+    def calculate_checksum_stream(stream) -> str:
+        """Calculate SHA-256 cryptographic hex digest of a stream in 64KB chunks."""
+        hasher = hashlib.sha256()
+        if hasattr(stream, 'seek'):
+            stream.seek(0)
+        if hasattr(stream, 'chunks'):
+            for chunk in stream.chunks(65536):
+                hasher.update(chunk)
+        else:
+            while True:
+                chunk = stream.read(65536)
+                if not chunk:
+                    break
+                hasher.update(chunk)
+        if hasattr(stream, 'seek'):
+            stream.seek(0)
+        return hasher.hexdigest()
+
     @classmethod
     @transaction.atomic
     def create_evidence(

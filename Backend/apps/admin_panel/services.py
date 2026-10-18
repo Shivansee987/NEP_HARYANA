@@ -153,7 +153,23 @@ def get_institutions_summary():
         )
     return institutions
 
-def get_dashboard_stats():
+DASHBOARD_STATS_CACHE_KEY = "admin_dashboard_stats_cache"
+DASHBOARD_STATS_CACHE_TTL = 120  # 2 minutes
+
+
+def invalidate_dashboard_stats_cache():
+    """Invalidate cached dashboard statistics on nomination or status changes."""
+    from django.core.cache import cache
+    cache.delete(DASHBOARD_STATS_CACHE_KEY)
+
+
+def get_dashboard_stats(use_cache: bool = True):
+    from django.core.cache import cache
+    if use_cache:
+        cached_stats = cache.get(DASHBOARD_STATS_CACHE_KEY)
+        if cached_stats is not None:
+            return cached_stats
+
     total_colleges = College.objects.count()
     registered_principals = User.objects.filter(role="principal").count()
     
@@ -172,7 +188,7 @@ def get_dashboard_stats():
         no_award=models.Count("id", filter=models.Q(award_category="No Award")),
     )
     
-    return {
+    stats = {
         "total_colleges": total_colleges,
         "total_applications": total_nominations,
         "submitted_applications": submitted_nominations,
@@ -190,6 +206,9 @@ def get_dashboard_stats():
             "No Award": status_aggregates["no_award"],
         },
     }
+    if use_cache:
+        cache.set(DASHBOARD_STATS_CACHE_KEY, stats, timeout=DASHBOARD_STATS_CACHE_TTL)
+    return stats
 
 def get_analytics():
     stats = get_dashboard_stats()

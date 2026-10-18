@@ -99,6 +99,10 @@ class AdminNominationReviewView(APIView):
 
         nom.save()
         
+        # Invalidate dashboard stats cache upon review update
+        from .services import invalidate_dashboard_stats_cache
+        invalidate_dashboard_stats_cache()
+        
         # Get updated institution info
         summary_list = get_institutions_summary()
         updated_item = next((item for item in summary_list if str(item["college_id"]) == str(college_id)), None)

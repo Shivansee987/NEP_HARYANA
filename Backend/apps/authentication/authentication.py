@@ -1,9 +1,22 @@
 from rest_framework.authentication import BaseAuthentication
 from rest_framework import exceptions
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from .utils import ACCESS, decode_token
 
 User = get_user_model()
+
+USER_AUTH_CACHE_TTL = 60  # seconds
+
+
+def get_user_cache_key(user_id: int) -> str:
+    return f"jwt_user_auth_{user_id}"
+
+
+def invalidate_user_cache(user_id: int):
+    """Call whenever user password, token_version, status, or role changes."""
+    cache.delete(get_user_cache_key(user_id))
+
 
 class JWTAuthentication(BaseAuthentication):
     def authenticate(self, request):
@@ -25,10 +38,18 @@ class JWTAuthentication(BaseAuthentication):
         if not user_id:
             raise exceptions.AuthenticationFailed('Token lacks user ID')
             
-        try:
-            user = User.objects.get(id=user_id)
-        except User.DoesNotExist:
-            raise exceptions.AuthenticationFailed('User not found')
+        cache_key = get_user_cache_key(user_id)
+        user = cache.get(cache_key)
+
+        if user is None:
+            try:
+                user = User.objects.select_related('college', 'university').get(id=user_id)
+            except User.DoesNotExist:
+                raise exceptions.AuthenticationFailed('User not found')
+            
+            # Cache active user for short duration to eliminate duplicate DB lookups
+            if user.is_active:
+                cache.set(cache_key, user, timeout=USER_AUTH_CACHE_TTL)
             
         if not user.is_active:
             raise exceptions.AuthenticationFailed('User account is disabled')

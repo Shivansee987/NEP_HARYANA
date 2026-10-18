@@ -742,11 +742,19 @@ class LogoutView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
+        from .authentication import invalidate_user_cache
+        if request.user and getattr(request.user, 'is_authenticated', False):
+            invalidate_user_cache(request.user.id)
+
         refresh_token = request.data.get('refresh_token')
         if refresh_token:
             from .utils import hash_token
             hashed = hash_token(refresh_token)
-            RefreshToken.objects.filter(token=hashed).update(is_revoked=True)
+            matched = RefreshToken.objects.filter(token=hashed).select_related('user').first()
+            if matched:
+                invalidate_user_cache(matched.user_id)
+                matched.is_revoked = True
+                matched.save(update_fields=['is_revoked'])
             
         return Response({'message': 'Logged out successfully.'}, status=status.HTTP_200_OK)
 
