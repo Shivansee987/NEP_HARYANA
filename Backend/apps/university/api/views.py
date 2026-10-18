@@ -420,6 +420,13 @@ class UniversityAssessmentParameterDetailView(APIView):
         serializer.is_valid(raise_exception=True)
         validated_data = serializer.validate_with_parameter(param_clean)
 
+        expected_version = request.data.get("version")
+        if expected_version is not None:
+            try:
+                expected_version = int(expected_version)
+            except (ValueError, TypeError):
+                expected_version = None
+
         updated_assessment = UniversityAssessmentService.update_parameter_inputs(
             assessment_id=assessment.assessment_id,
             parameter_code=param_clean,
@@ -427,6 +434,7 @@ class UniversityAssessmentParameterDetailView(APIView):
             entities=validated_data.get('entities', []),
             activity_date=validated_data.get('activity_date'),
             actor=request.user,
+            expected_version=expected_version,
         )
 
         submitted_data = updated_assessment.parameter_data.get(param_clean)
@@ -440,6 +448,7 @@ class UniversityAssessmentParameterDetailView(APIView):
             "mandatory_evidence": conf.get("mandatory_evidence", []),
             "allowed_evidence": conf.get("allowed_evidence", []),
             "double_counting_rule": conf.get("double_counting_rule", ""),
+            "version": updated_assessment.version,
             "submitted_input": submitted_data,
         }
         return Response(resp_data, status=status.HTTP_200_OK)

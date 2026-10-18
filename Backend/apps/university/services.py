@@ -164,15 +164,24 @@ class UniversityAssessmentService:
         entities: Optional[List[Dict[str, Any]]] = None,
         activity_date: Optional[date] = None,
         actor: Any = None,
+        expected_version: Optional[int] = None,
     ) -> UniversityAssessment:
         """
         Validates and records parameter data for a specific University parameter (U1–U20).
+        Enforces optimistic concurrency control when expected_version is provided.
         """
         param_clean = validate_parameter(parameter_code)
         try:
             assessment = UniversityAssessment.objects.select_for_update().get(assessment_id=assessment_id)
         except UniversityAssessment.DoesNotExist:
             raise UniversityValidationError(f"Assessment '{assessment_id}' not found.")
+
+        if expected_version is not None and assessment.version != expected_version:
+            raise ConcurrentUpdateError(
+                f"Assessment '{assessment_id}' was modified by another request. "
+                f"Expected version {expected_version}, but current version is {assessment.version}. "
+                "Please refresh your assessment and retry your changes."
+            )
 
         if assessment.status in ("FINALIZED", "CERTIFIED"):
             raise UniversityValidationError(f"Assessment '{assessment_id}' is finalized and cannot be modified.")
@@ -194,7 +203,8 @@ class UniversityAssessmentService:
             "updated_at": timezone.now().isoformat(),
         }
         assessment.parameter_data = data
-        assessment.save(update_fields=["parameter_data", "updated_at"])
+        assessment.version = assessment.version + 1
+        assessment.save(update_fields=["parameter_data", "version", "updated_at"])
         UniversityAssessmentAuditLog.objects.create(
             assessment=assessment,
             actor=actor if getattr(actor, "is_authenticated", False) else None,
@@ -202,7 +212,7 @@ class UniversityAssessmentService:
             previous_status=assessment.status,
             new_status=assessment.status,
             outcome="SUCCESS",
-            reason=f"Updated parameter {param_clean}",
+            reason=f"Updated parameter {param_clean} (v{assessment.version})",
         )
         return assessment
 

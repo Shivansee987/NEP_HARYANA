@@ -477,6 +477,13 @@ class CollegeAssessmentParameterDetailView(APIView):
         serializer.is_valid(raise_exception=True)
         valid_data = serializer.validate_with_parameter(param_clean)
 
+        expected_version = request.data.get("version")
+        if expected_version is not None:
+            try:
+                expected_version = int(expected_version)
+            except (ValueError, TypeError):
+                expected_version = None
+
         updated_assessment = CollegeAssessmentService.update_parameter_inputs(
             assessment_id=assessment.assessment_id,
             parameter_code=param_clean,
@@ -484,12 +491,14 @@ class CollegeAssessmentParameterDetailView(APIView):
             entities=valid_data.get("entities", []),
             activity_date=valid_data.get("activity_date"),
             actor=request.user,
+            expected_version=expected_version,
         )
 
         resp_param_data = updated_assessment.parameter_data.get(param_clean, {})
         return Response({
             "parameter_code": param_clean,
             "status": "SAVED",
+            "version": updated_assessment.version,
             "submitted_input": resp_param_data,
         }, status=status.HTTP_200_OK)
 

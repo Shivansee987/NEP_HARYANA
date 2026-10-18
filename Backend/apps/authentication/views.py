@@ -409,19 +409,23 @@ class UniversityRegisterView(APIView):
                 with transaction.atomic():
                     user = serializer.save()
                     raw_token, _ = EmailVerificationService.create_verification_token(user)
+                    
+                    # Deliver email; if delivery fails, raise exception to trigger clean atomic rollback
+                    delivered = EmailVerificationService.send_verification_email(user, raw_token)
+                    if not delivered:
+                        raise RuntimeError("EMAIL_DELIVERY_FAILED")
             except IntegrityError:
                 return Response(
                     {'email': ['A user with this email address already exists.']},
                     status=status.HTTP_400_BAD_REQUEST
                 )
-
-            delivered = EmailVerificationService.send_verification_email(user, raw_token)
-            if not delivered:
-                user.delete()
-                return Response({
-                    'detail': 'Unable to deliver verification email. Please check your email address or try again later.',
-                    'code': 'EMAIL_DELIVERY_FAILED'
-                }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+            except RuntimeError as exc:
+                if str(exc) == "EMAIL_DELIVERY_FAILED":
+                    return Response({
+                        'detail': 'Unable to deliver verification email. Please check your email address or try again later.',
+                        'code': 'EMAIL_DELIVERY_FAILED'
+                    }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+                raise
 
             user_data = UserSerializer(user).data
             return Response({
@@ -457,19 +461,23 @@ class RegisterView(APIView):
                 with transaction.atomic():
                     user = serializer.save()
                     raw_token, _ = EmailVerificationService.create_verification_token(user)
+                    
+                    # Deliver email; if delivery fails, raise exception to trigger clean atomic rollback
+                    delivered = EmailVerificationService.send_verification_email(user, raw_token)
+                    if not delivered:
+                        raise RuntimeError("EMAIL_DELIVERY_FAILED")
             except IntegrityError:
                 return Response(
                     {'email': ['A user with this email address already exists.']},
                     status=status.HTTP_400_BAD_REQUEST
                 )
-
-            delivered = EmailVerificationService.send_verification_email(user, raw_token)
-            if not delivered:
-                user.delete()
-                return Response({
-                    'detail': 'Unable to deliver verification email. Please check your email address or try again later.',
-                    'code': 'EMAIL_DELIVERY_FAILED'
-                }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+            except RuntimeError as exc:
+                if str(exc) == "EMAIL_DELIVERY_FAILED":
+                    return Response({
+                        'detail': 'Unable to deliver verification email. Please check your email address or try again later.',
+                        'code': 'EMAIL_DELIVERY_FAILED'
+                    }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+                raise
 
             user_data = UserSerializer(user).data
             return Response({
@@ -534,16 +542,28 @@ class LoginView(APIView):
                     'message': 'Signed in successfully.'
                 }, status=status.HTTP_200_OK)
             else:
-                # Failure: increment login attempts count
-                attempts = cache.get(attempts_key, 0) + 1
+                # Failure: increment login attempts count atomically
+                try:
+                    # cache.incr raises ValueError if key does not exist in standard backends
+                    attempts = cache.incr(attempts_key)
+                except (ValueError, Exception):
+                    # Key doesn't exist yet; use add to atomically initialize with timeout
+                    added = cache.add(attempts_key, 1, timeout=15 * 60)
+                    if not added:
+                        try:
+                            attempts = cache.incr(attempts_key)
+                        except Exception:
+                            cache.set(attempts_key, 1, timeout=15 * 60)
+                            attempts = 1
+                    else:
+                        attempts = 1
+
                 if attempts >= 5:
                     cache.set(lockout_key, timezone.now() + datetime.timedelta(minutes=15), 15 * 60)
                     cache.delete(attempts_key)
                     return Response({
                         'detail': 'Account locked due to too many failed login attempts. Locked for 15 minutes.'
                     }, status=status.HTTP_429_TOO_MANY_REQUESTS)
-                else:
-                    cache.set(attempts_key, attempts, 15 * 60)
                 
                 return Response({
                     'detail': 'Invalid email or password.'

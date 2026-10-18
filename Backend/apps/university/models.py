@@ -162,6 +162,10 @@ class UniversityAssessment(models.Model):
         default="",
         help_text=_("Certification status: FINALIZABLE, BLOCKED, etc.")
     )
+    version = models.PositiveIntegerField(
+        default=1,
+        help_text=_("Optimistic concurrency lock version counter to prevent lost updates.")
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

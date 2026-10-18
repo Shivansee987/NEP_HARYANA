@@ -166,15 +166,24 @@ class CollegeAssessmentService:
         entities: Optional[List[Dict[str, Any]]] = None,
         activity_date: Optional[date] = None,
         actor: Any = None,
+        expected_version: Optional[int] = None,
     ) -> CollegeAssessment:
         """
         Validates and records parameter data for a specific College parameter (C1–C22).
+        Enforces optimistic concurrency control when expected_version is provided.
         """
         param_clean = validate_parameter(parameter_code)
         try:
             assessment = CollegeAssessment.objects.select_for_update().get(assessment_id=assessment_id)
         except CollegeAssessment.DoesNotExist:
             raise CollegeValidationError(f"Assessment '{assessment_id}' not found.")
+
+        if expected_version is not None and assessment.version != expected_version:
+            raise ConcurrentUpdateError(
+                f"Assessment '{assessment_id}' was modified by another request. "
+                f"Expected version {expected_version}, but current version is {assessment.version}. "
+                "Please refresh your assessment and retry your changes."
+            )
 
         if assessment.status != "DRAFT":
             raise InvalidStateTransitionError(
@@ -193,7 +202,8 @@ class CollegeAssessmentService:
             "updated_at": timezone.now().isoformat(),
         }
         assessment.parameter_data = data
-        assessment.save(update_fields=["parameter_data", "updated_at"])
+        assessment.version = assessment.version + 1
+        assessment.save(update_fields=["parameter_data", "version", "updated_at"])
 
         CollegeAssessmentAuditLog.objects.create(
             assessment=assessment,
@@ -201,7 +211,7 @@ class CollegeAssessmentService:
             action="PARAMETER_UPDATED",
             previous_state=assessment.status,
             new_state=assessment.status,
-            reason=f"Updated parameter {param_clean}",
+            reason=f"Updated parameter {param_clean} (v{assessment.version})",
         )
 
         return assessment
