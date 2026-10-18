@@ -185,10 +185,10 @@ function Signin() {
               {status.needsEmailVerification && (
                 <div style={{ marginTop: "8px", fontSize: "12px" }}>
                   <Link
-                    to={`/auth/verify-email?email=${encodeURIComponent(status.email || formData.email)}`}
+                    to={`/auth/verify-email/otp?email=${encodeURIComponent(status.email || formData.email)}`}
                     style={{ color: "#600b0b", fontWeight: "bold", textDecoration: "underline" }}
                   >
-                    Go to Email Verification / Resend Link →
+                    Enter 6-Digit Email Verification Code →
                   </Link>
                 </div>
               )}

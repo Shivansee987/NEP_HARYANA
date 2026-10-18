@@ -255,12 +255,12 @@ export default function UniversitySignup() {
       const response = await registerUniversityAccount(payload);
       setSubmissionStatus({
         type: "success",
-        message: response.message || "Account created successfully. A verification link has been sent to your email.",
+        message: response.message || "Account created successfully. A 6-digit verification code has been sent to your email.",
       });
 
-      // Navigate to Email Verification page
+      // Navigate to Email Verification OTP page
       setTimeout(() => {
-        navigate(`/auth/verify-email?email=${encodeURIComponent(formData.email.trim().toLowerCase())}`);
+        navigate(`/auth/verify-email/otp?email=${encodeURIComponent(formData.email.trim().toLowerCase())}`);
       }, 500);
     } catch (err) {
       setSubmissionStatus({
@@ -365,15 +365,15 @@ export default function UniversitySignup() {
                   <span>Email Verification Option &amp; Protocol</span>
                 </div>
                 <p className="text-amber-900/90 leading-relaxed text-[11px]">
-                  To protect institutional security, an email verification link is automatically sent to <strong>{formData.email.trim() || "your official email"}</strong> upon clicking Register. You must click the link to verify before signing in.
+                  To protect institutional security, a 6-digit verification code is automatically sent to <strong>{formData.email.trim() || "your official email"}</strong> upon clicking Register. You must enter the code to verify before signing in.
                 </p>
                 <div className="pt-1 flex items-center justify-between border-t border-amber-200/60 mt-1">
-                  <span className="text-[11px] text-amber-800">Already registered or need a new link?</span>
+                  <span className="text-[11px] text-amber-800">Already registered or have a code?</span>
                   <Link
-                    to={`/auth/verify-email${formData.email.trim() ? `?email=${encodeURIComponent(formData.email.trim())}` : ""}`}
+                    to={`/auth/verify-email/otp${formData.email.trim() ? `?email=${encodeURIComponent(formData.email.trim())}` : ""}`}
                     className="text-[11px] font-bold text-[#600b0b] hover:underline"
                   >
-                    Open Email Verification / Resend Link →
+                    Enter 6-Digit Verification Code →
                   </Link>
                 </div>
               </div>

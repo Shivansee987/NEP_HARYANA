@@ -253,6 +253,12 @@ OTP_MAX_ATTEMPTS = int(os.environ.get('OTP_MAX_ATTEMPTS', 5))
 OTP_MAX_SENDS_PER_HOUR = int(os.environ.get('OTP_MAX_SENDS_PER_HOUR', 5))
 PHONE_VERIFICATION_TTL_MINUTES = int(os.environ.get('PHONE_VERIFICATION_TTL_MINUTES', 30))
 
+# Email OTP settings for email verification
+EMAIL_OTP_TTL_MINUTES = int(os.environ.get('EMAIL_OTP_TTL_MINUTES', 10))
+EMAIL_OTP_RESEND_COOLDOWN_SECONDS = int(os.environ.get('EMAIL_OTP_RESEND_COOLDOWN_SECONDS', 60))
+EMAIL_OTP_MAX_ATTEMPTS = int(os.environ.get('EMAIL_OTP_MAX_ATTEMPTS', 5))
+EMAIL_OTP_MAX_SENDS_PER_HOUR = int(os.environ.get('EMAIL_OTP_MAX_SENDS_PER_HOUR', 5))
+
 # Password reset links (Django's default token generator) expire after this many seconds.
 PASSWORD_RESET_TIMEOUT = int(os.environ.get('PASSWORD_RESET_TIMEOUT', 60 * 60 * 24))
 

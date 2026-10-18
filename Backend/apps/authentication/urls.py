@@ -19,6 +19,9 @@ from .views import (
     EmailVerificationVerifyView,
     EmailVerificationConfirmView,
     EmailVerificationResendView,
+    EmailOTPVerifyView,
+    EmailOTPResendView,
+    EmailOTPRequestView,
 )
 
 urlpatterns = [
@@ -50,10 +53,17 @@ urlpatterns = [
     path('auth/password/reset/confirm/', PasswordResetConfirmView.as_view(), name='password-reset-confirm-alias'),
     path('auth/activate/verify/', AccountActivationVerifyView.as_view(), name='account-activation-verify'),
     path('auth/activate/confirm/', AccountActivationConfirmView.as_view(), name='account-activation-confirm'),
-    # Email verification endpoints
+    # Email verification endpoints (link-based, backward compatible)
     path('auth/verify-email/', EmailVerificationVerifyView.as_view(), name='email-verify'),
     path('auth/verify-email/confirm/', EmailVerificationConfirmView.as_view(), name='email-verify-confirm'),
     path('auth/resend-verification/', EmailVerificationResendView.as_view(), name='email-resend-verification'),
+    # 6-Digit Email OTP verification endpoints
+    path('auth/verify-email/otp/', EmailOTPVerifyView.as_view(), name='email-otp-verify'),
+    path('auth/verify-email/otp/resend/', EmailOTPResendView.as_view(), name='email-otp-resend'),
+    path('auth/verify-email/otp/request/', EmailOTPRequestView.as_view(), name='email-otp-request'),
+    path('auth/email-otp/verify/', EmailOTPVerifyView.as_view(), name='email-otp-verify-alias'),
+    path('auth/email-otp/resend/', EmailOTPResendView.as_view(), name='email-otp-resend-alias'),
+    path('auth/email-otp/request/', EmailOTPRequestView.as_view(), name='email-otp-request-alias'),
 ]
 
 

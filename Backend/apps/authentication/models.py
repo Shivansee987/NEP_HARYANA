@@ -207,6 +207,10 @@ class UserAuditLog(models.Model):
         ('EMAIL_VERIFIED', 'Email Address Verified'),
         ('EMAIL_VERIFICATION_FAILED', 'Email Verification Failed'),
         ('EMAIL_VERIFICATION_RESENT', 'Email Verification Link Resent'),
+        ('EMAIL_OTP_SENT', 'Email Verification OTP Sent'),
+        ('EMAIL_OTP_RESENT', 'Email Verification OTP Resent'),
+        ('EMAIL_OTP_VERIFIED', 'Email Address Verified via OTP'),
+        ('EMAIL_OTP_FAILED', 'Email OTP Verification Failed'),
     )
 
     actor = models.ForeignKey(
@@ -323,6 +327,47 @@ class EmailVerificationToken(models.Model):
 
     def __str__(self):
         return f"EmailVerificationToken({self.user.email}, active={self.is_valid})"
+
+
+class EmailOTPVerification(models.Model):
+    """
+    Cryptographically secure 6-digit Email OTP challenge.
+    Stores only HMAC-SHA256 hash of the OTP bound to the normalized email and purpose.
+    The raw OTP is NEVER stored in plaintext.
+    """
+    PURPOSE_CHOICES = (
+        ('EMAIL_VERIFICATION', 'Email Verification'),
+    )
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='email_otp_verifications'
+    )
+    email = models.EmailField(db_index=True)
+    purpose = models.CharField(max_length=30, choices=PURPOSE_CHOICES, default='EMAIL_VERIFICATION')
+    otp_hash = models.CharField(max_length=64, db_index=True)
+    attempt_count = models.PositiveSmallIntegerField(default=0)
+    max_attempts = models.PositiveSmallIntegerField(default=5)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField(db_index=True)
+    is_verified = models.BooleanField(default=False, db_index=True)
+    is_revoked = models.BooleanField(default=False, db_index=True)
+    verified_at = models.DateTimeField(null=True, blank=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = 'Email OTP Verification'
+        verbose_name_plural = 'Email OTP Verifications'
+
+    @property
+    def is_valid(self):
+        from django.utils import timezone
+        return not self.is_verified and not self.is_revoked and self.attempt_count < self.max_attempts and timezone.now() < self.expires_at
+
+    def __str__(self):
+        return f"EmailOTP({self.email}, verified={self.is_verified}, active={self.is_valid})"
 
 
 

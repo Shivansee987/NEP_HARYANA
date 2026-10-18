@@ -514,11 +514,11 @@ export default function Signup({ initialType = null }) {
         type: "success",
         message:
           response.message ||
-          "University account created successfully. A verification link has been sent to your email.",
+          "University account created successfully. A 6-digit verification code has been sent to your email.",
       });
 
       setTimeout(() => {
-        navigate(`/auth/verify-email?email=${encodeURIComponent(commonFields.email.trim().toLowerCase())}`);
+        navigate(`/auth/verify-email/otp?email=${encodeURIComponent(commonFields.email.trim().toLowerCase())}`);
       }, 500);
     } catch (err) {
       setStatus({
@@ -589,11 +589,11 @@ export default function Signup({ initialType = null }) {
         type: "success",
         message:
           response.message ||
-          "College account created successfully. A verification link has been sent to your email.",
+          "College account created successfully. A 6-digit verification code has been sent to your email.",
       });
 
       setTimeout(() => {
-        navigate(`/auth/verify-email?email=${encodeURIComponent(commonFields.email.trim().toLowerCase())}`);
+        navigate(`/auth/verify-email/otp?email=${encodeURIComponent(commonFields.email.trim().toLowerCase())}`);
       }, 500);
     } catch (err) {
       setStatus({
@@ -821,10 +821,10 @@ export default function Signup({ initialType = null }) {
                   <div className="pt-1 flex items-center justify-between border-t border-amber-200/60 mt-1">
                     <span className="text-[11px] text-amber-800">Already have a pending account?</span>
                     <Link
-                      to={`/auth/verify-email${commonFields.email.trim() ? `?email=${encodeURIComponent(commonFields.email.trim())}` : ""}`}
+                      to={`/auth/verify-email/otp${commonFields.email.trim() ? `?email=${encodeURIComponent(commonFields.email.trim())}` : ""}`}
                       className="text-[11px] font-bold text-[#600b0b] hover:underline"
                     >
-                      Open Email Verification / Resend Link →
+                      Enter 6-Digit Verification Code →
                     </Link>
                   </div>
                 </div>
@@ -1200,15 +1200,15 @@ export default function Signup({ initialType = null }) {
                     <span>Email Verification Option &amp; Protocol</span>
                   </div>
                   <p className="text-amber-900/90 leading-relaxed text-[11px]">
-                    To ensure secure institutional onboarding, an email verification link is automatically sent to <strong>{commonFields.email.trim() || "your official email"}</strong> upon clicking Register. You must click the link to verify your identity before signing in.
+                    To ensure secure institutional onboarding, a 6-digit verification code is automatically sent to <strong>{commonFields.email.trim() || "your official email"}</strong> upon clicking Register. You must enter the code to verify your identity before signing in.
                   </p>
                   <div className="pt-1 flex items-center justify-between border-t border-amber-200/60 mt-1">
                     <span className="text-[11px] text-amber-800">Already have a pending account?</span>
                     <Link
-                      to={`/auth/verify-email${commonFields.email.trim() ? `?email=${encodeURIComponent(commonFields.email.trim())}` : ""}`}
+                      to={`/auth/verify-email/otp${commonFields.email.trim() ? `?email=${encodeURIComponent(commonFields.email.trim())}` : ""}`}
                       className="text-[11px] font-bold text-[#600b0b] hover:underline"
                     >
-                      Open Email Verification / Resend Link →
+                      Enter 6-Digit Verification Code →
                     </Link>
                   </div>
                 </div>

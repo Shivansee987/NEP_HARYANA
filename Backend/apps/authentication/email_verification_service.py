@@ -10,7 +10,7 @@ from django.core.cache import cache
 from django.core.mail import EmailMultiAlternatives
 from rest_framework.exceptions import ValidationError as DRFValidationError
 
-from .models import User, EmailVerificationToken, UserAuditLog
+from .models import User, EmailVerificationToken, EmailOTPVerification, UserAuditLog
 
 logger = logging.getLogger(__name__)
 
@@ -108,14 +108,46 @@ class EmailVerificationService:
         return raw_token, token_obj
 
     @classmethod
-    def send_verification_email(cls, user: User, raw_token: str) -> bool:
+    def send_verification_email(cls, user: User, raw_token: str, raw_otp: Optional[str] = None) -> bool:
         """
-        Sends the email verification link to the user's registered email address.
+        Sends the email verification message containing the 6-digit OTP and fallback verification link.
         Uses a trusted configured frontend/base URL from settings, never an untrusted host header.
         Fails safely if email delivery is unavailable.
         """
+        from .email_otp_service import EmailOTPService
+
+        norm_email = user.email.strip().lower()
+        ttl_minutes = getattr(settings, 'EMAIL_OTP_TTL_MINUTES', 10)
+        max_attempts = getattr(settings, 'EMAIL_OTP_MAX_ATTEMPTS', 5)
+
+        if not raw_otp:
+            raw_otp = EmailOTPService.generate_otp()
+            otp_hash = EmailOTPService._hmac(norm_email, raw_otp)
+            now = timezone.now()
+            expires_at = now + timedelta(minutes=ttl_minutes)
+
+            EmailOTPVerification.objects.filter(
+                user=user,
+                purpose=EmailOTPService.PURPOSE,
+                is_verified=False,
+                is_revoked=False
+            ).update(is_revoked=True)
+
+            EmailOTPVerification.objects.create(
+                user=user,
+                email=norm_email,
+                purpose=EmailOTPService.PURPOSE,
+                otp_hash=otp_hash,
+                attempt_count=0,
+                max_attempts=max_attempts,
+                expires_at=expires_at,
+                is_verified=False,
+                is_revoked=False
+            )
+
         frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173').rstrip('/')
         verification_link = f"{frontend_url}/auth/verify-email/{raw_token}"
+        otp_verification_page = f"{frontend_url}/auth/verify-email/otp?email={norm_email}"
 
         subject = "Verify Your Email Address — HSHEC Haryana Excellence Awards 2026"
         from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@haryana.gov.in')
@@ -124,13 +156,18 @@ class EmailVerificationService:
             f"Dear {user.full_name},\n\n"
             f"Thank you for registering on the Haryana State Higher Education Council (HSHEC) "
             f"NEP Excellence Awards 2026 Portal.\n\n"
-            f"Please verify your email address by visiting the following link:\n"
+            f"Your 6-digit email verification code is:\n\n"
+            f"    {raw_otp}\n\n"
+            f"This code will expire in {ttl_minutes} minutes.\n\n"
+            f"Enter this code on the verification page:\n"
+            f"{otp_verification_page}\n\n"
+            f"Alternatively, you may verify your email directly by visiting:\n"
             f"{verification_link}\n\n"
-            f"This link is single-use and will expire in 24 hours.\n\n"
-            f"Important Notice:\n"
-            f"Verifying your email verifies your contact identity. Access to institution assessment data "
+            f"Security & Governance Notice:\n"
+            f"- Never share this code with anyone.\n"
+            f"- If you did not register for this account, please ignore this email.\n"
+            f"- Verifying your email establishes your contact identity. Access to institution assessment data "
             f"remains subject to administrator approval in accordance with council governance rules.\n\n"
-            f"If you did not register for this account, please ignore this email.\n\n"
             f"Regards,\nHaryana State Higher Education Council (HSHEC)\n"
             f"Government of Haryana"
         )
@@ -144,22 +181,36 @@ class EmailVerificationService:
             <p style="font-size: 15px; color: #1e293b;">Dear <strong>{user.full_name}</strong>,</p>
             <p style="font-size: 14px; color: #334155; line-height: 1.6;">
                 Thank you for initiating registration on the official HSHEC Haryana Excellence Awards Portal.
-                To complete your applicant verification, please confirm your email address.
+                Please enter the following 6-digit verification code to complete your email verification:
             </p>
+            
             <div style="text-align: center; margin: 28px 0;">
-                <a href="{verification_link}" style="background-color: #600b0b; color: #ffffff; padding: 12px 28px; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 14px; display: inline-block;">
-                    Verify Email Address
+                <div style="display: inline-block; background-color: #fdf2f2; border: 2px dashed #600b0b; border-radius: 12px; padding: 18px 36px; text-align: center;">
+                    <span style="font-size: 36px; font-weight: 800; letter-spacing: 8px; color: #600b0b; font-family: 'Courier New', Courier, monospace;">
+                        {raw_otp}
+                    </span>
+                    <p style="margin: 8px 0 0 0; font-size: 12px; color: #7f1d1d; font-weight: 600;">
+                        Valid for {ttl_minutes} minutes
+                    </p>
+                </div>
+            </div>
+
+            <div style="text-align: center; margin: 20px 0;">
+                <a href="{otp_verification_page}" style="background-color: #600b0b; color: #ffffff; padding: 12px 28px; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 14px; display: inline-block;">
+                    Open OTP Verification Page
                 </a>
             </div>
-            <p style="font-size: 13px; color: #64748b; line-height: 1.5;">
-                Or copy and paste this secure link into your browser:<br/>
+
+            <p style="font-size: 13px; color: #64748b; line-height: 1.5; text-align: center;">
+                Or verify directly using this secure link:<br/>
                 <a href="{verification_link}" style="color: #600b0b; word-break: break-all; font-size: 12px;">{verification_link}</a>
             </p>
+
             <div style="margin-top: 24px; padding: 12px 16px; background-color: #fffbeb; border: 1px solid #fef3c7; border-radius: 8px; font-size: 12px; color: #92400e; line-height: 1.5;">
                 <strong>Governance Notice:</strong> Email verification establishes your identity. Institutional assessment access remains subject to State DHE Administrator approval.
             </div>
             <p style="font-size: 11px; color: #94a3b8; margin-top: 24px; text-align: center; border-top: 1px solid #f1f5f9; padding-top: 12px;">
-                This link will expire in 24 hours. If you did not create an account, no further action is required.
+                Do not share this verification code with anyone. If you did not create an account, no further action is required.
             </p>
         </div>
         """

@@ -302,6 +302,27 @@ export async function resendEmailVerification(email) {
   });
 }
 
+export async function verifyEmailOtp(email, otp) {
+  return request("/auth/verify-email/otp/", {
+    method: "POST",
+    body: JSON.stringify({ email, otp }),
+  });
+}
+
+export async function resendEmailOtp(email) {
+  return request("/auth/verify-email/otp/resend/", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+}
+
+export async function requestEmailOtp(email) {
+  return request("/auth/verify-email/otp/request/", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+}
+
 
 export function getDashboardPathForUser(user) {
   const role = String(user?.role || "").toLowerCase();

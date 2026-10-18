@@ -426,9 +426,12 @@ class UniversityRegisterView(APIView):
             user_data = UserSerializer(user).data
             return Response({
                 'user': user_data,
-                'message': 'University applicant registered successfully. A verification link has been sent to your email address.',
+                'message': 'University applicant registered successfully. A 6-digit verification code has been sent to your email address.',
                 'email': user.email,
                 'verification_sent': True,
+                'verification_type': 'OTP',
+                'otp_sent': True,
+                'redirect_to': '/auth/verify-email/otp',
                 'is_email_verified': False,
                 'institution_status': user.institution_status,
             }, status=status.HTTP_201_CREATED)
@@ -471,9 +474,12 @@ class RegisterView(APIView):
             user_data = UserSerializer(user).data
             return Response({
                 'user': user_data,
-                'message': 'Account created successfully. A verification link has been sent to your email address.',
+                'message': 'Account created successfully. A 6-digit verification code has been sent to your email address.',
                 'email': user.email,
                 'verification_sent': True,
+                'verification_type': 'OTP',
+                'otp_sent': True,
+                'redirect_to': '/auth/verify-email/otp',
                 'is_email_verified': False,
                 'institution_status': user.institution_status,
             }, status=status.HTTP_201_CREATED)
@@ -949,4 +955,224 @@ class EmailVerificationResendView(APIView):
             'message': 'If an unverified account exists for that email, a new verification link has been sent.',
             'cooldown_seconds': 60,
         }, status=status.HTTP_200_OK)
+
+
+def get_client_ip(request):
+    """Safely extracts client IP address from request."""
+    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+    if x_forwarded_for:
+        return x_forwarded_for.split(',')[0].strip()
+    return request.META.get('REMOTE_ADDR')
+
+
+class EmailOTPVerifyView(APIView):
+    """
+    Verifies a 6-digit email OTP.
+    - Validates exactly 6 numeric digits.
+    - Atomic row-locking prevents race conditions and double consumption.
+    - Marks user.is_email_verified = True.
+    - Does NOT grant institutional approval; institution_status remains PENDING until administrator review.
+    - Does NOT log user in automatically; directs user to the existing login page.
+    """
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        email = request.data.get('email')
+        otp = request.data.get('otp') or request.data.get('otp_code') or request.data.get('otpCode')
+        ip_address = get_client_ip(request)
+
+        if not email:
+            return Response({'detail': 'Email address is required.', 'code': 'EMAIL_REQUIRED'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        if not otp:
+            return Response({'detail': 'Verification code is required.', 'code': 'OTP_REQUIRED'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        from .email_otp_service import (
+            EmailOTPService,
+            EmailOTPError,
+            EmailOTPAttemptsExceededError,
+            EmailOTPAlreadyVerifiedError,
+            EmailOTPInvalidError
+        )
+
+        try:
+            user = EmailOTPService.verify_otp(email=email, otp_code=str(otp), ip_address=ip_address)
+            return Response({
+                'success': True,
+                'verified': True,
+                'message': 'Email address verified successfully. Please proceed to login.',
+                'email': user.email,
+                'is_email_verified': True,
+                'institution_status': user.institution_status,
+                'redirect_to': '/auth/login',
+            }, status=status.HTTP_200_OK)
+        except EmailOTPAlreadyVerifiedError as exc:
+            return Response({
+                'success': True,
+                'already_verified': True,
+                'account_already_verified': True,
+                'detail': exc.message,
+                'message': exc.message,
+                'code': exc.code,
+                'redirect_to': '/auth/login',
+            }, status=status.HTTP_200_OK)
+        except EmailOTPAttemptsExceededError as exc:
+            return Response({
+                'success': False,
+                'detail': exc.message,
+                'code': exc.code,
+            }, status=status.HTTP_429_TOO_MANY_REQUESTS)
+        except EmailOTPInvalidError as exc:
+            return Response({
+                'success': False,
+                'detail': exc.message,
+                'code': exc.code,
+            }, status=exc.status_code)
+        except EmailOTPError as exc:
+            return Response({
+                'success': False,
+                'detail': exc.message,
+                'code': exc.code,
+            }, status=exc.status_code)
+
+
+class EmailOTPResendView(APIView):
+    """
+    Resends a 6-digit email OTP for the provided email.
+    - Enforces 60-second cooldown and 5/hour rate limits.
+    - Preserves anti-enumeration defense.
+    """
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        email = request.data.get('email')
+        if not email:
+            return Response({'detail': 'Email address is required.', 'code': 'EMAIL_REQUIRED'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        ip_address = get_client_ip(request)
+
+        import hashlib
+        from .email_otp_service import (
+            EmailOTPService,
+            EmailOTPCooldownError,
+            EmailOTPRateLimitError,
+            EmailOTPDeliveryError,
+            EmailOTPError
+        )
+
+        try:
+            norm_email = email.strip().lower()
+            user = User.objects.filter(email__iexact=norm_email).first()
+            if user and user.is_email_verified:
+                return Response({
+                    'success': True,
+                    'already_verified': True,
+                    'account_already_verified': True,
+                    'email': EmailOTPService.mask_email(norm_email),
+                    'message': 'Your email address is already verified. You can sign in.',
+                    'code': 'ALREADY_VERIFIED',
+                    'redirect_to': '/auth/login',
+                }, status=status.HTTP_200_OK)
+
+            if user and not user.is_email_verified:
+                challenge, masked = EmailOTPService.send_verification_otp(user, ip_address=ip_address)
+                return Response({
+                    'success': True,
+                    'message': f'A new verification code has been sent to {masked}.',
+                    'email': masked,
+                    'cooldown_seconds': settings.EMAIL_OTP_RESEND_COOLDOWN_SECONDS,
+                    'expires_in_minutes': settings.EMAIL_OTP_TTL_MINUTES,
+                }, status=status.HTTP_200_OK)
+
+            # User not found: anti-enumeration timing defense
+            masked = EmailOTPService.mask_email(norm_email)
+            cooldown_ttl = getattr(settings, 'EMAIL_OTP_RESEND_COOLDOWN_SECONDS', 60)
+            email_hash = hashlib.sha256(norm_email.encode('utf-8')).hexdigest()[:16]
+            cooldown_key = f"email_otp_cd_{email_hash}"
+            if cache.get(cooldown_key):
+                raise EmailOTPCooldownError(retry_after=cooldown_ttl)
+            cache.set(cooldown_key, True, cooldown_ttl)
+
+            return Response({
+                'success': True,
+                'message': f'If an unverified account exists for {masked}, a new verification code has been sent.',
+                'email': masked,
+                'cooldown_seconds': cooldown_ttl,
+                'expires_in_minutes': settings.EMAIL_OTP_TTL_MINUTES,
+            }, status=status.HTTP_200_OK)
+        except EmailOTPCooldownError as exc:
+            return Response({
+                'detail': exc.message,
+                'code': exc.code,
+                'retry_after_seconds': exc.retry_after,
+            }, status=status.HTTP_429_TOO_MANY_REQUESTS)
+        except EmailOTPRateLimitError as exc:
+            return Response({
+                'detail': exc.message,
+                'code': exc.code,
+                'retry_after_seconds': exc.retry_after,
+            }, status=status.HTTP_429_TOO_MANY_REQUESTS)
+        except EmailOTPDeliveryError as exc:
+            return Response({
+                'detail': exc.message,
+                'code': exc.code,
+            }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        except EmailOTPError as exc:
+            return Response({
+                'detail': exc.message,
+                'code': exc.code,
+            }, status=exc.status_code)
+
+
+class EmailOTPRequestView(APIView):
+    """
+    Direct request for 6-digit email verification code outside signup flow.
+    - Validates email address.
+    - Avoids creating a new user account.
+    - Anti-enumeration timing defense.
+    - Handles already-verified accounts gracefully.
+    """
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        email = request.data.get('email')
+        if not email:
+            return Response({'detail': 'Email address is required.', 'code': 'EMAIL_REQUIRED'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        ip_address = get_client_ip(request)
+
+        from .email_otp_service import (
+            EmailOTPService,
+            EmailOTPCooldownError,
+            EmailOTPRateLimitError,
+            EmailOTPDeliveryError,
+            EmailOTPError
+        )
+
+        try:
+            res = EmailOTPService.request_otp_for_email(email=email, ip_address=ip_address)
+            return Response(res, status=status.HTTP_200_OK)
+        except EmailOTPCooldownError as exc:
+            return Response({
+                'detail': exc.message,
+                'code': exc.code,
+                'retry_after_seconds': exc.retry_after,
+            }, status=status.HTTP_429_TOO_MANY_REQUESTS)
+        except EmailOTPRateLimitError as exc:
+            return Response({
+                'detail': exc.message,
+                'code': exc.code,
+                'retry_after_seconds': exc.retry_after,
+            }, status=status.HTTP_429_TOO_MANY_REQUESTS)
+        except EmailOTPDeliveryError as exc:
+            return Response({
+                'detail': exc.message,
+                'code': exc.code,
+            }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        except EmailOTPError as exc:
+            return Response({
+                'detail': exc.message,
+                'code': exc.code,
+            }, status=exc.status_code)
 

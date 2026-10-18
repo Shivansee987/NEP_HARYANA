@@ -30,6 +30,7 @@ import InstitutionRequests from "./pages/Admin/InstitutionRequests";
 import EmpoweredCommitteeHome from "./pages/Empowered/EmpoweredCommitteeHome";
 import AccountActivation from "./pages/AuthRecovery/AccountActivation";
 import EmailVerification from "./pages/AuthRecovery/EmailVerification";
+import VerifyEmailOtpPage from "./pages/AuthRecovery/VerifyEmailOtpPage";
 
 
 import {
@@ -151,6 +152,14 @@ function App() {
           element={
             <GuestRoute>
               <AccountActivation />
+            </GuestRoute>
+          }
+        />
+        <Route
+          path="/auth/verify-email/otp"
+          element={
+            <GuestRoute>
+              <VerifyEmailOtpPage />
             </GuestRoute>
           }
         />
