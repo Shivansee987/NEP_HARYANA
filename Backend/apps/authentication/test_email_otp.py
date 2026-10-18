@@ -296,7 +296,8 @@ class EmailOTPVerificationTests(TestCase):
         self.assertEqual(User.objects.count(), initial_count)
 
     def test_already_verified_account_direct_request(self):
-        """15. Already-verified account receives clear already_verified response."""
+        """15. Already-verified account receives clear already_verified response without sending an OTP."""
+        mail.outbox.clear()
         User.objects.create_user(
             email="already.done@college.edu.in",
             full_name="Already Done",
@@ -312,6 +313,31 @@ class EmailOTPVerificationTests(TestCase):
 
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         self.assertTrue(res.data.get("already_verified"))
+        self.assertEqual(res.data.get("message"), "This email address is already verified. Please sign in to your account.")
+        self.assertEqual(res.data.get("redirect_to"), "/auth/login")
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_already_verified_account_resend_request(self):
+        """Already-verified account resend returns already_verified response without sending an OTP."""
+        mail.outbox.clear()
+        User.objects.create_user(
+            email="already.resend@college.edu.in",
+            full_name="Already Resend",
+            role="principal",
+            password="SecurePassword123!",
+            is_email_verified=True,
+            institution_status="VERIFIED",
+        )
+
+        res = self.client.post(reverse("email-otp-resend"), {
+            "email": "already.resend@college.edu.in"
+        }, format="json")
+
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertTrue(res.data.get("already_verified"))
+        self.assertEqual(res.data.get("message"), "This email address is already verified. Please sign in to your account.")
+        self.assertEqual(res.data.get("redirect_to"), "/auth/login")
+        self.assertEqual(len(mail.outbox), 0)
 
     def test_otp_is_never_leaked_in_responses(self):
         """16. OTPs and sensitive hashes are never exposed in any API response."""

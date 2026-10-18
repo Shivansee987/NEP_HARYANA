@@ -924,6 +924,21 @@ class EmailVerificationResendView(APIView):
         if not email:
             return Response({'detail': 'Email address is required.'}, status=status.HTTP_400_BAD_REQUEST)
 
+        norm_email = (email or '').strip().lower()
+        user = User.objects.filter(email__iexact=norm_email).first()
+        if user and user.is_email_verified:
+            from .email_otp_service import EmailOTPService
+            return Response({
+                'success': True,
+                'already_verified': True,
+                'account_already_verified': True,
+                'email': EmailOTPService.mask_email(norm_email),
+                'message': 'This email address is already verified. Please sign in to your account.',
+                'detail': 'This email address is already verified. Please sign in to your account.',
+                'code': 'ALREADY_VERIFIED',
+                'redirect_to': '/auth/login',
+            }, status=status.HTTP_200_OK)
+
         from .email_verification_service import (
             EmailVerificationService,
             VerificationRateLimitError,
@@ -952,7 +967,10 @@ class EmailVerificationResendView(APIView):
 
         return Response({
             'success': True,
-            'message': 'If an unverified account exists for that email, a new verification link has been sent.',
+            'already_verified': False,
+            'message': 'Verification code sent successfully. Please check your inbox.',
+            'detail': 'Verification code sent successfully. Please check your inbox.',
+            'redirect_to': '/auth/verify-email/otp',
             'cooldown_seconds': 60,
         }, status=status.HTTP_200_OK)
 
@@ -1070,7 +1088,8 @@ class EmailOTPResendView(APIView):
                     'already_verified': True,
                     'account_already_verified': True,
                     'email': EmailOTPService.mask_email(norm_email),
-                    'message': 'Your email address is already verified. You can sign in.',
+                    'message': 'This email address is already verified. Please sign in to your account.',
+                    'detail': 'This email address is already verified. Please sign in to your account.',
                     'code': 'ALREADY_VERIFIED',
                     'redirect_to': '/auth/login',
                 }, status=status.HTTP_200_OK)

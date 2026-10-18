@@ -145,15 +145,48 @@ export default function EmailVerification() {
     setResendLoading(true);
     setFeedback(null);
     try {
-      const res = await resendEmailVerification(resendEmail.trim());
+      const cleanEmail = resendEmail.trim();
+      const res = await resendEmailVerification(cleanEmail);
+
+      if (res.already_verified || res.account_already_verified) {
+        if (res.email) setMaskedEmail(res.email);
+        setViewState("already_verified");
+        setFeedback({
+          type: "success",
+          message: res.message || "This email address is already verified. Please sign in to your account.",
+        });
+        return;
+      }
+
       setResendCooldown(res.cooldown_seconds || 60);
       setFeedback({
         type: "success",
-        message: res.message || "If an unverified account exists for that email, a verification link has been sent.",
+        message: res.message || "Verification code sent successfully. Please check your inbox.",
       });
-      setViewState("sent");
+
+      // Redirect to OTP verification page only when an OTP has been successfully issued
+      setTimeout(() => {
+        navigate(`/auth/verify-email/otp?email=${encodeURIComponent(cleanEmail)}`);
+      }, 1200);
     } catch (err) {
       console.error("Resend verification error:", err);
+      const isAlreadyVerified = Boolean(
+        err.account_already_verified ||
+        err.already_verified ||
+        err.data?.account_already_verified ||
+        err.data?.already_verified
+      );
+
+      if (isAlreadyVerified) {
+        if (err.email || err.data?.email) setMaskedEmail(err.email || err.data?.email);
+        setViewState("already_verified");
+        setFeedback({
+          type: "success",
+          message: "This email address is already verified. Please sign in to your account.",
+        });
+        return;
+      }
+
       const isCooldown = err.code === "COOLDOWN_ACTIVE";
       const retryAfter = err.retry_after_seconds || 60;
       if (isCooldown) {
@@ -262,9 +295,9 @@ export default function EmailVerification() {
             <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl flex items-start gap-3">
               <CheckCircle2 className="w-6 h-6 text-emerald-600 shrink-0 mt-0.5" />
               <div className="space-y-1 text-xs">
-                <h2 className="font-bold text-emerald-950 text-sm">Email Already Verified</h2>
+                <h2 className="font-bold text-emerald-950 text-sm">Email Address Already Verified</h2>
                 <p className="text-emerald-800 leading-relaxed">
-                  Your registered email address {maskedEmail ? `(${maskedEmail}) ` : ""}has already been verified. You can sign in to the portal with your credentials.
+                  This email address is already verified. Please sign in to your account.
                 </p>
               </div>
             </div>
@@ -285,7 +318,7 @@ export default function EmailVerification() {
                 className="w-full inline-flex items-center justify-center gap-2 bg-[#600b0b] hover:bg-[#780d0d] text-white font-bold text-xs py-3 px-4 rounded-xl shadow-xs transition-colors"
               >
                 <LogIn className="w-4 h-4" />
-                <span>Proceed to Sign In</span>
+                <span>Sign In</span>
               </Link>
             </div>
           </div>

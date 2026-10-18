@@ -234,6 +234,23 @@ class EmailVerificationTests(TestCase):
         self.assertEqual(non_existent_res.status_code, status.HTTP_200_OK)
         self.assertTrue(non_existent_res.data.get("success"))
 
+    def test_resend_already_verified_email_returns_sign_in_message_without_sending_email(self):
+        """Already-verified email returns sign-in message, does not generate OTP/token or send email."""
+        mail.outbox.clear()
+        user = User.objects.create_user(
+            email="already.verified.resend@college.edu.in",
+            full_name="Already Verified",
+            role="principal",
+            password="SecurePassword123!",
+            is_email_verified=True,
+        )
+        res = self.client.post(reverse("email-resend-verification"), {"email": user.email}, format="json")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertTrue(res.data.get("already_verified"))
+        self.assertEqual(res.data.get("message"), "This email address is already verified. Please sign in to your account.")
+        self.assertEqual(res.data.get("redirect_to"), "/auth/login")
+        self.assertEqual(len(mail.outbox), 0)
+
     def test_email_delivery_failure_safe_handling(self):
         """If email delivery fails, registration fails safely with 503 and does not leave unverified orphan."""
         payload = {

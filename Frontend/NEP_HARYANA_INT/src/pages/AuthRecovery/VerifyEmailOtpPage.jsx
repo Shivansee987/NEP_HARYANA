@@ -182,6 +182,14 @@ export default function VerifyEmailOtpPage() {
 
     try {
       const res = await resendEmailOtp(email);
+      if (res.already_verified || res.account_already_verified) {
+        setIsAlreadyVerified(true);
+        setFeedback({
+          type: "success",
+          message: res.message || "This email address is already verified. Please sign in to your account.",
+        });
+        return;
+      }
       setResendCooldown(res.cooldown_seconds || 60);
       setExpiresInSeconds((res.expires_in_minutes || 10) * 60);
       setOtp("");
@@ -191,6 +199,22 @@ export default function VerifyEmailOtpPage() {
       });
     } catch (err) {
       console.error("Resend OTP error:", err);
+      const isAlreadyVerified = Boolean(
+        err.account_already_verified ||
+        err.already_verified ||
+        err.data?.account_already_verified ||
+        err.data?.already_verified
+      );
+
+      if (isAlreadyVerified) {
+        setIsAlreadyVerified(true);
+        setFeedback({
+          type: "success",
+          message: "This email address is already verified. Please sign in to your account.",
+        });
+        return;
+      }
+
       const retryAfter = err.data?.retry_after_seconds || 60;
       if (err.code === "OTP_COOLDOWN" || err.code === "COOLDOWN_ACTIVE") {
         setResendCooldown(retryAfter);
@@ -232,23 +256,38 @@ export default function VerifyEmailOtpPage() {
       setExpiresInSeconds((res.expires_in_minutes || 10) * 60);
       setOtp("");
 
-      if (res.already_verified) {
+      if (res.already_verified || res.account_already_verified) {
         setIsAlreadyVerified(true);
         setFeedback({
           type: "success",
-          message: res.message || "This email is already verified. You can log in.",
+          message: res.message || "This email address is already verified. Please sign in to your account.",
         });
       } else {
         setFeedback({
           type: "success",
-          message: res.message || "Verification code dispatched. Please check your inbox.",
+          message: res.message || "Verification code sent successfully. Please check your inbox.",
         });
       }
     } catch (err) {
-      setFeedback({
-        type: "error",
-        message: err.message || "Unable to request verification code. Please try again.",
-      });
+      const isAlreadyVerified = Boolean(
+        err.account_already_verified ||
+        err.already_verified ||
+        err.data?.account_already_verified ||
+        err.data?.already_verified
+      );
+
+      if (isAlreadyVerified) {
+        setIsAlreadyVerified(true);
+        setFeedback({
+          type: "success",
+          message: "This email address is already verified. Please sign in to your account.",
+        });
+      } else {
+        setFeedback({
+          type: "error",
+          message: err.message || "Unable to request verification code. Please try again.",
+        });
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -311,7 +350,7 @@ export default function VerifyEmailOtpPage() {
               </div>
               <h3 className="text-lg font-bold text-slate-900">Email Already Verified</h3>
               <p className="text-sm text-slate-600 mt-2">
-                Your email address ({email}) is already verified on the portal. You can proceed directly to sign in.
+                This email address is already verified. Please sign in to your account.
               </p>
               <div className="mt-6">
                 <Link
@@ -319,7 +358,7 @@ export default function VerifyEmailOtpPage() {
                   className="w-full inline-flex justify-center items-center gap-2 py-3 px-4 border border-transparent rounded-xl shadow-sm text-sm font-bold text-white bg-[#600b0b] hover:bg-[#7a0e0e] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#600b0b] transition-all"
                 >
                   <LogIn className="w-4 h-4" />
-                  Proceed to Login
+                  Sign In
                 </Link>
               </div>
             </div>

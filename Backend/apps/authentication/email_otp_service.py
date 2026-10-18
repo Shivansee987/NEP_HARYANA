@@ -398,7 +398,9 @@ class EmailOTPService:
                 'already_verified': True,
                 'account_already_verified': True,
                 'email': cls.mask_email(norm_email),
-                'message': "This email address is already verified. You can proceed to login.",
+                'message': "This email address is already verified. Please sign in to your account.",
+                'detail': "This email address is already verified. Please sign in to your account.",
+                'redirect_to': "/auth/login",
             }
 
         # If user exists and is not verified, send OTP
@@ -408,7 +410,10 @@ class EmailOTPService:
                 'success': True,
                 'already_verified': False,
                 'email': masked,
-                'message': f"A 6-digit verification code has been sent to {masked}.",
+                'otp_sent': True,
+                'message': "Verification code sent successfully. Please check your inbox.",
+                'detail': "Verification code sent successfully. Please check your inbox.",
+                'redirect_to': "/auth/verify-email/otp",
                 'cooldown_seconds': cooldown_ttl,
                 'expires_in_minutes': ttl_minutes,
             }
@@ -433,7 +438,9 @@ class EmailOTPService:
             'success': True,
             'already_verified': False,
             'email': masked,
+            'otp_sent': False,
             'message': f"If an unverified account exists for {masked}, a verification code has been sent.",
+            'redirect_to': "/auth/verify-email/otp",
             'cooldown_seconds': cooldown_ttl,
             'expires_in_minutes': ttl_minutes,
         }
