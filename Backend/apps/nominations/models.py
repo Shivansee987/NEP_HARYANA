@@ -16,11 +16,11 @@ class Nomination(models.Model):
     
     # Scores
     score = models.IntegerField(default=0)
-    award_category = models.CharField(max_length=50, default="No Award")
+    award_category = models.CharField(max_length=50, default="No Award", db_index=True)
     
     # Status
-    is_submitted = models.BooleanField(default=False)
-    status = models.CharField(max_length=50, default="Draft")
+    is_submitted = models.BooleanField(default=False, db_index=True)
+    status = models.CharField(max_length=50, default="Draft", db_index=True)
     remarks = models.TextField(blank=True, null=True)
     history = models.JSONField(default=list, blank=True)
     reviewer_scores = models.JSONField(default=dict, blank=True)

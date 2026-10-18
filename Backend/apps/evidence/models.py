@@ -373,6 +373,7 @@ class EvidenceSubcriterionAssociation(models.Model):
         ]
         indexes = [
             models.Index(fields=['parameter_id', 'subcriterion_id']),
+            models.Index(fields=['parameter_id', 'subcriterion_id', 'is_active'], name='idx_evid_assoc_prm_sub_act'),
         ]
 
     def __str__(self):

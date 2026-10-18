@@ -7,7 +7,7 @@ from apps.nominations.scoring import get_individual_indicator_scores
 
 
 def get_all_applications():
-    nominations = Nomination.objects.all().order_by("-updated_at")
+    nominations = Nomination.objects.select_related("college").all().order_by("-updated_at")
     apps = []
     for nom in nominations:
         status_str = nom.status or ("Pending Review" if nom.is_submitted else "Draft")
@@ -28,10 +28,46 @@ def get_all_applications():
 
 def get_institutions_summary():
     colleges = College.objects.all().order_by("name")
+    
+    # Bulk load nominations in a single query keyed by college_id to eliminate N+1 loop queries
+    nominations = Nomination.objects.all().order_by("-updated_at")
+    nominations_by_college = {}
+    for nom in nominations:
+        if nom.college_id not in nominations_by_college:
+            nominations_by_college[nom.college_id] = nom
+
     institutions = []
 
+    param_to_indicator_map = {
+        "p1": "indicator_2",
+        "p2": "indicator_3",
+        "p3": "indicator_4",
+        "p4": "indicator_5",
+        "p5": "indicator_7",
+        "p6": "indicator_9",
+        "p7": "indicator_11",
+        "p8": "indicator_12",
+        "p9": "indicator_14",
+        "p10": "indicator_15",
+        "p11": "indicator_16",
+        "p12": "indicator_18",
+        "p13": "indicator_19",
+        "p14": "indicator_20",
+        "p15": "indicator_1",
+        "p16": "indicator_6",
+        "p17": "indicator_8",
+        "p18": "indicator_10",
+        "p19": "indicator_13",
+        "p20": "indicator_17"
+    }
+
+    districts_list = [
+        "rohtak", "panchkula", "ambala", "karnal", "gurugram", "hisar",
+        "panipat", "kurukshetra", "faridabad", "yamunanagar", "sonipat", "kaithal"
+    ]
+
     for college in colleges:
-        nom = Nomination.objects.filter(college=college).first()
+        nom = nominations_by_college.get(college.id)
         has_app = nom is not None
         is_sub = nom.is_submitted if has_app else False
         
@@ -63,7 +99,7 @@ def get_institutions_summary():
             # Parse district from address or name
             address_str = str(nom.address or "").lower()
             name_str = college.name.lower()
-            for dist in ["rohtak", "panchkula", "ambala", "karnal", "gurugram", "hisar", "panipat", "kurukshetra", "faridabad", "yamunanagar", "sonipat", "kaithal"]:
+            for dist in districts_list:
                 if dist in address_str or dist in name_str:
                     district = dist.capitalize()
                     break
@@ -71,31 +107,9 @@ def get_institutions_summary():
             status_str = nom.status or ("Pending Review" if nom.is_submitted else "Draft")
 
         # Map parameter IDs to corresponding indicator evidence URLs
-        docs_dict = {}
         if has_app:
             answers = nom.answers or {}
-            param_to_indicator_map = {
-                "p1": "indicator_2",
-                "p2": "indicator_3",
-                "p3": "indicator_4",
-                "p4": "indicator_5",
-                "p5": "indicator_7",
-                "p6": "indicator_9",
-                "p7": "indicator_11",
-                "p8": "indicator_12",
-                "p9": "indicator_14",
-                "p10": "indicator_15",
-                "p11": "indicator_16",
-                "p12": "indicator_18",
-                "p13": "indicator_19",
-                "p14": "indicator_20",
-                "p15": "indicator_1",
-                "p16": "indicator_6",
-                "p17": "indicator_8",
-                "p18": "indicator_10",
-                "p19": "indicator_13",
-                "p20": "indicator_17"
-            }
+            docs_dict = {}
             for param_id, ind_key in param_to_indicator_map.items():
                 ind_data = answers.get(ind_key, {})
                 url = ind_data.get("evidence_url")
@@ -146,39 +160,34 @@ def get_dashboard_stats():
     total_nominations = Nomination.objects.count()
     submitted_nominations = Nomination.objects.filter(is_submitted=True).count()
     
-    approved_awards = 0
-    pending_review = 0
-    sent_back = 0
-    rejected = 0
+    # Efficient DB aggregations instead of iterating over 300+ full institutional records
+    status_aggregates = Nomination.objects.aggregate(
+        approved=models.Count("id", filter=models.Q(status="Approved")),
+        pending_review=models.Count("id", filter=models.Q(status="Pending Review") | (models.Q(status__isnull=True) & models.Q(is_submitted=True)) | (models.Q(status="") & models.Q(is_submitted=True))),
+        sent_back=models.Count("id", filter=models.Q(status="Sent Back")),
+        rejected=models.Count("id", filter=models.Q(status="Rejected")),
+        platinum=models.Count("id", filter=models.Q(award_category="Platinum")),
+        gold=models.Count("id", filter=models.Q(award_category="Gold")),
+        silver=models.Count("id", filter=models.Q(award_category="Silver")),
+        no_award=models.Count("id", filter=models.Q(award_category="No Award")),
+    )
     
-    colleges = get_institutions_summary()
-    for col in colleges:
-        status_str = col["status"]
-        if status_str == "Approved":
-            approved_awards += 1
-        elif status_str == "Pending Review":
-            pending_review += 1
-        elif status_str == "Sent Back":
-            sent_back += 1
-        elif status_str == "Rejected":
-            rejected += 1
-            
     return {
         "total_colleges": total_colleges,
         "total_applications": total_nominations,
         "submitted_applications": submitted_nominations,
         "in_progress_applications": total_nominations - submitted_nominations,
-        "approved_awards": approved_awards,
-        "pending_review": pending_review,
-        "sent_back": sent_back,
-        "rejected": rejected,
+        "approved_awards": status_aggregates["approved"],
+        "pending_review": status_aggregates["pending_review"],
+        "sent_back": status_aggregates["sent_back"],
+        "rejected": status_aggregates["rejected"],
         "registered_principals": registered_principals,
         "average_score_percentage": None,
         "award_distribution": {
-            "Platinum": Nomination.objects.filter(award_category="Platinum").count(),
-            "Gold": Nomination.objects.filter(award_category="Gold").count(),
-            "Silver": Nomination.objects.filter(award_category="Silver").count(),
-            "No Award": Nomination.objects.filter(award_category="No Award").count(),
+            "Platinum": status_aggregates["platinum"],
+            "Gold": status_aggregates["gold"],
+            "Silver": status_aggregates["silver"],
+            "No Award": status_aggregates["no_award"],
         },
     }
 
