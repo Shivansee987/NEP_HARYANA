@@ -20,6 +20,7 @@ import {
   Building2,
   LogIn,
   Edit3,
+  UserPlus,
 } from "lucide-react";
 
 export default function VerifyEmailOtpPage() {
@@ -44,6 +45,7 @@ export default function VerifyEmailOtpPage() {
   const [feedback, setFeedback] = useState(null);
   const [isVerified, setIsVerified] = useState(false);
   const [isAlreadyVerified, setIsAlreadyVerified] = useState(false);
+  const [isUnregistered, setIsUnregistered] = useState(false);
 
   // Cooldown countdown timer
   useEffect(() => {
@@ -184,9 +186,19 @@ export default function VerifyEmailOtpPage() {
       const res = await resendEmailOtp(email);
       if (res.already_verified || res.account_already_verified) {
         setIsAlreadyVerified(true);
+        setIsUnregistered(false);
         setFeedback({
           type: "success",
           message: res.message || "This email address is already verified. Please sign in to your account.",
+        });
+        return;
+      }
+      if (res.registered === false || res.code === "EMAIL_NOT_REGISTERED") {
+        setIsUnregistered(true);
+        setIsAlreadyVerified(false);
+        setFeedback({
+          type: "error",
+          message: res.message || "This email address is not associated with a registered account. Please sign up first.",
         });
         return;
       }
@@ -208,9 +220,24 @@ export default function VerifyEmailOtpPage() {
 
       if (isAlreadyVerified) {
         setIsAlreadyVerified(true);
+        setIsUnregistered(false);
         setFeedback({
           type: "success",
           message: "This email address is already verified. Please sign in to your account.",
+        });
+        return;
+      }
+
+      if (
+        err.code === "EMAIL_NOT_REGISTERED" ||
+        err.data?.code === "EMAIL_NOT_REGISTERED" ||
+        err.status === 404
+      ) {
+        setIsUnregistered(true);
+        setIsAlreadyVerified(false);
+        setFeedback({
+          type: "error",
+          message: err.message || "This email address is not associated with a registered account. Please sign up first.",
         });
         return;
       }
@@ -250,24 +277,41 @@ export default function VerifyEmailOtpPage() {
     setFeedback(null);
 
     try {
-      const res = await requestEmailOtp(inputEmail.trim().toLowerCase());
-      updateEmail(inputEmail);
-      setResendCooldown(res.cooldown_seconds || 60);
-      setExpiresInSeconds((res.expires_in_minutes || 10) * 60);
-      setOtp("");
+      const cleanEmail = inputEmail.trim().toLowerCase();
+      const res = await requestEmailOtp(cleanEmail);
 
       if (res.already_verified || res.account_already_verified) {
         setIsAlreadyVerified(true);
+        setIsUnregistered(false);
+        updateEmail(cleanEmail);
         setFeedback({
           type: "success",
           message: res.message || "This email address is already verified. Please sign in to your account.",
         });
-      } else {
-        setFeedback({
-          type: "success",
-          message: res.message || "Verification code sent successfully. Please check your inbox.",
-        });
+        return;
       }
+
+      if (res.registered === false || res.code === "EMAIL_NOT_REGISTERED" || !res.success) {
+        setIsUnregistered(true);
+        setIsAlreadyVerified(false);
+        setFeedback({
+          type: "error",
+          message: res.message || "This email address is not associated with a registered account. Please sign up first.",
+        });
+        return;
+      }
+
+      updateEmail(cleanEmail);
+      setIsUnregistered(false);
+      setIsAlreadyVerified(false);
+      setResendCooldown(res.cooldown_seconds || 60);
+      setExpiresInSeconds((res.expires_in_minutes || 10) * 60);
+      setOtp("");
+
+      setFeedback({
+        type: "success",
+        message: res.message || "Verification code sent successfully. Please check your inbox.",
+      });
     } catch (err) {
       const isAlreadyVerified = Boolean(
         err.account_already_verified ||
@@ -278,16 +322,32 @@ export default function VerifyEmailOtpPage() {
 
       if (isAlreadyVerified) {
         setIsAlreadyVerified(true);
+        setIsUnregistered(false);
         setFeedback({
           type: "success",
           message: "This email address is already verified. Please sign in to your account.",
         });
-      } else {
+        return;
+      }
+
+      if (
+        err.code === "EMAIL_NOT_REGISTERED" ||
+        err.data?.code === "EMAIL_NOT_REGISTERED" ||
+        err.status === 404
+      ) {
+        setIsUnregistered(true);
+        setIsAlreadyVerified(false);
         setFeedback({
           type: "error",
-          message: err.message || "Unable to request verification code. Please try again.",
+          message: err.message || "This email address is not associated with a registered account. Please sign up first.",
         });
+        return;
       }
+
+      setFeedback({
+        type: "error",
+        message: err.message || "Unable to request verification code. Please try again.",
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -360,6 +420,37 @@ export default function VerifyEmailOtpPage() {
                   <LogIn className="w-4 h-4" />
                   Sign In
                 </Link>
+              </div>
+            </div>
+          ) : isUnregistered ? (
+            /* Unregistered Email State */
+            <div className="text-center py-4">
+              <div className="w-16 h-16 bg-amber-100 text-amber-700 rounded-full flex items-center justify-center mx-auto mb-4">
+                <AlertTriangle className="w-9 h-9" />
+              </div>
+              <h3 className="text-lg font-bold text-slate-900">Account Not Found</h3>
+              <p className="text-sm text-slate-600 mt-2">
+                This email address is not associated with a registered account. Please sign up to create your account.
+              </p>
+              <div className="mt-6 space-y-3">
+                <Link
+                  to="/auth/signup"
+                  className="w-full inline-flex justify-center items-center gap-2 py-3 px-4 border border-transparent rounded-xl shadow-sm text-sm font-bold text-white bg-[#600b0b] hover:bg-[#7a0e0e] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#600b0b] transition-all"
+                >
+                  <UserPlus className="w-4 h-4" />
+                  Sign Up / Register Account
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsUnregistered(false);
+                    setIsEditingEmail(true);
+                    setFeedback(null);
+                  }}
+                  className="w-full inline-flex justify-center items-center gap-2 py-2.5 px-4 border border-slate-300 rounded-xl text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+                >
+                  Enter a Different Email
+                </button>
               </div>
             </div>
           ) : isVerified ? (

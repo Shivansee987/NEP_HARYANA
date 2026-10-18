@@ -939,6 +939,18 @@ class EmailVerificationResendView(APIView):
                 'redirect_to': '/auth/login',
             }, status=status.HTTP_200_OK)
 
+        if not user:
+            return Response({
+                'success': False,
+                'registered': False,
+                'already_verified': False,
+                'email': norm_email,
+                'code': 'EMAIL_NOT_REGISTERED',
+                'message': 'This email address is not associated with a registered account. Please sign up first.',
+                'detail': 'This email address is not associated with a registered account. Please sign up first.',
+                'redirect_to': '/auth/signup',
+            }, status=status.HTTP_404_NOT_FOUND)
+
         from .email_verification_service import (
             EmailVerificationService,
             VerificationRateLimitError,
@@ -1104,22 +1116,17 @@ class EmailOTPResendView(APIView):
                     'expires_in_minutes': settings.EMAIL_OTP_TTL_MINUTES,
                 }, status=status.HTTP_200_OK)
 
-            # User not found: anti-enumeration timing defense
-            masked = EmailOTPService.mask_email(norm_email)
-            cooldown_ttl = getattr(settings, 'EMAIL_OTP_RESEND_COOLDOWN_SECONDS', 60)
-            email_hash = hashlib.sha256(norm_email.encode('utf-8')).hexdigest()[:16]
-            cooldown_key = f"email_otp_cd_{email_hash}"
-            if cache.get(cooldown_key):
-                raise EmailOTPCooldownError(retry_after=cooldown_ttl)
-            cache.set(cooldown_key, True, cooldown_ttl)
-
+            # User not found: do not generate OTP or send email
             return Response({
-                'success': True,
-                'message': f'If an unverified account exists for {masked}, a new verification code has been sent.',
-                'email': masked,
-                'cooldown_seconds': cooldown_ttl,
-                'expires_in_minutes': settings.EMAIL_OTP_TTL_MINUTES,
-            }, status=status.HTTP_200_OK)
+                'success': False,
+                'registered': False,
+                'already_verified': False,
+                'email': norm_email,
+                'code': 'EMAIL_NOT_REGISTERED',
+                'message': 'This email address is not associated with a registered account. Please sign up first.',
+                'detail': 'This email address is not associated with a registered account. Please sign up first.',
+                'redirect_to': '/auth/signup',
+            }, status=status.HTTP_404_NOT_FOUND)
         except EmailOTPCooldownError as exc:
             return Response({
                 'detail': exc.message,

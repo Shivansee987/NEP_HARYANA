@@ -282,18 +282,34 @@ class EmailOTPVerificationTests(TestCase):
         self.assertFalse(res.data.get("already_verified"))
         self.assertEqual(User.objects.count(), initial_count)
 
-    def test_anti_enumeration_on_non_existent_email(self):
-        """13 & 15. Non-existent email receives identical generic response without revealing account status."""
+    def test_unregistered_email_never_triggers_otp_or_email(self):
+        """Unregistered email returns EMAIL_NOT_REGISTERED without triggering OTP generation or email."""
         initial_count = User.objects.count()
+        mail.outbox.clear()
         res = self.client.post(reverse("email-otp-request"), {
             "email": "nonexistent.ghost@college.edu.in"
         }, format="json")
 
         self.assertEqual(res.status_code, status.HTTP_200_OK)
-        self.assertTrue(res.data.get("success"))
+        self.assertFalse(res.data.get("success"))
+        self.assertFalse(res.data.get("registered"))
         self.assertFalse(res.data.get("already_verified"))
-        # No account was created
+        self.assertFalse(res.data.get("otp_sent"))
+        self.assertEqual(res.data.get("code"), "EMAIL_NOT_REGISTERED")
+        self.assertEqual(res.data.get("redirect_to"), "/auth/signup")
+        # No account created and no email sent
         self.assertEqual(User.objects.count(), initial_count)
+        self.assertEqual(len(mail.outbox), 0)
+
+        # Test resend endpoint also rejects unregistered email
+        res_resend = self.client.post(reverse("email-otp-resend"), {
+            "email": "nonexistent.ghost@college.edu.in"
+        }, format="json")
+        self.assertEqual(res_resend.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertFalse(res_resend.data.get("success"))
+        self.assertEqual(res_resend.data.get("code"), "EMAIL_NOT_REGISTERED")
+        self.assertEqual(res_resend.data.get("redirect_to"), "/auth/signup")
+        self.assertEqual(len(mail.outbox), 0)
 
     def test_already_verified_account_direct_request(self):
         """15. Already-verified account receives clear already_verified response without sending an OTP."""

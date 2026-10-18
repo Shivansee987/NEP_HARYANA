@@ -418,29 +418,16 @@ class EmailOTPService:
                 'expires_in_minutes': ttl_minutes,
             }
 
-        # If user does NOT exist, apply cooldown to avoid enumeration timing, then return generic message
-        email_hash = hashlib.sha256(norm_email.encode('utf-8')).hexdigest()[:16]
-        cooldown_key = f"email_otp_cd_{email_hash}"
-        rate_key = f"email_otp_rate_{email_hash}"
-
-        if cache.get(cooldown_key):
-            raise EmailOTPCooldownError(retry_after=cooldown_ttl)
-
-        hourly_count = cache.get(rate_key, 0)
-        if hourly_count >= getattr(settings, 'EMAIL_OTP_MAX_SENDS_PER_HOUR', 5):
-            raise EmailOTPRateLimitError(retry_after=3600)
-
-        cache.set(cooldown_key, True, cooldown_ttl)
-        cache.set(rate_key, hourly_count + 1, 3600)
-
-        masked = cls.mask_email(norm_email)
+        # If user does NOT exist, do not generate OTP, do not write to DB, and do not send email.
+        # Direct user to signup page.
         return {
-            'success': True,
+            'success': False,
+            'registered': False,
             'already_verified': False,
-            'email': masked,
             'otp_sent': False,
-            'message': f"If an unverified account exists for {masked}, a verification code has been sent.",
-            'redirect_to': "/auth/verify-email/otp",
-            'cooldown_seconds': cooldown_ttl,
-            'expires_in_minutes': ttl_minutes,
+            'email': norm_email,
+            'code': 'EMAIL_NOT_REGISTERED',
+            'message': "This email address is not associated with a registered account. Please sign up first.",
+            'detail': "This email address is not associated with a registered account. Please sign up first.",
+            'redirect_to': "/auth/signup",
         }

@@ -229,10 +229,12 @@ class EmailVerificationTests(TestCase):
         self.assertEqual(res2.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
         self.assertEqual(res2.data.get("code"), "COOLDOWN_ACTIVE")
 
-        # 3. Requesting resend for a non-existent email returns generic 200 (anti-enumeration)
+        # 3. Requesting resend for a non-existent email returns 404 EMAIL_NOT_REGISTERED
         non_existent_res = self.client.post(reverse("email-resend-verification"), {"email": "does.not.exist@college.edu.in"}, format="json")
-        self.assertEqual(non_existent_res.status_code, status.HTTP_200_OK)
-        self.assertTrue(non_existent_res.data.get("success"))
+        self.assertEqual(non_existent_res.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertFalse(non_existent_res.data.get("success"))
+        self.assertEqual(non_existent_res.data.get("code"), "EMAIL_NOT_REGISTERED")
+        self.assertEqual(non_existent_res.data.get("redirect_to"), "/auth/signup")
 
     def test_resend_already_verified_email_returns_sign_in_message_without_sending_email(self):
         """Already-verified email returns sign-in message, does not generate OTP/token or send email."""

@@ -18,6 +18,7 @@ import {
   RefreshCw,
   Building2,
   LogIn,
+  UserPlus,
 } from "lucide-react";
 
 export default function EmailVerification() {
@@ -158,6 +159,15 @@ export default function EmailVerification() {
         return;
       }
 
+      if (res.registered === false || res.code === "EMAIL_NOT_REGISTERED") {
+        setViewState("unregistered");
+        setFeedback({
+          type: "error",
+          message: res.message || "This email address is not associated with a registered account. Please sign up first.",
+        });
+        return;
+      }
+
       setResendCooldown(res.cooldown_seconds || 60);
       setFeedback({
         type: "success",
@@ -183,6 +193,19 @@ export default function EmailVerification() {
         setFeedback({
           type: "success",
           message: "This email address is already verified. Please sign in to your account.",
+        });
+        return;
+      }
+
+      if (
+        err.code === "EMAIL_NOT_REGISTERED" ||
+        err.data?.code === "EMAIL_NOT_REGISTERED" ||
+        err.status === 404
+      ) {
+        setViewState("unregistered");
+        setFeedback({
+          type: "error",
+          message: err.message || "This email address is not associated with a registered account. Please sign up first.",
         });
         return;
       }
@@ -320,6 +343,38 @@ export default function EmailVerification() {
                 <LogIn className="w-4 h-4" />
                 <span>Sign In</span>
               </Link>
+            </div>
+          </div>
+        )}
+
+        {/* STATE: UNREGISTERED EMAIL */}
+        {viewState === "unregistered" && (
+          <div className="space-y-5">
+            <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3">
+              <AlertTriangle className="w-6 h-6 text-amber-700 shrink-0 mt-0.5" />
+              <div className="space-y-1 text-xs">
+                <h2 className="font-bold text-amber-950 text-sm">Account Not Found</h2>
+                <p className="text-amber-800 leading-relaxed">
+                  This email address is not associated with a registered account. Please register your account to continue.
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-3 pt-2">
+              <Link
+                to="/auth/signup"
+                className="w-full inline-flex items-center justify-center gap-2 bg-[#600b0b] hover:bg-[#780d0d] text-white font-bold text-xs py-3 px-4 rounded-xl shadow-xs transition-colors"
+              >
+                <UserPlus className="w-4 h-4" />
+                <span>Create an Account / Sign Up</span>
+              </Link>
+              <button
+                type="button"
+                onClick={() => setViewState("sent")}
+                className="w-full inline-flex items-center justify-center gap-2 border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs py-2.5 px-4 rounded-xl transition-colors"
+              >
+                <span>Try Another Email Address</span>
+              </button>
             </div>
           </div>
         )}
