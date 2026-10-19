@@ -59,7 +59,7 @@ The first assessment found code gaps G1–G8 (§9). **G1–G6 are now fixed.** G
 | App server | Gunicorn 26 is a dependency. WSGI entry point is `config.wsgi:application`, whose default is `config.settings.production`. There is no ASGI/WebSocket usage. | `config/wsgi.py` |
 | Apps | authentication, admin_panel, nominations, scoring, evidence, university, college, reports, forms | `Backend/apps/` |
 | Background workers / scheduler | **None.** There is no Celery, RQ, cron or scheduled task in the code. All work, including email sending and score refresh, runs synchronously inside the request. | code search |
-| Management commands (one-off) | `provision_head_admin` (reads `HEAD_ADMIN_PASSWORD` or prompts), `import_haryana_institutions` (DHE registry of 1,152 institutions from `Backend/data/aishe_import/`), `export_nep_schema` (dev). `create_dev_users` and `seed_demo_submissions` are **demo only and must not run in production**. | `apps/*/management/commands` |
+| Management commands (one-off) | `provision_head_admin` (reads `HEAD_ADMIN_PASSWORD` or prompts), `import_haryana_institutions` (DHE registry of 1,152 institutions) followed by `import_aishe_registry` (AISHE master list of 1,683 Haryana institutions), both from `Backend/data/aishe_import/`, `export_nep_schema` (dev). `create_dev_users` and `seed_demo_submissions` are **demo only and must not run in production**. | `apps/*/management/commands` |
 | Reports | CSV export generated in-request | `apps/reports/views.py:156` |
 | Throttling | DRF: anon 120/min, user 240/min. Login lockout after repeated failures (15 minutes), plus resend cooldowns. All of these are stored in the Django cache. | `base.py`, `authentication/views.py` |
 

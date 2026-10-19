@@ -1,0 +1,25 @@
+status,institute_code,current_aishe_code,aishe_code,dhe_name,aishe_name,district,basis
+confirmed,1371,,S-21671,Shivam College of Education,SHIVAM COLLEGE OF EDUCATION,Bhiwani,name similarity 1.00 in same district (next best 0.89)
+confirmed,1746,,S-26707,SDM Teacher Training Institute,S D M TEACHER TRAINING INSTITUTE,Charkhi dadri,name similarity 0.97 in same district (next best 0.44)
+confirmed,1927,,C-57301,Society for Advance Study in Rehabilitation,Society for Advance Study in Rehabilitation,Faridabad,name similarity 1.00 in same district (next best 0.49)
+confirmed,1972,,U-0988,IILM University (Campus),IILM UNIVERSITY,Gurugram,name similarity 1.00 in same district (next best 0.50)
+confirmed,4215,,S-21807,BRIGHT REHABILITATION CENTRE,BRIGHT REHABILITAION CENTRE,Hisar,name similarity 0.98 in same district (next best 0.44)
+confirmed,1956,C-64938,U-0159,Chaudhary Charan Singh Haryana Agricultural University (Campus),"Chaudhary Charan Singh Haryana Agricultural University, Hisar",Hisar,AISHE lists C-64938 as College of Fisheries Science (a constituent college of U-0159); the university itself is U-0159
+confirmed,3911,,S-20638,"NEW KASHI D.ED. TRAINING SCHOOL, BEHBALPUR, HISAR",NEW KANSHI DED TRAINING SCHOOL BEHBALPUR HISAR,Hisar,name similarity 0.98 in same district (next best 0.77)
+confirmed,1457,,C-28449,M.T. COLLEGE OF EDUCATION,M.T. COLLEGE OF EDUCATION,Jhajjar,name similarity 1.00 in same district (next best 0.92)
+confirmed,1484,,C-10758,Ram Narayan Institute of Education,Ram Narayan Institute of Education,Jind,name similarity 1.00 in same district (next best 0.58)
+confirmed,1526,,S-26868,Aadarsh College of Education,ADARSH COLLEGE OF EDUCATION,Kurukshetra,name similarity 0.98 in same district (next best 0.72)
+confirmed,3928,,S-17290,"NAV GYAN INSTITUTION OF EDUCATION, KOTHAL KALAN",NAV GYAN INSTITUTE OF EDUCATION KOTHAL KALAN,Mahendragarh,name similarity 0.96 in same district (next best 0.68)
+confirmed,1738,,S-26035,Baba khyalinath college of Education,BABA KHYALI NATH COLLEGE OF EDUCATION,Rohtak,name similarity 0.99 in same district (next best 0.81)
+confirmed,1883,,C-49483,"MAA SARASWATI INSTITUTE OF ENGINEERING & TECHNOLOGY, KALANAUR","MAA SARASWATI INSTITUTE OF ENGINEERING & TECHNOLOGY, KALANAUR",Rohtak,name similarity 1.00 in same district (next best 0.64)
+confirmed,1937,,S-20537,Modern D.Ed College Kharkara,MODERN DED COLLEGE KHARKARA,Rohtak,name similarity 0.98 in same district (next best 0.64)
+confirmed,3924,,S-21810,PIONEER D.ED COLLEGE,PIONEER DED COLLEGE,Rohtak,name similarity 0.97 in same district (next best 0.64)
+confirmed,1626,,C-28345,RAMA KRISHNA COLLEGE OF EDUCATION,RAMA KRISHNA COLLEGE OF EDUCATION,Rohtak,name similarity 1.00 in same district (next best 0.80)
+confirmed,1979,,U-0744,Ashoka University Sonepat (Campus),ASHOKA UNIVERSITY,Sonipat,"Same university, same district; DHE lists it without an AISHE code"
+confirmed,4333,,U-1365,"Sports University of Haryana, Rai, Sonipat",Sports University of Haryana,Sonipat,"Same university, same district; DHE lists it without an AISHE code"
+suggested,1368,,S-27370,Adarsh College of Education (Kairu),"ADARSH COLLEGE OF EDUCATION, KAIRU, BHIWANI",Bhiwani,name similarity 0.89 in same district (next best 0.78)
+suggested,1360,,S-25963,Updesh Elementary Teacherâ€™s Educational Institute Noonsar (Bhiwani),UPDESH ELEMENTARY TEACHERS EDUCATIONAL INSTITUTE,Bhiwani,name similarity 0.85 in same district (next best 0.55)
+suggested,1753,,S-27209,EKLAVYA COLLEGE OF EDUCATION,EKLAVYA COLLEGE OF EDUCATION BADHRA,Charkhi dadri,name similarity 0.89 in same district (next best 0.73)
+suggested,3937,,S-27229,B.D.M COLLEGE OF EDUCATION CHHUCHHAKWAS,BDM COLLEGE OF EDUCATION,Jhajjar,name similarity 0.76 in same district (next best 0.71)
+suggested,3927,,S-21243,"SHIV SHANKAR COLLEGE OF EDUCATION, JAKHOULI",SHIV SHANKAR COLLEGE OF EDUCATION KAITHAL,Kaithal,name similarity 0.89 in same district (next best 0.70)
+suggested,1535,,C-76727,"S.M Rehabilitation & Research Centre, Mahenragarh",S.M. REHABILITATION AND RESEARCH CENTRE,Mahendragarh,name similarity 0.86 in same district (next best 0.84)
