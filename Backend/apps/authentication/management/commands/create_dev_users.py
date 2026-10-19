@@ -85,12 +85,13 @@ DEV_USERS = [
 ]
 
 DEV_COLLEGE = {
-    "name": "Dev Test College",
-    "aishe_code": "DEV-COLLEGE-001",
+    "name": "Dev College",
+    "aishe_code": "DEV-COLLEGE-002",
 }
 
 DEV_UNIVERSITY = {
-    "name": "Dev Test University",
+    "name": "Dev University",
+    "aishe_code": "DEV-UNIV-001",
 }
 
 
@@ -182,6 +183,7 @@ class Command(BaseCommand):
     def _get_or_create_university(self, University):
         university, created = University.objects.get_or_create(
             name=DEV_UNIVERSITY["name"],
+            defaults={"aishe_code": DEV_UNIVERSITY["aishe_code"]},
         )
         action = "CREATED" if created else "exists"
         self.stdout.write("  University ({}): {}".format(action, university.name))

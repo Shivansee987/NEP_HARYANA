@@ -42,7 +42,7 @@ const APPLICANT_DEV_ACCOUNTS = import.meta.env.DEV ? [
   },
   {
     key: "principal",
-    role: "Dev Test College",
+    role: "Dev College",
     badge: "College · Blank",
     description: "Blank assessment · Show fresh C1–C22 forms",
     email: "principal@dev.local",
@@ -52,7 +52,7 @@ const APPLICANT_DEV_ACCOUNTS = import.meta.env.DEV ? [
   },
   {
     key: "nodal",
-    role: "Dev Test University",
+    role: "Dev University",
     badge: "University · Blank",
     description: "Blank assessment · Show fresh U1–U20 forms",
     email: "nodal@dev.local",
