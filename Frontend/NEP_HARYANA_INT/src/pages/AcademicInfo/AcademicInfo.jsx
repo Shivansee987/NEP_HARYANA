@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import styles from './AcademicInfo.module.css';
+import { validateUploadFile } from '../../utils/fileValidators';
 
 const AcademicInfo = () => {
   const [formData, setFormData] = useState({
@@ -12,6 +13,25 @@ const AcademicInfo = () => {
     naacGrade: 'A++',
     lastNirfRank: ''
   });
+  const [fileError, setFileError] = useState('');
+  const [selectedFile, setSelectedFile] = useState(null);
+
+  const handleFileChange = async (e) => {
+    setFileError('');
+    const file = e.target.files?.[0];
+    if (!file) {
+      setSelectedFile(null);
+      return;
+    }
+    const err = await validateUploadFile(file, { allowedFormats: ['pdf', 'png', 'jpg', 'jpeg'], isPdfOnly: false });
+    if (err) {
+      setFileError(err);
+      setSelectedFile(null);
+      e.target.value = '';
+      return;
+    }
+    setSelectedFile(file);
+  };
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -19,7 +39,8 @@ const AcademicInfo = () => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    console.log('Form Submitted:', formData);
+    if (fileError) return;
+    console.log('Form Submitted:', formData, selectedFile);
   };
 
   return (
@@ -84,8 +105,18 @@ const AcademicInfo = () => {
 
           <div className={styles.fileUploadSection}>
             <label>Supporting Document (NAAC Certificate / Academic Reports)</label>
-            <input type="file" className={styles.fileInput} />
-            <p className={styles.fileHelp}>Upload PDF or Image (Max 5MB)</p>
+            <input
+              type="file"
+              accept=".pdf,.png,.jpg,.jpeg"
+              onChange={handleFileChange}
+              className={styles.fileInput}
+            />
+            <p className={styles.fileHelp}>Upload PDF or Image (PDF strictly max 5 MB)</p>
+            {fileError && (
+              <p style={{ color: '#dc2626', fontSize: '0.8125rem', marginTop: '4px', fontWeight: 600 }}>
+                {fileError}
+              </p>
+            )}
           </div>
 
           <div className={styles.actions}>

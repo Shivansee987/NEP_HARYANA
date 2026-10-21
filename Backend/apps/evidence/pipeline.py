@@ -200,26 +200,38 @@ class EvidenceUploadPipeline:
                 )
 
         # Step 5: Validate Content & Magic Bytes
+        is_pdf_target = (safe_ext == 'pdf' or is_pdf_only or content_bytes.startswith(b'%PDF-'))
+        max_size = ContentValidator.get_max_pdf_size() if is_pdf_target else ContentValidator.get_max_file_size()
+
         if is_stream:
             total_size = getattr(file_stream, 'size', None)
             detected_mime, _ = ContentValidator.validate_content(content_bytes, safe_ext)
-            max_size = ContentValidator.get_max_file_size()
-            if total_size and total_size > max_size:
+            if total_size is not None and total_size > max_size:
                 from apps.evidence.validators import FileTooLargeError
+                if is_pdf_target:
+                    raise FileTooLargeError(
+                        f"The PDF file size ({total_size} bytes) exceeds the strict 5 MB limit ({max_size} bytes). Please choose a smaller file."
+                    )
                 raise FileTooLargeError(f"Uploaded file size ({total_size} bytes) exceeds maximum limit ({max_size} bytes).")
             file_size = total_size or len(content_bytes)
         else:
             detected_mime, file_size = ContentValidator.validate_content(content_bytes, safe_ext)
 
-        # Step 5b: Perform deep PDF structure verification for PDF-only criteria
+        # Step 5b: Perform deep PDF structure verification for PDF files or PDF-only criteria
         # The %%EOF trailer and the xref table sit at the end of the file, so a streamed upload is validated in full,
-        # not on the 8 KB header chunk read above (the size limit has already been enforced).
-        if is_pdf_only:
+        # after the size limit has already been bounded.
+        if is_pdf_only or safe_ext == 'pdf' or detected_mime == 'application/pdf':
             pdf_bytes = content_bytes
             if is_stream:
                 if hasattr(file_stream, 'seek'):
                     file_stream.seek(0)
-                pdf_bytes = file_stream.read()
+                # Streamed read bound to max_size + 1 to prevent memory exhaustion on malicious unannounced streams
+                pdf_bytes = file_stream.read(max_size + 1)
+                if len(pdf_bytes) > max_size:
+                    from apps.evidence.validators import FileTooLargeError
+                    raise FileTooLargeError(
+                        f"The PDF file size exceeds the strict 5 MB limit ({max_size} bytes). Please choose a smaller file."
+                    )
                 if hasattr(file_stream, 'seek'):
                     file_stream.seek(0)
             ContentValidator.validate_pdf_structure(pdf_bytes)

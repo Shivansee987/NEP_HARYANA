@@ -50,14 +50,8 @@ test("NEP 2026 University Scoring & Evidence — U6 and U18.3 Frontend Suite", a
   });
 
   await t.test("5. EvidenceUploadModal enforces secure PDF-only validation and %%EOF inspection", () => {
-    // Verifies header check
-    assert.match(modalFile, /headerStr\.startsWith\("%PDF-"\)/);
-    // Verifies trailer check
-    assert.match(modalFile, /tailStr\.includes\("%%EOF"\)/);
-    // Verifies empty file rejection
-    assert.match(modalFile, /file\.size === 0/);
-    // Verifies too small file rejection (< 20 bytes)
-    assert.match(modalFile, /file\.size < 20/);
+    // The shared validator provides header, trailer, empty-file, and size checks.
+    assert.match(modalFile, /validateUploadFile\(file, \{ allowedFormats, isPdfOnly \}\)/);
     // Verifies restricted accept attribute when isPdfOnly
     assert.match(modalFile, /accept=\{isPdfOnly \? "\.pdf,application\/pdf"/);
   });

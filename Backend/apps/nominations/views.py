@@ -5,6 +5,14 @@ from rest_framework.permissions import IsAuthenticated
 from django.utils import timezone
 from django.conf import settings
 import os
+import io
+
+from apps.evidence.validators import (
+    ContentValidator,
+    FilenameValidator,
+    FileTooLargeError,
+    FileValidationError,
+)
 
 from .models import Nomination, ClarificationRequest
 from .serializers import NominationSerializer
@@ -16,15 +24,91 @@ class NominationConfigView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        # Retrieve Cloudinary settings from env/settings
-        cloud_name = getattr(settings, 'CLOUDINARY_CLOUD_NAME', os.environ.get('CLOUDINARY_CLOUD_NAME', 'duimpfjil')).strip()
-        upload_preset = getattr(settings, 'CLOUDINARY_UPLOAD_PRESET_NAME', os.environ.get('CLOUDINARY_UPLOAD_PRESET_NAME', 'NEP_EXCELLENCE-AWARDS')).strip()
-        
         return Response({
-            'cloudinary_cloud_name': cloud_name,
-            'cloudinary_upload_preset': upload_preset,
             'award_thresholds': AWARD_THRESHOLDS
         }, status=status.HTTP_200_OK)
+
+
+class NominationEvidenceUploadView(APIView):
+    """Validate nomination evidence before forwarding it to Cloudinary."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        uploaded_file = request.FILES.get('file')
+        if uploaded_file is None:
+            return Response(
+                {'error': 'bad_request', 'detail': 'A file is required.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            safe_name, extension = FilenameValidator.validate_and_sanitize(uploaded_file.name)
+            limit = (
+                ContentValidator.get_max_pdf_size()
+                if extension == 'pdf' else ContentValidator.get_max_file_size()
+            )
+            declared_size = getattr(uploaded_file, 'size', None)
+            if declared_size is not None and declared_size > limit:
+                raise FileTooLargeError(
+                    'The PDF file must not exceed 5 MB. Please choose a smaller file.'
+                    if extension == 'pdf'
+                    else f'Uploaded file exceeds the maximum limit of {limit} bytes.'
+                )
+
+            chunks = []
+            total_size = 0
+            for chunk in uploaded_file.chunks():
+                total_size += len(chunk)
+                if total_size > limit:
+                    raise FileTooLargeError(
+                        'The PDF file must not exceed 5 MB. Please choose a smaller file.'
+                        if extension == 'pdf'
+                        else f'Uploaded file exceeds the maximum limit of {limit} bytes.'
+                    )
+                chunks.append(chunk)
+            content = b''.join(chunks)
+            detected_mime, _ = ContentValidator.validate_content(content, extension)
+            if extension == 'pdf' or detected_mime == 'application/pdf':
+                ContentValidator.validate_pdf_structure(content)
+        except FileTooLargeError as exc:
+            return Response(
+                {'error': 'file_too_large', 'detail': str(exc)},
+                status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            )
+        except FileValidationError as exc:
+            return Response(
+                {'error': 'bad_request', 'detail': str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        cloud_name = getattr(settings, 'CLOUDINARY_CLOUD_NAME', os.environ.get('CLOUDINARY_CLOUD_NAME', '')).strip()
+        upload_preset = getattr(settings, 'CLOUDINARY_UPLOAD_PRESET_NAME', os.environ.get('CLOUDINARY_UPLOAD_PRESET_NAME', '')).strip()
+        if not cloud_name or not upload_preset:
+            return Response(
+                {'error': 'storage_unavailable', 'detail': 'Document storage is temporarily unavailable. Please try again later.'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        try:
+            import cloudinary
+            import cloudinary.uploader
+
+            cloudinary.config(cloud_name=cloud_name)
+            stream = io.BytesIO(content)
+            stream.name = safe_name
+            result = cloudinary.uploader.unsigned_upload(
+                stream, upload_preset, resource_type='auto', filename_override=safe_name,
+            )
+        except Exception:
+            return Response(
+                {'error': 'storage_unavailable', 'detail': 'Document storage is temporarily unavailable. Please try again later.'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        return Response(
+            {'url': result['secure_url'], 'original_filename': safe_name},
+            status=status.HTTP_201_CREATED,
+        )
 
 from apps.authentication.models import College
 
@@ -236,5 +320,4 @@ class MySubmissionsListView(APIView):
         nominations = Nomination.objects.filter(college=college).order_by('-updated_at')
         serializer = NominationSerializer(nominations, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
-
 

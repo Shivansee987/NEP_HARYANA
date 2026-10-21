@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { uploadEvidenceDocument, associateEvidenceToSubcriterion } from "../../api/evidence";
 import { getSubcriterionContract } from "../../utils/nepTaxonomy";
+import { validateUploadFile } from "../../utils/fileValidators";
 
 /**
  * Parses documentary requirement text to determine how many and which documents are specified.
@@ -181,47 +182,7 @@ export default function EvidenceUploadModal({
   const resolvedEvidenceType = defaultEvidenceType;
   const isBlocked = isSourceSilent || isUnresolved || !resolvedEvidenceType;
 
-  /**
-   * Validates file size, extension, and content signature for uploads.
-   * Strictly enforces PDF header (%PDF-) and %%EOF termination for PDF-only criteria.
-   */
-  const validateFile = async (file) => {
-    if (!file) {
-      return "No file selected.";
-    }
-    if (file.size === 0) {
-      return "The selected file is empty (0 bytes). Please upload a valid document.";
-    }
-    if (file.size > 25 * 1024 * 1024) {
-      return `File exceeds maximum allowed limit of 25 MB (${(file.size / 1024 / 1024).toFixed(2)} MB).`;
-    }
-    const ext = (file.name.split(".").pop() || "").toLowerCase();
-    if (!allowedFormats.includes(ext)) {
-      return `File format '.${ext}' is not permitted for this criterion. Allowed format(s): ${allowedFormats.map((f) => f.toUpperCase()).join(", ")}.`;
-    }
-
-    if (ext === "pdf" || isPdfOnly) {
-      if (file.size < 20) {
-        return "The file is too small to be a valid PDF document.";
-      }
-      try {
-        const headerBuffer = await file.slice(0, 5).arrayBuffer();
-        const headerStr = new TextDecoder("ascii").decode(headerBuffer);
-        if (!headerStr.startsWith("%PDF-")) {
-          return "Invalid file content: The file does not have a genuine PDF header signature (%PDF-). Renamed non-PDF files are strictly rejected.";
-        }
-        const tailSize = Math.min(file.size, 1024);
-        const tailBuffer = await file.slice(file.size - tailSize, file.size).arrayBuffer();
-        const tailStr = new TextDecoder("ascii").decode(tailBuffer);
-        if (!tailStr.includes("%%EOF")) {
-          return "Malformed PDF: The document is missing a valid %%EOF termination marker.";
-        }
-      } catch (err) {
-        return "Unable to verify PDF file integrity. Please ensure the file is an uncorrupted PDF document.";
-      }
-    }
-    return null;
-  };
+  const validateFile = (file) => validateUploadFile(file, { allowedFormats, isPdfOnly });
 
   // Add another document slot
   const handleAddDocument = () => {
@@ -663,7 +624,7 @@ export default function EvidenceUploadModal({
                                     Click to choose file
                                   </span>
                                   <span className="text-[10px] text-slate-400">
-                                    {isPdfOnly ? "(PDF only, up to 25MB)" : "(PDF, PNG, JPG up to 25MB)"}
+                                    {isPdfOnly ? "(PDF only, max 5 MB)" : "(PDF max 5 MB, Images/Office max 25 MB)"}
                                   </span>
                                 </div>
                               )}

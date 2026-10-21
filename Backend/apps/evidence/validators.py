@@ -151,6 +151,12 @@ class ContentValidator:
         return getattr(settings, 'MAX_EVIDENCE_FILE_SIZE', 25 * 1024 * 1024)
 
     @classmethod
+    def get_max_pdf_size(cls) -> int:
+        pdf_limit = getattr(settings, 'MAX_PDF_FILE_SIZE', 5 * 1024 * 1024)
+        overall_limit = getattr(settings, 'MAX_EVIDENCE_FILE_SIZE', 25 * 1024 * 1024)
+        return min(pdf_limit, overall_limit)
+
+    @classmethod
     def validate_content(cls, content: bytes, claimed_ext: str) -> Tuple[str, int]:
         """
         Validates content bytes, detects authentic MIME type, and checks magic bytes.
@@ -160,8 +166,15 @@ class ContentValidator:
             raise FileEmptyError("Uploaded file is empty (0 bytes).")
 
         file_size = len(content)
-        max_size = cls.get_max_file_size()
+        clean_ext = claimed_ext.lower().strip()
+        is_pdf_target = (clean_ext == 'pdf' or content.startswith(b'%PDF-'))
+        max_size = cls.get_max_pdf_size() if is_pdf_target else cls.get_max_file_size()
+
         if file_size > max_size:
+            if is_pdf_target:
+                raise FileTooLargeError(
+                    f"The PDF file size ({file_size} bytes) exceeds the strict 5 MB limit ({max_size} bytes). Please choose a smaller file."
+                )
             raise FileTooLargeError(
                 f"File size ({file_size} bytes) exceeds maximum permitted limit ({max_size} bytes)."
             )
@@ -252,6 +265,12 @@ class ContentValidator:
         """
         if not content or len(content) == 0:
             raise FileEmptyError("Uploaded file is empty (0 bytes).")
+
+        max_pdf_size = cls.get_max_pdf_size()
+        if len(content) > max_pdf_size:
+            raise FileTooLargeError(
+                f"The PDF file size ({len(content)} bytes) exceeds the strict 5 MB limit ({max_pdf_size} bytes). Please choose a smaller file."
+            )
 
         if not content.startswith(b'%PDF-'):
             raise MimeMismatchError(

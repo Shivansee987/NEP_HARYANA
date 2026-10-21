@@ -11,6 +11,7 @@ import {
   fetchPrincipalClarification,
   submitPrincipalClarification
 } from "../../api/committee";
+import { validateUploadFile } from "../../utils/fileValidators";
 import styles from "./NominationWorkspace.module.css";
 import AwardJourney from "./AwardJourney";
 
@@ -452,8 +453,18 @@ export default function NominationWorkspace({ formId, onBack }) {
     const file = e.target.files[0];
     if (!file) return;
 
-    setUploadingIndicator(num);
     setErrorMessage("");
+    const validationError = await validateUploadFile(file, {
+      allowedFormats: ["pdf", "png", "jpg", "jpeg", "webp"],
+      isPdfOnly: false,
+    });
+    if (validationError) {
+      setErrorMessage(validationError);
+      if (e.target) e.target.value = "";
+      return;
+    }
+
+    setUploadingIndicator(num);
     try {
       const res = await uploadEvidenceToCloudinary(file);
       updateIndicatorValue(num, "evidence_url", res.url);
@@ -1804,6 +1815,9 @@ export default function NominationWorkspace({ formId, onBack }) {
                                 : "Choose File"}
                             </label>
                           ) : null}
+                          <span style={{ fontSize: "0.75rem", color: "#64748b" }}>
+                            (PDF max 5 MB, Images max 25 MB)
+                          </span>
 
                           {uploadingIndicator === ind.num && (
                             <span

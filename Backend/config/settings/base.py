@@ -242,7 +242,11 @@ MEDIA_URL = '/media/'
 MEDIA_ROOT = Path(os.environ.get('MEDIA_ROOT') or BASE_DIR / 'media')
 
 # Evidence Storage & Validation Pipeline (NEP 2026 Phase 5B)
-MAX_EVIDENCE_FILE_SIZE = int(os.environ.get('MAX_EVIDENCE_FILE_SIZE', 25 * 1024 * 1024))  # 25 MB default
+MAX_PDF_FILE_SIZE = int(os.environ.get('MAX_PDF_FILE_SIZE', 5 * 1024 * 1024))  # 5 MB = 5,242,880 bytes strict
+MAX_EVIDENCE_FILE_SIZE = int(os.environ.get('MAX_EVIDENCE_FILE_SIZE', 25 * 1024 * 1024))  # 25 MB default for other files
+# Permit the existing 25 MB non-PDF evidence limit plus multipart overhead. Individual
+# uploads are still bounded and validated by the evidence/nominations intake code.
+DATA_UPLOAD_MAX_MEMORY_SIZE = int(os.environ.get('DATA_UPLOAD_MAX_MEMORY_SIZE', 26 * 1024 * 1024))
 EVIDENCE_STORAGE_VAULT = Path(os.environ.get('EVIDENCE_STORAGE_VAULT') or MEDIA_ROOT / 'evidence_vault')
 EVIDENCE_STORAGE_BACKEND = 'apps.evidence.storage.FileSystemEvidenceStorage'
 

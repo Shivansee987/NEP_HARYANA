@@ -5,7 +5,8 @@ from .views import (
     NominationDetailView,
     NominationSaveView,
     NominationSubmitView,
-    MySubmissionsListView
+    MySubmissionsListView,
+    NominationEvidenceUploadView,
 )
 from .committee_views import (
     CommitteeDashboardStatsView,
@@ -17,6 +18,7 @@ from .committee_views import (
 
 urlpatterns = [
     path('config/', NominationConfigView.as_view(), name='nomination-config'),
+    path('upload/', NominationEvidenceUploadView.as_view(), name='nomination-evidence-upload'),
     path('my-submissions/', MySubmissionsListView.as_view(), name='my-submissions-list'),
     path('', NominationListView.as_view(), name='nomination-list'),
     
@@ -33,4 +35,3 @@ urlpatterns = [
     path('<str:form_id>/save/', NominationSaveView.as_view(), name='nomination-save'),
     path('<str:form_id>/submit/', NominationSubmitView.as_view(), name='nomination-submit'),
 ]
-
