@@ -36,7 +36,8 @@ def _encode(user, token_type, lifetime, **extra):
 
 def generate_access_token(user):
     minutes = getattr(settings, 'JWT_ACCESS_TOKEN_MINUTES', 15)
-    return _encode(user, ACCESS, datetime.timedelta(minutes=minutes), email=user.email, role=user.role)
+    return _encode(user, ACCESS, datetime.timedelta(minutes=minutes), email=user.email, role=user.role,
+                   jti=str(uuid.uuid4()))
 
 
 def generate_refresh_token(user):
@@ -61,6 +62,22 @@ def decode_token(token, expected_type=None):
             return None
         return payload
     return None
+
+
+def get_client_ip(request):
+    """
+    The client address as seen by the outermost trusted proxy (settings.TRUSTED_PROXY_COUNT hops), matching DRF's
+    throttle identity. Entries the client added to X-Forwarded-For itself are never used.
+    """
+    remote_addr = request.META.get('REMOTE_ADDR')
+    proxies = getattr(settings, 'TRUSTED_PROXY_COUNT', 0)
+    xff = request.META.get('HTTP_X_FORWARDED_FOR')
+    if proxies <= 0 or not xff:
+        return remote_addr
+    addrs = [addr.strip() for addr in xff.split(',') if addr.strip()]
+    if not addrs:
+        return remote_addr
+    return addrs[-min(proxies, len(addrs))]
 
 
 def hash_token(token_str):
@@ -110,7 +127,10 @@ def rotate_refresh_token_header(old_refresh_token_str):
         db_token.save(update_fields=['is_revoked'])
         return None
 
-    db_token.is_revoked = True
-    db_token.save(update_fields=['is_revoked'])
+    # Revoke conditionally: only one of several concurrent exchanges of the same token can win. A loser is treated
+    # like reuse of a rotated token (S-17).
+    if not RefreshToken.objects.filter(pk=db_token.pk, is_revoked=False).update(is_revoked=True):
+        RefreshToken.objects.filter(user=user, is_revoked=False).update(is_revoked=True)
+        return None
 
     return generate_auth_tokens(user)

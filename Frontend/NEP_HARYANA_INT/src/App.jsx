@@ -23,7 +23,6 @@ import AdminOverview from "./pages/Admin/AdminOverview";
 import StateInstitutions from "./pages/Admin/StateInstitutions";
 import AdminAssessmentDetail from "./pages/Admin/AdminAssessmentDetail";
 import Reports from "./pages/Admin/Reports";
-import Settings from "./pages/Admin/Settings";
 import UserManagement from "./pages/Admin/UserManagement";
 import CommitteeManagement from "./pages/Admin/CommitteeManagement";
 import InstitutionRequests from "./pages/Admin/InstitutionRequests";
@@ -225,7 +224,7 @@ function App() {
           <Route path="/admin/scoring" element={<Navigate to="/admin/institutions" replace />} />
           <Route path="/admin/assessments/:assessmentId" element={<AdminAssessmentDetail />} />
           <Route path="/admin/reports" element={<Reports />} />
-          <Route path="/admin/settings" element={<Settings />} />
+          <Route path="/admin/settings" element={<Navigate to="/admin" replace />} />
         </Route>
 
         {/* Empowered Committee: informational landing only until the stage's workflow rules are approved (FIN-05) */}

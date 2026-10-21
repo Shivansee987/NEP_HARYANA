@@ -148,7 +148,7 @@ class ContentValidator:
 
     @classmethod
     def get_max_file_size(cls) -> int:
-        return getattr(settings, 'MAX_EVIDENCE_FILE_SIZE', 25 * 1024 * 1024)
+        return getattr(settings, 'MAX_EVIDENCE_FILE_SIZE', 5 * 1024 * 1024)
 
     @classmethod
     def validate_content(cls, content: bytes, claimed_ext: str) -> Tuple[str, int]:

@@ -64,6 +64,10 @@ if EMAIL_BACKEND in ('django.core.mail.backends.console.EmailBackend', 'django.c
 if not os.environ.get('REDIS_URL', '').strip().startswith(('redis://', 'rediss://', 'unix://')):
 	raise ImproperlyConfigured("REDIS_URL must point to the production Redis instance (redis://, rediss:// or unix://).")
 
+# Production runs behind Nginx, which must overwrite X-Forwarded-For with the peer address (S-03).
+TRUSTED_PROXY_COUNT = int(os.environ.get('TRUSTED_PROXY_COUNT', 1))
+REST_FRAMEWORK = {**REST_FRAMEWORK, 'NUM_PROXIES': TRUSTED_PROXY_COUNT}  # noqa: F405
+
 # Only the configured production origins: base.py's localhost development origins and regexes are dropped (FIN-18).
 CORS_ALLOWED_ORIGIN_REGEXES = []
 CORS_ALLOWED_ORIGINS = [  # noqa: F405

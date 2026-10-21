@@ -6,6 +6,7 @@ from django.contrib.auth import authenticate
 from django.core.cache import cache
 from django.utils import timezone
 import datetime
+import logging
 
 import re
 from django.conf import settings
@@ -23,7 +24,9 @@ from .serializers import (
     normalize_phone_number,
 )
 from apps.university.models import University
-from .utils import generate_auth_tokens, rotate_refresh_token_header
+from .utils import generate_auth_tokens, get_client_ip, rotate_refresh_token_header
+
+logger = logging.getLogger(__name__)
 
 
 class CollegeListView(APIView):
@@ -494,6 +497,18 @@ class RegisterView(APIView):
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+def _increment_counter(key, timeout):
+    """Atomically increments a cache counter, creating it with the given lifetime on first use."""
+    if cache.add(key, 1, timeout=timeout):
+        return 1
+    try:
+        return cache.incr(key)
+    except ValueError:
+        # The key expired between add() and incr().
+        cache.set(key, 1, timeout=timeout)
+        return 1
+
+
 class LoginView(APIView):
     permission_classes = [AllowAny]
 
@@ -506,20 +521,21 @@ class LoginView(APIView):
             stored = User.objects.filter(email__iexact=email).values_list('email', flat=True).first()
             login_email = stored or email
             
-            # Brute-force protection / Account Lockout check
-            lockout_key = f"lockout_{email}"
-            attempts_key = f"attempts_{email}"
-            
-            lockout_time = cache.get(lockout_key)
-            if lockout_time:
-                # Handle timezone-aware conversion or native timezone
-                now = timezone.now()
-                if lockout_time > now:
+            # Brute-force protection. Failures are counted per account and client address, so failures from one
+            # address never lock the owner out elsewhere; a higher per-account ceiling bounds distributed guessing (S-04).
+            client_key = f"{email}_{get_client_ip(request)}"
+            lock_minutes = settings.LOGIN_LOCKOUT_MINUTES
+            lockout_keys = (f"lockout_{client_key}", f"lockout_{email}")
+
+            now = timezone.now()
+            for lockout_key in lockout_keys:
+                lockout_time = cache.get(lockout_key)
+                if lockout_time and lockout_time > now:
                     time_left = int((lockout_time - now).total_seconds())
                     return Response({
                         'detail': f'Too many failed login attempts. Locked out. Try again in {time_left} seconds.'
                     }, status=status.HTTP_429_TOO_MANY_REQUESTS)
-            
+
             user = authenticate(request, username=login_email, password=password)
             if user is not None:
                 # Gating: email verification is required before sign in
@@ -530,10 +546,9 @@ class LoginView(APIView):
                         'email': user.email,
                     }, status=status.HTTP_403_FORBIDDEN)
 
-                # Success: reset login attempt counts
-                cache.delete(attempts_key)
-                cache.delete(lockout_key)
-                
+                # Success: reset this address's failure count
+                cache.delete(f"attempts_{client_key}")
+
                 user_data = UserSerializer(user).data
                 tokens = generate_auth_tokens(user)
                 return Response({
@@ -542,29 +557,19 @@ class LoginView(APIView):
                     'message': 'Signed in successfully.'
                 }, status=status.HTTP_200_OK)
             else:
-                # Failure: increment login attempts count atomically
-                try:
-                    # cache.incr raises ValueError if key does not exist in standard backends
-                    attempts = cache.incr(attempts_key)
-                except (ValueError, Exception):
-                    # Key doesn't exist yet; use add to atomically initialize with timeout
-                    added = cache.add(attempts_key, 1, timeout=15 * 60)
-                    if not added:
-                        try:
-                            attempts = cache.incr(attempts_key)
-                        except Exception:
-                            cache.set(attempts_key, 1, timeout=15 * 60)
-                            attempts = 1
-                    else:
-                        attempts = 1
+                limits = (
+                    (client_key, settings.LOGIN_LOCKOUT_ATTEMPTS),
+                    (email, settings.LOGIN_ACCOUNT_LOCKOUT_ATTEMPTS),
+                )
+                for key, limit in limits:
+                    attempts = _increment_counter(f"attempts_{key}", lock_minutes * 60)
+                    if attempts >= limit:
+                        cache.set(f"lockout_{key}", timezone.now() + datetime.timedelta(minutes=lock_minutes), lock_minutes * 60)
+                        cache.delete(f"attempts_{key}")
+                        return Response({
+                            'detail': f'Account locked due to too many failed login attempts. Locked for {lock_minutes} minutes.'
+                        }, status=status.HTTP_429_TOO_MANY_REQUESTS)
 
-                if attempts >= 5:
-                    cache.set(lockout_key, timezone.now() + datetime.timedelta(minutes=15), 15 * 60)
-                    cache.delete(attempts_key)
-                    return Response({
-                        'detail': 'Account locked due to too many failed login attempts. Locked for 15 minutes.'
-                    }, status=status.HTTP_429_TOO_MANY_REQUESTS)
-                
                 return Response({
                     'detail': 'Invalid email or password.'
                 }, status=status.HTTP_401_UNAUTHORIZED)
@@ -734,7 +739,10 @@ class AccountActivationConfirmView(APIView):
             if isinstance(e, DRFValidationError):
                 detail = e.detail.get('detail') if isinstance(e.detail, dict) else e.detail
                 return Response({'detail': detail}, status=status.HTTP_400_BAD_REQUEST)
-            return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            # Unexpected failure: log it, never echo internal text to the client (S-13).
+            logger.exception("Account activation failed unexpectedly")
+            return Response({'detail': 'Account activation could not be completed. Please try again or contact the administrator.'},
+                            status=status.HTTP_400_BAD_REQUEST)
 
 
 
@@ -742,9 +750,11 @@ class LogoutView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
-        from .authentication import invalidate_user_cache
+        from .authentication import invalidate_user_cache, revoke_access_token
         if request.user and getattr(request.user, 'is_authenticated', False):
             invalidate_user_cache(request.user.id)
+            # The access token presented with the logout request stops working immediately (S-12).
+            revoke_access_token(request.auth)
 
         refresh_token = request.data.get('refresh_token')
         if refresh_token:
@@ -936,14 +946,16 @@ class EmailVerificationConfirmView(APIView):
                 http_status = status.HTTP_410_GONE if code in ('EXPIRED_TOKEN', 'ALREADY_USED', 'REVOKED_TOKEN') else status.HTTP_400_BAD_REQUEST
                 resp_payload.update({'detail': detail, 'code': code, 'reason': code})
                 return Response(resp_payload, status=http_status)
-            return Response({'detail': str(exc), 'code': 'VERIFICATION_FAILED'}, status=status.HTTP_400_BAD_REQUEST)
+            logger.exception("Email verification failed unexpectedly")
+            return Response({'detail': 'Email verification could not be completed. Please request a new link.',
+                             'code': 'VERIFICATION_FAILED'}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class EmailVerificationResendView(APIView):
     """
     Requests a fresh verification email.
     Enforces cooldown (60s) and hourly rate limiting (5/hr).
-    Always returns a generic success message to prevent user enumeration.
+    Tells the caller whether the address is registered and verified, by design (sign-up reveals this too).
     """
     permission_classes = [AllowAny]
 
@@ -1013,14 +1025,6 @@ class EmailVerificationResendView(APIView):
             'redirect_to': '/auth/verify-email/otp',
             'cooldown_seconds': 60,
         }, status=status.HTTP_200_OK)
-
-
-def get_client_ip(request):
-    """Safely extracts client IP address from request."""
-    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
-    if x_forwarded_for:
-        return x_forwarded_for.split(',')[0].strip()
-    return request.META.get('REMOTE_ADDR')
 
 
 class EmailOTPVerifyView(APIView):
@@ -1099,7 +1103,7 @@ class EmailOTPResendView(APIView):
     """
     Resends a 6-digit email OTP for the provided email.
     - Enforces 60-second cooldown and 5/hour rate limits.
-    - Preserves anti-enumeration defense.
+    - Tells the caller whether the address is registered and verified, by design (sign-up reveals this too).
     """
     permission_classes = [AllowAny]
 
@@ -1184,7 +1188,7 @@ class EmailOTPRequestView(APIView):
     Direct request for 6-digit email verification code outside signup flow.
     - Validates email address.
     - Avoids creating a new user account.
-    - Anti-enumeration timing defense.
+    - Tells the caller whether the address is registered and verified, by design (sign-up reveals this too).
     - Handles already-verified accounts gracefully.
     """
     permission_classes = [AllowAny]

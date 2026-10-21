@@ -1,9 +1,8 @@
 from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import BasePermission, IsAuthenticated
 from django.utils import timezone
-from django.conf import settings
 import os
 
 from .models import Nomination, ClarificationRequest
@@ -16,9 +15,10 @@ class NominationConfigView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        # Retrieve Cloudinary settings from env/settings
-        cloud_name = getattr(settings, 'CLOUDINARY_CLOUD_NAME', os.environ.get('CLOUDINARY_CLOUD_NAME', 'duimpfjil')).strip()
-        upload_preset = getattr(settings, 'CLOUDINARY_UPLOAD_PRESET_NAME', os.environ.get('CLOUDINARY_UPLOAD_PRESET_NAME', 'NEP_EXCELLENCE-AWARDS')).strip()
+        # Legacy direct-to-Cloudinary upload: enabled only when an approved account is configured in the environment.
+        # There is no built-in default account, so evidence never leaves state infrastructure by accident (S-07).
+        cloud_name = os.environ.get('CLOUDINARY_CLOUD_NAME', '').strip()
+        upload_preset = os.environ.get('CLOUDINARY_UPLOAD_PRESET_NAME', '').strip()
         
         return Response({
             'cloudinary_cloud_name': cloud_name,
@@ -26,19 +26,28 @@ class NominationConfigView(APIView):
             'award_thresholds': AWARD_THRESHOLDS
         }, status=status.HTTP_200_OK)
 
-from apps.authentication.models import College
+class HasApprovedCollege(BasePermission):
+    """
+    Nominations belong to one college: only a user whose binding to that college has been approved may read or edit
+    them. Pending, rejected and unbound accounts (university users, administrators, committee members) are refused;
+    there is no fallback college (S-01).
+    """
+    message = "Your account is not linked to an approved college."
+
+    def has_permission(self, request, view):
+        user = request.user
+        return bool(
+            user and user.is_authenticated
+            and getattr(user, 'college_id', None)
+            and getattr(user, 'institution_status', None) == 'VERIFIED'
+        )
+
 
 def get_user_college(user):
-    if user.college:
-        return user.college
-    # Fallback for testing/superuser accounts
-    college = College.objects.first()
-    if not college:
-        college = College.objects.create(name="Default Govt College", aishe_code="C-12345")
-    return college
+    return user.college
 
 class NominationListView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasApprovedCollege]
 
     def get(self, request):
         user = request.user
@@ -70,7 +79,7 @@ class NominationListView(APIView):
         return Response(forms, status=status.HTTP_200_OK)
 
 class NominationDetailView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasApprovedCollege]
 
     def get(self, request, form_id):
         user = request.user
@@ -91,7 +100,7 @@ class NominationDetailView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 class NominationSaveView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasApprovedCollege]
 
     def post(self, request, form_id):
         user = request.user
@@ -157,7 +166,7 @@ class NominationSaveView(APIView):
         }, status=status.HTTP_200_OK)
 
 class NominationSubmitView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasApprovedCollege]
 
     def post(self, request, form_id):
         user = request.user
@@ -228,7 +237,7 @@ class NominationSubmitView(APIView):
 
 
 class MySubmissionsListView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasApprovedCollege]
 
     def get(self, request):
         user = request.user

@@ -9,6 +9,7 @@ from django.core.paginator import Paginator
 from .models import Nomination, ClarificationRequest
 from .serializers import NominationSerializer, ClarificationRequestSerializer
 from .scoring import calculate_nomination_score, AWARD_THRESHOLDS
+from .views import HasApprovedCollege
 
 class IsCommitteeRole(BasePermission):
     message = "Committee access required."
@@ -254,7 +255,7 @@ class CommitteeClarificationRequestView(APIView):
 
 # Endpoint for Principal to view and reply to active clarification
 class PrincipalClarificationView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasApprovedCollege]
 
     def get(self, request, form_id):
         # Get active clarification

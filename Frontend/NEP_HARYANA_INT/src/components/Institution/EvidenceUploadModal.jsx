@@ -192,8 +192,8 @@ export default function EvidenceUploadModal({
     if (file.size === 0) {
       return "The selected file is empty (0 bytes). Please upload a valid document.";
     }
-    if (file.size > 25 * 1024 * 1024) {
-      return `File exceeds maximum allowed limit of 25 MB (${(file.size / 1024 / 1024).toFixed(2)} MB).`;
+    if (file.size > 5 * 1024 * 1024) {
+      return `File exceeds maximum allowed limit of 5 MB (${(file.size / 1024 / 1024).toFixed(2)} MB).`;
     }
     const ext = (file.name.split(".").pop() || "").toLowerCase();
     if (!allowedFormats.includes(ext)) {
@@ -663,7 +663,7 @@ export default function EvidenceUploadModal({
                                     Click to choose file
                                   </span>
                                   <span className="text-[10px] text-slate-400">
-                                    {isPdfOnly ? "(PDF only, up to 25MB)" : "(PDF, PNG, JPG up to 25MB)"}
+                                    {isPdfOnly ? "(PDF only, up to 5MB)" : "(PDF, PNG, JPG up to 5MB)"}
                                   </span>
                                 </div>
                               )}

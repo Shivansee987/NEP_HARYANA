@@ -100,6 +100,23 @@ def validate_phone_number(attrs):
 validate_verified_phone = validate_phone_number
 
 
+_NAME_FORBIDDEN_CHARS = re.compile(r'[<>"{}\[\]\\/=;`|@\x00-\x1f\x7f]')
+_NAME_LINK = re.compile(r'://|www\.', re.IGNORECASE)
+
+
+def validate_person_name(value):
+    """
+    A person's name appears in the portal's own e-mails. Markup characters, links and control characters are refused,
+    so a name can never be used to plant content in an official message (S-02). Letters in any script are allowed.
+    """
+    value = (value or '').strip()
+    if _NAME_FORBIDDEN_CHARS.search(value) or _NAME_LINK.search(value) or not any(ch.isalpha() for ch in value):
+        raise serializers.ValidationError(
+            "Enter a valid name: letters, spaces and the characters . ' - only, without links."
+        )
+    return value
+
+
 def validate_new_password(attrs):
     try:
         validate_password(attrs.get('password'), User(email=attrs.get('email', ''), full_name=attrs.get('fullName', '')))
@@ -261,7 +278,7 @@ class RegisterSerializer(serializers.Serializer):
     Privileged roles are refused. The account is created PENDING: the institution is requested, not granted,
     until an administrator approves it.
     """
-    fullName = serializers.CharField(required=True, min_length=2, max_length=255)
+    fullName = serializers.CharField(required=True, min_length=2, max_length=255, validators=[validate_person_name])
     email = serializers.EmailField(required=True)
     phoneNumber = serializers.CharField(required=False, allow_blank=True)
     phone_number = serializers.CharField(required=False, allow_blank=True)
@@ -336,7 +353,7 @@ class UniversityRegisterSerializer(serializers.Serializer):
     - Verified mobile number and password policy are required.
     - The AISHE code or University Name must resolve to an active University.
     """
-    fullName = serializers.CharField(required=True, min_length=2, max_length=255)
+    fullName = serializers.CharField(required=True, min_length=2, max_length=255, validators=[validate_person_name])
     email = serializers.EmailField(required=True)
     phoneNumber = serializers.CharField(required=False, allow_blank=True)
     phone_number = serializers.CharField(required=False, allow_blank=True)

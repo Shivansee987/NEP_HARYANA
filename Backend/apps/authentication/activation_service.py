@@ -5,6 +5,7 @@ from datetime import timedelta
 from django.utils import timezone
 from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
+from django.utils.html import escape
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from rest_framework.exceptions import ValidationError as DRFValidationError
@@ -105,10 +106,10 @@ class AccountActivationService:
                 <h2 style="color: #600b0b; margin: 0;">HSHEC Haryana Excellence Awards</h2>
                 <p style="color: #64748b; font-size: 14px; margin: 4px 0 0;">Official Administrative Account Activation</p>
             </div>
-            <p>Dear <strong>{user.full_name}</strong>,</p>
+            <p>Dear <strong>{escape(user.full_name)}</strong>,</p>
             <p>An official administrative profile has been provisioned for you on the portal:</p>
             <div style="background-color: #f8fafc; padding: 12px 16px; border-radius: 8px; margin: 16px 0; border: 1px solid #e2e8f0;">
-                <p style="margin: 4px 0;"><strong>Email:</strong> {user.email}</p>
+                <p style="margin: 4px 0;"><strong>Email:</strong> {escape(user.email)}</p>
                 <p style="margin: 4px 0;"><strong>Role:</strong> {user.get_role_display()}</p>
             </div>
             <p>Please click the button below to establish your password and activate your account:</p>

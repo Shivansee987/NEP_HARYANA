@@ -193,7 +193,7 @@ stateDiagram-v2
 | # | Step | Who | Details |
 |:---:|---|---|---|
 | 1 | **Fill in** | Principal / Nodal Officer | The form checks the numbers before accepting a submission, e.g. *students placed* cannot exceed *students who took part* |
-| 2 | **Upload proof** | Principal / Nodal Officer | Each sub-criterion asks for a specific kind of document. PDF, PNG, JPG, WEBP, DOCX and XLSX are accepted, up to 25 MB each. Uploading alone gives **no** marks |
+| 2 | **Upload proof** | Principal / Nodal Officer | Each sub-criterion asks for a specific kind of document. PDF, PNG, JPG, WEBP, DOCX and XLSX are accepted, up to 5 MB each. Uploading alone gives **no** marks |
 | 3 | **Submit** | Principal / Nodal Officer | The server checks readiness, then the form locks |
 | 4 | **Start Review** | Committee | The assessment moves to `UNDER_REVIEW` |
 | 5 | **Verify proof** | Committee | Each document is viewed beside its claim → **Verify** or **Reject** with a structured reason (illegible, incomplete, out of period, mismatched, unsigned…) |
@@ -429,7 +429,7 @@ Local settings are read from `Backend/.env` (start from `Backend/.env.example`).
 | `MEDIA_ROOT` / `EVIDENCE_STORAGE_VAULT` | Evidence folder on a persistent volume | ✅ |
 | `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_USE_TLS`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `DEFAULT_FROM_EMAIL` | SMTP relay | ✅ |
 | `SECURE_PROXY_SSL_HEADER` | `true` behind Nginx | ✅ |
-| `MAX_EVIDENCE_FILE_SIZE` | Upload limit, default 25 MB | optional |
+| `MAX_EVIDENCE_FILE_SIZE` | Upload limit, default 5 MB | optional |
 | `EMAIL_OTP_TTL_MINUTES`, `EMAIL_OTP_MAX_ATTEMPTS`, … | Verification code policy | optional |
 | `VITE_API_BASE_URL` | Frontend build only, if the API is on another domain | optional |
 

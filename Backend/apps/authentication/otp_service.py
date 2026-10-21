@@ -78,7 +78,12 @@ def verify_otp(phone, code, purpose=REGISTRATION):
     if challenge.attempt_count >= settings.OTP_MAX_ATTEMPTS:
         raise OTPError("Too many incorrect attempts. Please request a new OTP.", 429, "OTP_ATTEMPTS_EXCEEDED")
 
-    OTPVerification.objects.filter(pk=challenge.pk).update(attempt_count=F("attempt_count") + 1)
+    # Claim one attempt atomically; the database enforces the limit even for concurrent guesses (S-11).
+    claimed = OTPVerification.objects.filter(
+        pk=challenge.pk, attempt_count__lt=settings.OTP_MAX_ATTEMPTS
+    ).update(attempt_count=F("attempt_count") + 1)
+    if not claimed:
+        raise OTPError("Too many incorrect attempts. Please request a new OTP.", 429, "OTP_ATTEMPTS_EXCEEDED")
     if not (len(code) == 6 and code.isdigit() and hmac.compare_digest(challenge.otp_hash, _hmac(purpose, phone, code))):
         challenge.refresh_from_db(fields=["attempt_count"])
         if challenge.attempt_count >= settings.OTP_MAX_ATTEMPTS:

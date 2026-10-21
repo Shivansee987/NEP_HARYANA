@@ -8,6 +8,8 @@ from django.utils import timezone
 from django.conf import settings
 from django.core.cache import cache
 from django.core.mail import EmailMultiAlternatives
+from django.utils.html import escape
+from urllib.parse import quote
 from rest_framework.exceptions import ValidationError as DRFValidationError
 
 from .models import User, EmailVerificationToken, EmailOTPVerification, UserAuditLog
@@ -147,7 +149,7 @@ class EmailVerificationService:
 
         frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173').rstrip('/')
         verification_link = f"{frontend_url}/auth/verify-email/{raw_token}"
-        otp_verification_page = f"{frontend_url}/auth/verify-email/otp?email={norm_email}"
+        otp_verification_page = f"{frontend_url}/auth/verify-email/otp?email={quote(norm_email, safe='')}"
 
         subject = "Verify Your Email Address — HSHEC Haryana Excellence Awards 2026"
         from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@haryana.gov.in')
@@ -178,7 +180,7 @@ class EmailVerificationService:
                 <h2 style="color: #600b0b; margin: 0; font-size: 20px;">Haryana State Higher Education Council</h2>
                 <p style="color: #64748b; font-size: 13px; margin: 4px 0 0; font-weight: 600;">NEP EXCELLENCE AWARDS 2026</p>
             </div>
-            <p style="font-size: 15px; color: #1e293b;">Dear <strong>{user.full_name}</strong>,</p>
+            <p style="font-size: 15px; color: #1e293b;">Dear <strong>{escape(user.full_name)}</strong>,</p>
             <p style="font-size: 14px; color: #334155; line-height: 1.6;">
                 Thank you for initiating registration on the official HSHEC Haryana Excellence Awards Portal.
                 Please enter the following 6-digit verification code to complete your email verification:
