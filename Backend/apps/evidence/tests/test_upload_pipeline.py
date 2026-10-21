@@ -568,3 +568,24 @@ class TestCategoryMAuditEvents(UploadPipelineTestCase):
         self.assertIn(EvidenceAuditAction.UPLOADED, actions)
         self.assertIn(EvidenceAuditAction.ASSOCIATED, actions)
         self.assertIn(EvidenceAuditAction.SUBMITTED, actions)
+
+
+class TestEvidenceFileSizeLimitDefault(TestCase):
+    """
+    Default upload limits (decision 2026-10-22): PDFs 5 MB, other evidence formats 25 MB.
+    Boundary behaviour for PDFs is covered in test_pdf_upload_limit.
+    """
+    def test_default_limits_and_general_boundary(self):
+        from apps.evidence.validators import ContentValidator
+
+        if 'MAX_PDF_FILE_SIZE' not in os.environ:
+            self.assertEqual(settings.MAX_PDF_FILE_SIZE, 5 * 1024 * 1024)
+        if 'MAX_EVIDENCE_FILE_SIZE' not in os.environ:
+            self.assertEqual(settings.MAX_EVIDENCE_FILE_SIZE, 25 * 1024 * 1024)
+
+        limit = 5 * 1024 * 1024
+        with override_settings(MAX_EVIDENCE_FILE_SIZE=limit):
+            at_limit = b"%PDF-1.4\n" + b"X" * (limit - 9)
+            ContentValidator.validate_content(at_limit, "pdf")
+            with self.assertRaises(FileTooLargeError):
+                ContentValidator.validate_content(at_limit + b"X", "pdf")

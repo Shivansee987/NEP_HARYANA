@@ -5,6 +5,7 @@ and provides structured representations for review queues and inspection.
 """
 from rest_framework import serializers
 from apps.authentication.models import User
+from apps.authentication.serializers import validate_person_name
 from apps.evidence.models import ReviewerAuthorization
 
 
@@ -301,13 +302,15 @@ class AdminUserDetailSerializer(AdminUserListSerializer):
 
 class AdminUserCreateSerializer(serializers.Serializer):
     email = serializers.EmailField(required=True)
-    full_name = serializers.CharField(required=True, max_length=255)
+    full_name = serializers.CharField(required=True, max_length=255, validators=[validate_person_name])
     role = serializers.ChoiceField(choices=User.ROLE_CHOICES, required=True)
     password = serializers.CharField(required=False, allow_blank=True, write_only=True, min_length=8)
     phone_number = serializers.CharField(required=False, allow_blank=True, default="", max_length=20)
     college_id = serializers.IntegerField(required=False, allow_null=True)
     university_id = serializers.IntegerField(required=False, allow_null=True)
-    committee_framework = serializers.CharField(required=False, allow_blank=True, default="")
+    committee_framework = serializers.ChoiceField(
+        choices=["", "UNIVERSITY_2026", "COLLEGE_2026", "ALL"], required=False, allow_blank=True, default=""
+    )
     send_invite = serializers.BooleanField(required=False, default=True)
 
     def validate_email(self, value):
@@ -338,13 +341,15 @@ class AdminUserCreateSerializer(serializers.Serializer):
 
 
 class AdminUserUpdateSerializer(serializers.Serializer):
-    full_name = serializers.CharField(required=False, max_length=255)
+    full_name = serializers.CharField(required=False, max_length=255, validators=[validate_person_name])
     phone_number = serializers.CharField(required=False, allow_blank=True, max_length=20)
     role = serializers.ChoiceField(choices=User.ROLE_CHOICES, required=False)
     is_active = serializers.BooleanField(required=False)
     college_id = serializers.IntegerField(required=False, allow_null=True)
     university_id = serializers.IntegerField(required=False, allow_null=True)
-    committee_framework = serializers.CharField(required=False, allow_blank=True, default="")
+    committee_framework = serializers.ChoiceField(
+        choices=["", "UNIVERSITY_2026", "COLLEGE_2026", "ALL"], required=False, allow_blank=True, default=""
+    )
 
     def validate(self, attrs):
         if "college_id" in attrs:

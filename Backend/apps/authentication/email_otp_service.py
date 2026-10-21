@@ -12,6 +12,8 @@ from django.core.mail import EmailMultiAlternatives
 from django.db import transaction
 from django.db.models import F
 from django.utils import timezone
+from django.utils.html import escape
+from urllib.parse import quote
 
 from .models import User, EmailOTPVerification, UserAuditLog
 
@@ -186,7 +188,7 @@ class EmailOTPService:
         """Sends the HTML and plain-text OTP verification email."""
         frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173').rstrip('/')
         norm_email = user.email.strip().lower()
-        otp_page_url = f"{frontend_url}/auth/verify-email/otp?email={norm_email}"
+        otp_page_url = f"{frontend_url}/auth/verify-email/otp?email={quote(norm_email, safe='')}"
 
         subject = "Verify Your Email Address — HSHEC Haryana Excellence Awards 2026"
         from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@haryana.gov.in')
@@ -216,7 +218,7 @@ class EmailOTPService:
                 <p style="color: #64748b; font-size: 13px; margin: 4px 0 0; font-weight: 600; text-transform: uppercase;">NEP Excellence Awards 2026</p>
             </div>
             
-            <p style="font-size: 15px; color: #1e293b; margin-top: 0;">Dear <strong>{recipient_name}</strong>,</p>
+            <p style="font-size: 15px; color: #1e293b; margin-top: 0;">Dear <strong>{escape(recipient_name)}</strong>,</p>
             <p style="font-size: 14px; color: #334155; line-height: 1.6;">
                 Thank you for registering on the official HSHEC Haryana Excellence Awards Portal.
                 Please enter the following 6-digit verification code to complete your email verification:
@@ -325,8 +327,15 @@ class EmailOTPService:
             EmailOTPVerification.objects.filter(pk=challenge.pk).update(is_revoked=True)
             raise EmailOTPAttemptsExceededError()
 
-        # Increment attempt count atomically (persisted regardless of outcome)
-        EmailOTPVerification.objects.filter(pk=challenge.pk).update(attempt_count=F('attempt_count') + 1)
+        # Claim one attempt atomically (persisted regardless of outcome). The condition is evaluated by the database,
+        # so concurrent guesses that all read the challenge before any attempt was recorded cannot exceed the limit
+        # (S-11).
+        claimed = EmailOTPVerification.objects.filter(
+            pk=challenge.pk, attempt_count__lt=challenge.max_attempts
+        ).update(attempt_count=F('attempt_count') + 1)
+        if not claimed:
+            EmailOTPVerification.objects.filter(pk=challenge.pk).update(is_revoked=True)
+            raise EmailOTPAttemptsExceededError()
         challenge.refresh_from_db(fields=['attempt_count'])
 
         expected_hash = cls._hmac(norm_email, clean_code)
@@ -380,7 +389,7 @@ class EmailOTPService:
     def request_otp_for_email(cls, email: str, ip_address: Optional[str] = None) -> dict:
         """
         Direct request for email verification code outside signup flow.
-        - Returns identical success responses to prevent user enumeration.
+        - Tells the caller whether the address is registered and verified, by design (sign-up reveals this too).
         - Enforces rate limits and cooldowns.
         """
         norm_email = (email or '').strip().lower()

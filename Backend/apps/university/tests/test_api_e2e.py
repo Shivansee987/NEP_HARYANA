@@ -132,7 +132,7 @@ class UniversityAPIEndToEndIntegrationTests(TestCase):
         # ---------------------------------------------------------------------
         # Step 5: Evidence File Upload (Nodal User -> Phase 5E Evidence API)
         # ---------------------------------------------------------------------
-        pdf_content = b"%PDF-1.4 official approval document for apprenticeship embedded degree programmes"
+        pdf_content = b"%PDF-1.4 official approval document for apprenticeship embedded degree programmes" + b"\n%%EOF\n"
         uploaded_file = SimpleUploadedFile(
             name="ccshau_u1_syndicate_approval.pdf",
             content=pdf_content,

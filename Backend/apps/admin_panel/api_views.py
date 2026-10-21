@@ -8,6 +8,18 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.exceptions import PermissionDenied
 
+from apps.authentication.utils import get_client_ip
+
+
+def _int_param(request, name, default, minimum=1, maximum=None):
+    """A positive integer query parameter; malformed values fall back to the default instead of a 500 (S-21)."""
+    try:
+        value = int(request.query_params.get(name, default))
+    except (TypeError, ValueError):
+        value = default
+    value = max(minimum, value)
+    return min(value, maximum) if maximum is not None else value
+
 from apps.evidence.models import ReviewerAuthorization
 from .api_permissions import (
     AdminPermissionDenied,
@@ -279,8 +291,8 @@ class AdminUserListCreateView(APIView):
             "institution_status": request.query_params.get("institution_status"),
         }
         filters = {k: v for k, v in filters.items() if v is not None}
-        page = int(request.query_params.get("page", 1))
-        page_size = int(request.query_params.get("page_size", 20))
+        page = _int_param(request, "page", 1)
+        page_size = _int_param(request, "page_size", 20, maximum=100)
 
         result = AdminUserManagementService.list_users(
             actor=request.user,
@@ -302,9 +314,7 @@ class AdminUserListCreateView(APIView):
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        ip = request.META.get("HTTP_X_FORWARDED_FOR") or request.META.get("REMOTE_ADDR")
-        if ip and "," in ip:
-            ip = ip.split(",")[0].strip()
+        ip = get_client_ip(request)
 
         try:
             new_user = AdminUserManagementService.create_user(
@@ -351,9 +361,7 @@ class AdminUserDetailView(APIView):
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        ip = request.META.get("HTTP_X_FORWARDED_FOR") or request.META.get("REMOTE_ADDR")
-        if ip and "," in ip:
-            ip = ip.split(",")[0].strip()
+        ip = get_client_ip(request)
 
         try:
             updated_user = AdminUserManagementService.update_user(
@@ -371,9 +379,7 @@ class AdminUserDetailView(APIView):
             return Response({"error": code, "detail": str(e)}, status=http_status)
 
     def delete(self, request, user_id):
-        ip = request.META.get("HTTP_X_FORWARDED_FOR") or request.META.get("REMOTE_ADDR")
-        if ip and "," in ip:
-            ip = ip.split(",")[0].strip()
+        ip = get_client_ip(request)
 
         try:
             target_info = AdminUserManagementService.delete_user(
@@ -450,8 +456,8 @@ class AdminGlobalUserAuditLogsView(APIView):
             "search": request.query_params.get("search") or request.query_params.get("q"),
         }
         filters = {k: v for k, v in filters.items() if v is not None}
-        page = int(request.query_params.get("page", 1))
-        page_size = int(request.query_params.get("page_size", 25))
+        page = _int_param(request, "page", 1)
+        page_size = _int_param(request, "page_size", 25, maximum=100)
 
         try:
             result = HeadAdminControlCentreService.list_audit_trail(
@@ -474,9 +480,7 @@ class AdminUserResetPasswordView(APIView):
     permission_classes = [IsAuthenticatedUser, IsHeadAdminOnly]
 
     def post(self, request, user_id):
-        ip = request.META.get("HTTP_X_FORWARDED_FOR") or request.META.get("REMOTE_ADDR")
-        if ip and "," in ip:
-            ip = ip.split(",")[0].strip()
+        ip = get_client_ip(request)
 
         try:
             _, email_sent = AdminUserManagementService.reset_password(
@@ -528,9 +532,7 @@ class AdminUserCommitteeView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        ip = request.META.get("HTTP_X_FORWARDED_FOR") or request.META.get("REMOTE_ADDR")
-        if ip and "," in ip:
-            ip = ip.split(",")[0].strip()
+        ip = get_client_ip(request)
 
         try:
             auth = AdminUserManagementService.manage_committee_assignment(
@@ -608,7 +610,7 @@ class AdminUserInstitutionDecisionView(APIView):
         try:
             user = AdminUserManagementService.decide_institution_access(
                 actor=request.user, user_id=user_id, approve=decision == "approve",
-                reason=request.data.get("reason", ""), ip_address=request.META.get("REMOTE_ADDR"))
+                reason=request.data.get("reason", ""), ip_address=get_client_ip(request))
         except AdminPermissionDenied as e:
             return Response({"error": getattr(e, "code", "PERMISSION_DENIED"), "detail": str(e)}, status=status.HTTP_403_FORBIDDEN)
         except AdminValidationError as e:
@@ -678,7 +680,7 @@ class AdminCommitteeListCreateView(APIView):
             committee = CommitteeService.create_committee(
                 actor=request.user,
                 data=serializer.validated_data,
-                ip_address=request.META.get('REMOTE_ADDR')
+                ip_address=get_client_ip(request)
             )
             return Response(CommitteeDetailSerializer(committee).data, status=status.HTTP_201_CREATED)
         except AdminValidationError as e:
@@ -718,7 +720,7 @@ class AdminCommitteeDetailView(APIView):
                 actor=request.user,
                 committee_id=committee_id,
                 data=serializer.validated_data,
-                ip_address=request.META.get('REMOTE_ADDR')
+                ip_address=get_client_ip(request)
             )
             return Response(CommitteeDetailSerializer(committee).data, status=status.HTTP_200_OK)
         except AdminValidationError as e:
@@ -744,7 +746,7 @@ class AdminCommitteeAssignChairView(APIView):
                 actor=request.user,
                 committee_id=committee_id,
                 chair_id=serializer.validated_data['chair_id'],
-                ip_address=request.META.get('REMOTE_ADDR')
+                ip_address=get_client_ip(request)
             )
             return Response(CommitteeDetailSerializer(committee).data, status=status.HTTP_200_OK)
         except AdminValidationError as e:
@@ -773,7 +775,7 @@ class AdminCommitteeMembersView(APIView):
                 committee_id=committee_id,
                 user_id=serializer.validated_data['user_id'],
                 role_in_committee=serializer.validated_data.get('role_in_committee', 'member'),
-                ip_address=request.META.get('REMOTE_ADDR')
+                ip_address=get_client_ip(request)
             )
             return Response(CommitteeMemberSerializer(membership).data, status=status.HTTP_201_CREATED)
         except AdminValidationError as e:
@@ -793,7 +795,7 @@ class AdminCommitteeMembersView(APIView):
                 actor=request.user,
                 committee_id=committee_id,
                 user_id=user_id,
-                ip_address=request.META.get('REMOTE_ADDR')
+                ip_address=get_client_ip(request)
             )
             return Response({"message": "Member removed from committee successfully."}, status=status.HTTP_200_OK)
         except AdminValidationError as e:

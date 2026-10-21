@@ -3,7 +3,6 @@ import {
   LayoutDashboard,
   School,
   FileSpreadsheet,
-  Settings as SettingsIcon,
   LogOut,
   UserCheck,
   Users,
@@ -35,7 +34,6 @@ const Sidebar = () => {
     { name: 'Access Requests', path: '/admin/institution-requests', icon: UserCheck },
     { name: 'Committees', path: '/admin/committees', icon: GraduationCap },
     { name: 'Reports', path: '/admin/reports', icon: FileSpreadsheet },
-    { name: 'Settings', path: '/admin/settings', icon: SettingsIcon },
   ];
 
 

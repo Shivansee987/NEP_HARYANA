@@ -1,3 +1,5 @@
+import time
+
 from rest_framework.authentication import BaseAuthentication
 from rest_framework import exceptions
 from django.contrib.auth import get_user_model
@@ -16,6 +18,24 @@ def get_user_cache_key(user_id: int) -> str:
 def invalidate_user_cache(user_id: int):
     """Call whenever user password, token_version, status, or role changes."""
     cache.delete(get_user_cache_key(user_id))
+
+
+def _revoked_access_key(jti: str) -> str:
+    return f"jwt_revoked_access_{jti}"
+
+
+def revoke_access_token(payload) -> None:
+    """
+    Rejects one access token for the rest of its lifetime (logout, S-12). Other sessions of the same user are not
+    affected; ending all of them is user.revoke_sessions().
+    """
+    jti = (payload or {}).get('jti')
+    exp = (payload or {}).get('exp')
+    if not jti or not exp:
+        return
+    remaining = int(exp - time.time())
+    if remaining > 0:
+        cache.set(_revoked_access_key(jti), True, timeout=remaining)
 
 
 class JWTAuthentication(BaseAuthentication):
@@ -37,6 +57,10 @@ class JWTAuthentication(BaseAuthentication):
         user_id = payload.get('user_id')
         if not user_id:
             raise exceptions.AuthenticationFailed('Token lacks user ID')
+
+        jti = payload.get('jti')
+        if jti and cache.get(_revoked_access_key(jti)):
+            raise exceptions.AuthenticationFailed('Session has been revoked. Please sign in again.')
             
         cache_key = get_user_cache_key(user_id)
         user = cache.get(cache_key)
@@ -57,7 +81,7 @@ class JWTAuthentication(BaseAuthentication):
         if payload.get('tv') != user.token_version:
             raise exceptions.AuthenticationFailed('Session has been revoked. Please sign in again.')
             
-        return (user, None)
+        return (user, payload)
 
     def authenticate_header(self, request):
         return 'Bearer'

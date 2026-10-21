@@ -74,7 +74,7 @@ The first assessment found code gaps G1–G8 (§9). **G1–G6 are now fixed.** G
 
 - Backend: `apps.evidence.storage.FileSystemEvidenceStorage`. It writes atomically (temporary file, then rename), confines paths to the vault, and keeps a `quarantine/` subfolder.
 - Location: `MEDIA_ROOT / 'evidence_vault'`, where `MEDIA_ROOT = BASE_DIR / 'media'`, which is `<deploy-dir>/Backend/media/` by default. Since the G2 fix, `MEDIA_ROOT` and `EVIDENCE_STORAGE_VAULT` can be set from the environment and **must point at the persistent volume on a VM**.
-- Limits: `MAX_EVIDENCE_FILE_SIZE` defaults to 25 MB and can be set from the environment. Allowed formats are pdf, png, jpg, jpeg, webp, docx and xlsx, checked by magic bytes; PDFs are also structurally parsed with `pypdf`.
+- Limits: PDFs **5 MB** (`MAX_PDF_FILE_SIZE`); other formats **25 MB** (`MAX_EVIDENCE_FILE_SIZE`). Both can be set from the environment, and the browser enforces the same limits (`src/utils/fileValidators.js`). Allowed formats are pdf, png, jpg, jpeg, webp, docx and xlsx, checked by magic bytes; PDFs are also structurally parsed with `pypdf`.
 - Delivery: evidence is served **only through authenticated API views**, which read the whole file into memory (`HttpResponse(content_bytes)`). `/media/` is mounted only when `DEBUG=True`, so the reverse proxy must **not** expose the media directory.
 - Upload handling: files over Django's 2.5 MB in-memory threshold spool to the OS temp directory, so the VM needs free `/tmp` space.
 - A legacy nomination screen (`NominationWorkspace.jsx:458`) uploads files **directly from the browser to Cloudinary**, a third-party SaaS. The backend supplies the Cloudinary settings from `CLOUDINARY_*` variables, and the code falls back to hard-coded defaults if they are unset. **[GAP]** A decision is needed on whether this path stays in production (§10, question Q5).
@@ -93,6 +93,8 @@ The first assessment found code gaps G1–G8 (§9). **G1–G6 are now fixed.** G
 ---
 
 ## 3. Recommended server specifications [ESTIMATE]
+
+> **Superseded on 2026-10-21.** HSHEC has given the expected load (at most 150 applications, 250–300 concurrent users). The sizing in §3–§4 below was made without that data. The revised sizing is **one production VM (4 vCPU / 8 GB / 60 GB + 100 GB evidence), staging 2 vCPU / 4 GB / 60 GB, and 250 GB backup**. See [`VM_SIZING_CALCULATIONS.md`](VM_SIZING_CALCULATIONS.md) for the calculations.
 
 **Assumptions** (none of these figures come from the codebase):
 
@@ -165,11 +167,20 @@ Illustration only, not a forecast: 1,152 × 40 files × 4 MB × 1.25 ≈ **230 G
 
 ### 5.2 Reverse proxy requirements [VERIFIED from code]
 
-- `client_max_body_size` **≥ 30M** (25 MB file plus multipart overhead). If the limit is lower, uploads fail before they reach Django.
+- `client_max_body_size` **30M** (25 MB file plus multipart overhead). If the limit is lower, uploads fail before they reach Django.
 - Set `X-Forwarded-Proto` and configure `SECURE_PROXY_SSL_HEADER=true`. Without these, `SECURE_SSL_REDIRECT` loops behind the proxy.
-- **Overwrite** `X-Forwarded-For` with the client address. Admin audit logging trusts this header as received (`admin_panel/api_views.py`), so passing a client-supplied value through would let a user spoof the logged IP.
+- **Overwrite** `X-Forwarded-For` with the client address (`proxy_set_header X-Forwarded-For $remote_addr;`). With `TRUSTED_PROXY_COUNT=1`, which is the production default, Django uses only the last address in that header for throttling, login lockout and audit logs, so it must be the one Nginx added.
 - Serve `dist/` with the SPA fallback, proxy `/api/` to Gunicorn, and do **not** serve `Backend/media/`.
 - Proxy read timeout of 60–120 s for large uploads and the CSV export.
+- **Security headers for the static site.** Django sets headers only on `/api/` responses. On 2026-10-21 the policy below was tested against the production build in headless Chrome (home, login, sign-up, OTP and dashboard pages) and caused no violations. Check the evidence preview on staging, because it loads `blob:` frames. If the legacy Cloudinary upload is ever enabled (Q5), add `https://api.cloudinary.com` to `connect-src`.
+
+  ```nginx
+  add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; frame-src 'self' blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" always;
+  add_header X-Frame-Options "DENY" always;
+  add_header X-Content-Type-Options "nosniff" always;
+  add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+  add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+  ```
 
 ### 5.3 DNS and certificates
 
@@ -186,7 +197,7 @@ There is no traffic data, so a figure cannot be derived. The largest single tran
 
 ## 6. Environment variables and secrets
 
-Store these in a root-owned `EnvironmentFile` (mode 0600) for the systemd unit, or in the data centre's secret store. **Never commit them.** `base.py` also loads `Backend/.env` if it exists; if a `.env` file is used it needs the same 0600 permissions.
+Store these in a root-owned `EnvironmentFile` (mode 0600) for the systemd unit, or in the data centre's secret store. **Never commit them.** `base.py` also loads `Backend/.env` if it exists, but since 2026-10-21 it only fills in variables the real environment does not set. If a `.env` file is used, it needs the same 0600 permissions.
 
 | Variable | Secret? | Required | Notes |
 |---|---|---|---|
@@ -205,11 +216,14 @@ Store these in a root-owned `EnvironmentFile` (mode 0600) for the systemd unit, 
 | `EMAIL_BACKEND`, `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_USE_TLS`, `EMAIL_USE_SSL`, `EMAIL_HOST_USER`, `DEFAULT_FROM_EMAIL` | no | yes | the code default host is `smtp.gmail.com`, which must be overridden with the approved relay |
 | `EMAIL_HOST_PASSWORD` | **yes** | yes | |
 | `SECURE_PROXY_SSL_HEADER=true` | no | yes behind Nginx | |
+| `TRUSTED_PROXY_COUNT` | no | optional | Number of proxies that append to `X-Forwarded-For`. Production default **1** (Nginx); development default 0 (header ignored). |
+| `LOGIN_LOCKOUT_ATTEMPTS`, `LOGIN_ACCOUNT_LOCKOUT_ATTEMPTS`, `LOGIN_LOCKOUT_MINUTES` | no | optional | 5 failures per account and address, 50 per account from all addresses, 15-minute lock |
 | `SECURE_SSL_REDIRECT`, `SECURE_HSTS_SECONDS`, `SECURE_HSTS_INCLUDE_SUBDOMAINS` | no | optional | defaults: True / 30 days / False |
-| `MAX_EVIDENCE_FILE_SIZE` | no | optional | default 26214400 (25 MB); keep it consistent with the Nginx limit |
+| `MAX_PDF_FILE_SIZE` | no | optional | default 5242880 (5 MB) |
+| `MAX_EVIDENCE_FILE_SIZE` | no | optional | default 26214400 (25 MB) for non-PDF formats; keep it consistent with the Nginx limit and with `src/utils/fileValidators.js` |
 | `JWT_ACCESS_TOKEN_MINUTES`, `JWT_REFRESH_TOKEN_DAYS`, `PASSWORD_RESET_TIMEOUT` | no | optional | 15 min / 7 days / 24 h |
 | `SMS_BACKEND`, `OTP_*` | (provider credentials would be) | no, unless SMS is re-enabled | |
-| `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_UPLOAD_PRESET_NAME` | no | only if the legacy path is kept (Q5) | code falls back to hard-coded defaults |
+| `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_UPLOAD_PRESET_NAME` | no | only if the legacy path is kept (Q5) | No default since 2026-10-21: while unset, the legacy upload screen reports that uploads are not configured |
 | `HEAD_ADMIN_PASSWORD` | **yes** | one-off | Used only by `provision_head_admin`. Remove it after provisioning. |
 | `VITE_API_BASE_URL` | no | build time, only if the API is on another origin | Without it, production builds call same-origin `/api` |
 

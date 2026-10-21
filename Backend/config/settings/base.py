@@ -18,8 +18,9 @@ from dotenv import load_dotenv
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
-# Load environment variables
-load_dotenv(os.path.join(BASE_DIR, '.env'), override=True)
+# Load environment variables. A local .env file only fills in what the real environment does not set, so a stray file
+# on a server can never replace systemd or vault secrets (S-09).
+load_dotenv(os.path.join(BASE_DIR, '.env'), override=False)
 
 
 # Quick-start development settings - unsuitable for production
@@ -110,7 +111,19 @@ CORS_ALLOWED_ORIGIN_REGEXES = [
 	r'^http://127\.0\.0\.1:\d+$',
 ]
 
+# Number of reverse proxies in front of Django that append the peer address to X-Forwarded-For (Nginx alone = 1).
+# Throttling, login lockout and audit logs use only the address added by the outermost trusted proxy; whatever the
+# client itself put in the header is ignored (S-03). With 0 the header is not read at all.
+TRUSTED_PROXY_COUNT = int(os.environ.get('TRUSTED_PROXY_COUNT', 0))
+
+# Login lockout: failures are counted per account and client address, so a third party cannot lock a user out from
+# elsewhere; the per-account ceiling bounds guessing spread over many addresses (S-04).
+LOGIN_LOCKOUT_ATTEMPTS = int(os.environ.get('LOGIN_LOCKOUT_ATTEMPTS', 5))
+LOGIN_ACCOUNT_LOCKOUT_ATTEMPTS = int(os.environ.get('LOGIN_ACCOUNT_LOCKOUT_ATTEMPTS', 50))
+LOGIN_LOCKOUT_MINUTES = int(os.environ.get('LOGIN_LOCKOUT_MINUTES', 15))
+
 REST_FRAMEWORK = {
+    'NUM_PROXIES': TRUSTED_PROXY_COUNT,
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'apps.authentication.authentication.JWTAuthentication',
     ],

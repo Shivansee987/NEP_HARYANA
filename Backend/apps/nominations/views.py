@@ -1,9 +1,8 @@
 from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import BasePermission, IsAuthenticated
 from django.utils import timezone
-from django.conf import settings
 import os
 import io
 
@@ -29,9 +28,27 @@ class NominationConfigView(APIView):
         }, status=status.HTTP_200_OK)
 
 
+class HasApprovedCollege(BasePermission):
+    """
+    Nominations belong to one college: only a user whose binding to that college has been approved may read or edit
+    them. Pending, rejected and unbound accounts (university users, administrators, committee members) are refused;
+    there is no fallback college (S-01).
+    """
+    message = "Your account is not linked to an approved college."
+
+    def has_permission(self, request, view):
+        user = request.user
+        return bool(
+            user and user.is_authenticated
+            and getattr(user, 'college_id', None)
+            and getattr(user, 'institution_status', None) == 'VERIFIED'
+        )
+
+
 class NominationEvidenceUploadView(APIView):
     """Validate nomination evidence before forwarding it to Cloudinary."""
-    permission_classes = [IsAuthenticated]
+    # Only an approved college principal may upload nomination evidence (S-01).
+    permission_classes = [IsAuthenticated, HasApprovedCollege]
 
     def post(self, request):
         uploaded_file = request.FILES.get('file')
@@ -81,8 +98,8 @@ class NominationEvidenceUploadView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        cloud_name = getattr(settings, 'CLOUDINARY_CLOUD_NAME', os.environ.get('CLOUDINARY_CLOUD_NAME', '')).strip()
-        upload_preset = getattr(settings, 'CLOUDINARY_UPLOAD_PRESET_NAME', os.environ.get('CLOUDINARY_UPLOAD_PRESET_NAME', '')).strip()
+        cloud_name = os.environ.get('CLOUDINARY_CLOUD_NAME', '').strip()
+        upload_preset = os.environ.get('CLOUDINARY_UPLOAD_PRESET_NAME', '').strip()
         if not cloud_name or not upload_preset:
             return Response(
                 {'error': 'storage_unavailable', 'detail': 'Document storage is temporarily unavailable. Please try again later.'},
@@ -110,19 +127,12 @@ class NominationEvidenceUploadView(APIView):
             status=status.HTTP_201_CREATED,
         )
 
-from apps.authentication.models import College
 
 def get_user_college(user):
-    if user.college:
-        return user.college
-    # Fallback for testing/superuser accounts
-    college = College.objects.first()
-    if not college:
-        college = College.objects.create(name="Default Govt College", aishe_code="C-12345")
-    return college
+    return user.college
 
 class NominationListView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasApprovedCollege]
 
     def get(self, request):
         user = request.user
@@ -154,7 +164,7 @@ class NominationListView(APIView):
         return Response(forms, status=status.HTTP_200_OK)
 
 class NominationDetailView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasApprovedCollege]
 
     def get(self, request, form_id):
         user = request.user
@@ -175,7 +185,7 @@ class NominationDetailView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 class NominationSaveView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasApprovedCollege]
 
     def post(self, request, form_id):
         user = request.user
@@ -241,7 +251,7 @@ class NominationSaveView(APIView):
         }, status=status.HTTP_200_OK)
 
 class NominationSubmitView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasApprovedCollege]
 
     def post(self, request, form_id):
         user = request.user
@@ -312,7 +322,7 @@ class NominationSubmitView(APIView):
 
 
 class MySubmissionsListView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasApprovedCollege]
 
     def get(self, request):
         user = request.user

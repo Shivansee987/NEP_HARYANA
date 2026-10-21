@@ -9,6 +9,7 @@ from django.core.paginator import Paginator
 from .models import Nomination, ClarificationRequest
 from .serializers import NominationSerializer, ClarificationRequestSerializer
 from .scoring import calculate_nomination_score, AWARD_THRESHOLDS
+from .views import HasApprovedCollege
 
 class IsCommitteeRole(BasePermission):
     message = "Committee access required."
@@ -96,8 +97,13 @@ class CommitteeAssignedSubmissionsView(APIView):
             qs = qs.order_by("-updated_at")
 
         # Pagination
+        # Malformed values fall back to the defaults and the page size is capped, so the list can never error or
+        # return every row at once (S-21).
         page_num = request.query_params.get("page", 1)
-        page_size = request.query_params.get("page_size", 10)
+        try:
+            page_size = max(1, min(100, int(request.query_params.get("page_size", 10))))
+        except (TypeError, ValueError):
+            page_size = 10
         paginator = Paginator(qs, page_size)
         page_obj = paginator.get_page(page_num)
 
@@ -254,7 +260,7 @@ class CommitteeClarificationRequestView(APIView):
 
 # Endpoint for Principal to view and reply to active clarification
 class PrincipalClarificationView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasApprovedCollege]
 
     def get(self, request, form_id):
         # Get active clarification

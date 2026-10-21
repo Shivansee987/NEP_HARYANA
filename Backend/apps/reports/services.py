@@ -9,6 +9,8 @@ Read-only projection service consuming authoritative data from:
 
 INVARIANT: Zero score calculations, zero synthetic mappings, zero data mutations.
 """
+import csv
+import io
 import logging
 from typing import Any, Dict, List, Optional, Tuple
 from dataclasses import asdict
@@ -24,6 +26,17 @@ from apps.scoring.orchestration import SNAPSHOT_KEY
 from apps.reports.permissions import can_user_view_assessment, ReportPermissionDenied
 
 logger = logging.getLogger(__name__)
+
+
+def _csv_text(value) -> str:
+    """
+    A text cell for the CSV export. A leading = + - @ or control character would make a spreadsheet evaluate the cell
+    as a formula, so such values are prefixed with an apostrophe (S-18).
+    """
+    text = "" if value is None else str(value)
+    if text and text[0] in "=+-@\t\r":
+        return "'" + text
+    return text
 
 
 class AssessmentNotFoundError(Exception):
@@ -680,27 +693,29 @@ class ReportingService:
         base_row = [
             report["assessment"]["assessment_id"],
             report["framework"],
-            f'"{report["institution"]["name"].replace(chr(34), chr(34)+chr(34))}"',
-            report["institution"]["aishe_code"],
+            _csv_text(report["institution"]["name"]),
+            _csv_text(report["institution"]["aishe_code"]),
             report["period"]["academic_year"],
             report["lifecycle"]["status"],
             report["scoring"]["scoring_status"],
             str(report["scoring"]["final_certified_total"] or "N/A"),
         ]
 
-        lines = [",".join(headers)]
+        out = io.StringIO()
+        writer = csv.writer(out, lineterminator="\n")
+        writer.writerow(headers)
         for p in report["parameters"]:
             earned = str(p["final_score"] if p["final_score"] is not None else (p["raw_score"] if p["raw_score"] is not None else "N/A"))
             p_row = base_row + [
                 p["parameter_code"],
-                f'"{p["parameter_title"].replace(chr(34), chr(34)+chr(34))}"',
+                _csv_text(p["parameter_title"]),
                 str(p["max_marks"]),
                 str(p["submitted"]),
                 earned,
                 p["evidence_coverage_state"],
                 p["resolution_status"],
-                f'"{"; ".join(p["blocking_reasons"])}"'
+                _csv_text("; ".join(p["blocking_reasons"])),
             ]
-            lines.append(",".join(p_row))
+            writer.writerow(p_row)
 
-        return "\n".join(lines)
+        return out.getvalue().rstrip("\n")

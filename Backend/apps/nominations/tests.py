@@ -112,3 +112,90 @@ class NominationTests(APITestCase):
         # Attempt to save again should fail
         response_save_again = self.client.post(url_save, data, format='json')
         self.assertEqual(response_save_again.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+class NominationCollegeBindingTests(APITestCase):
+    """
+    S-01 (security review 2026-10-21): a user without an approved college binding must not reach any college's
+    nomination. The removed fallback handed such users the first college in the database.
+    """
+    def setUp(self):
+        self.form_id = "nep-excellence-nomination-2025"
+        self.first_college = College.objects.order_by('pk').first() or College.objects.create(name="First College")
+        self.nomination = Nomination.objects.create(
+            form_id=self.form_id, college=self.first_college, head_name="Real Principal",
+            answers={"indicator_1": {"value": "Yes"}},
+        )
+        requested = College.objects.create(name="Requested College")
+        self.pending = User.objects.create_user(
+            email="pending@test.edu.in", full_name="Pending Applicant", role="principal",
+            password="SecurePassword123!", institution_status='PENDING', requested_college=requested,
+        )
+        self.unbound_admin = User.objects.create_user(
+            email="state@test.gov.in", full_name="State Admin", role="state_admin", password="SecurePassword123!",
+        )
+
+    def _assert_no_access(self, user):
+        self.client.force_authenticate(user=user)
+        urls = [
+            ('get', reverse('nomination-list')),
+            ('get', reverse('my-submissions-list')),
+            ('get', reverse('nomination-detail', kwargs={'form_id': self.form_id})),
+            ('post', reverse('nomination-save', kwargs={'form_id': self.form_id})),
+            ('post', reverse('nomination-submit', kwargs={'form_id': self.form_id})),
+            ('get', reverse('principal-clarification', kwargs={'form_id': self.form_id})),
+            ('post', reverse('principal-clarification', kwargs={'form_id': self.form_id})),
+        ]
+        for method, url in urls:
+            response = getattr(self.client, method)(url, {'head_name': 'ATTACKER', 'response': 'x'}, format='json')
+            self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN, f"{method.upper()} {url}")
+        self.nomination.refresh_from_db()
+        self.assertEqual(self.nomination.head_name, "Real Principal")
+        self.assertEqual(Nomination.objects.count(), 1)
+
+    def test_pending_applicant_cannot_reach_any_nomination(self):
+        self._assert_no_access(self.pending)
+
+    def test_user_without_college_cannot_reach_any_nomination(self):
+        self._assert_no_access(self.unbound_admin)
+
+    def test_rejected_binding_cannot_reach_its_college_nomination(self):
+        self.pending.college = self.first_college
+        self.pending.institution_status = 'REJECTED'
+        self.pending.save()
+        self._assert_no_access(self.pending)
+
+
+class NominationConfigTests(APITestCase):
+    """S-07: Cloudinary credentials never reach the browser; uploads go through the server (nomination-evidence-upload)."""
+    def setUp(self):
+        self.user = User.objects.create_user(
+            email="config@test.edu.in", full_name="Principal Config", role="principal", password="SecurePassword123!"
+        )
+        self.client.force_authenticate(user=self.user)
+
+    def test_config_exposes_no_upload_credentials(self):
+        response = self.client.get(reverse('nomination-config'))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertNotIn('cloudinary_cloud_name', response.data)
+        self.assertNotIn('cloudinary_upload_preset', response.data)
+
+
+class NominationEvidenceUploadAccessTests(APITestCase):
+    """S-01: only an approved college principal may push nomination evidence through the server."""
+    def test_unapproved_accounts_cannot_upload(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        requested = College.objects.create(name="Requested College")
+        pending = User.objects.create_user(
+            email="pending.upload@test.edu.in", full_name="Pending Upload", role="principal",
+            password="SecurePassword123!", institution_status='PENDING', requested_college=requested,
+        )
+        admin = User.objects.create_user(
+            email="admin.upload@test.gov.in", full_name="State Admin", role="state_admin", password="SecurePassword123!",
+        )
+        for user in (pending, admin):
+            self.client.force_authenticate(user=user)
+            response = self.client.post(reverse('nomination-evidence-upload'), {
+                'file': SimpleUploadedFile("proof.pdf", b"%PDF-1.4\n%%EOF\n", content_type="application/pdf")},
+                format='multipart')
+            self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN, user.email)

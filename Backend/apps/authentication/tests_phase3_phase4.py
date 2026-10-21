@@ -123,7 +123,7 @@ class Phase4EvidenceStreamingTestCase(TestCase):
         self.assertEqual(computed_hash, expected_hash)
 
     def test_pipeline_process_upload_streams_file_data(self):
-        raw_data = b"%PDF-1.4 " + (b"ValidPdfStreamDocumentContents" * 200)
+        raw_data = b"%PDF-1.4 " + (b"ValidPdfStreamDocumentContents" * 200) + b"\n%%EOF\n"
         stream = io.BytesIO(raw_data)
         stream.name = "test_document.pdf"
         stream.size = len(raw_data)

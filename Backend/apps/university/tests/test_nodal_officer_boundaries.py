@@ -63,7 +63,7 @@ class NodalOfficerBoundaryTests(TestCase):
 
     def _upload(self, assessment, institution_id):
         return self.client.post("/api/evidence/", {
-            "file": SimpleUploadedFile("u1.pdf", b"%PDF-1.4 approval document", content_type="application/pdf"),
+            "file": SimpleUploadedFile("u1.pdf", b"%PDF-1.4 approval document\n%%EOF\n", content_type="application/pdf"),
             "assessment_id": assessment.assessment_id,
             "framework": "UNIVERSITY_2026",
             "institution_type": "UNIVERSITY",
