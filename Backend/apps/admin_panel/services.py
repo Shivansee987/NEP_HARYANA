@@ -1450,6 +1450,9 @@ class AdminUserManagementService:
             target_user.institution_status = 'REJECTED'
         target_user.requested_college = target_user.requested_university = None
         target_user.save(update_fields=['college', 'university', 'institution_status', 'requested_college', 'requested_university'])
+        # The JWT user cache holds the pre-decision binding for up to 60 s; clear it so the decision applies at once (S-24).
+        from apps.authentication.authentication import invalidate_user_cache
+        invalidate_user_cache(target_user.pk)
 
         UserAuditLog.objects.create(
             actor=actor,
@@ -1479,7 +1482,18 @@ class AdminUserManagementService:
         except User.DoesNotExist:
             raise AdminValidationError(f"User with ID {user_id} does not exist.", code="USER_NOT_FOUND")
 
+        if framework not in ("UNIVERSITY_2026", "COLLEGE_2026", "ALL"):
+            raise AdminValidationError(f"Invalid framework '{framework}'.", code="INVALID_FRAMEWORK")
+
         if action == "assign":
+            # Review scope only means something for committee roles; granting it to anyone else would leave stray
+            # governance rows that a later role change could activate (FIN-21 / S-23).
+            if target_user.role not in CommitteeService.ELIGIBLE_MEMBER_ROLES:
+                raise AdminValidationError(
+                    f"User '{target_user.email}' has role '{target_user.role}'. Review scope can only be granted to "
+                    f"committee members and chairs.",
+                    code="INELIGIBLE_ROLE",
+                )
             auth, created = ReviewerAuthorization.objects.get_or_create(
                 user=target_user,
                 framework=framework,

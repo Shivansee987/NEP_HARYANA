@@ -10,6 +10,16 @@ from rest_framework.exceptions import PermissionDenied
 
 from apps.authentication.utils import get_client_ip
 
+
+def _int_param(request, name, default, minimum=1, maximum=None):
+    """A positive integer query parameter; malformed values fall back to the default instead of a 500 (S-21)."""
+    try:
+        value = int(request.query_params.get(name, default))
+    except (TypeError, ValueError):
+        value = default
+    value = max(minimum, value)
+    return min(value, maximum) if maximum is not None else value
+
 from apps.evidence.models import ReviewerAuthorization
 from .api_permissions import (
     AdminPermissionDenied,
@@ -281,8 +291,8 @@ class AdminUserListCreateView(APIView):
             "institution_status": request.query_params.get("institution_status"),
         }
         filters = {k: v for k, v in filters.items() if v is not None}
-        page = int(request.query_params.get("page", 1))
-        page_size = int(request.query_params.get("page_size", 20))
+        page = _int_param(request, "page", 1)
+        page_size = _int_param(request, "page_size", 20, maximum=100)
 
         result = AdminUserManagementService.list_users(
             actor=request.user,
@@ -446,8 +456,8 @@ class AdminGlobalUserAuditLogsView(APIView):
             "search": request.query_params.get("search") or request.query_params.get("q"),
         }
         filters = {k: v for k, v in filters.items() if v is not None}
-        page = int(request.query_params.get("page", 1))
-        page_size = int(request.query_params.get("page_size", 25))
+        page = _int_param(request, "page", 1)
+        page_size = _int_param(request, "page_size", 25, maximum=100)
 
         try:
             result = HeadAdminControlCentreService.list_audit_trail(

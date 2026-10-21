@@ -308,7 +308,9 @@ class AdminUserCreateSerializer(serializers.Serializer):
     phone_number = serializers.CharField(required=False, allow_blank=True, default="", max_length=20)
     college_id = serializers.IntegerField(required=False, allow_null=True)
     university_id = serializers.IntegerField(required=False, allow_null=True)
-    committee_framework = serializers.CharField(required=False, allow_blank=True, default="")
+    committee_framework = serializers.ChoiceField(
+        choices=["", "UNIVERSITY_2026", "COLLEGE_2026", "ALL"], required=False, allow_blank=True, default=""
+    )
     send_invite = serializers.BooleanField(required=False, default=True)
 
     def validate_email(self, value):
@@ -345,7 +347,9 @@ class AdminUserUpdateSerializer(serializers.Serializer):
     is_active = serializers.BooleanField(required=False)
     college_id = serializers.IntegerField(required=False, allow_null=True)
     university_id = serializers.IntegerField(required=False, allow_null=True)
-    committee_framework = serializers.CharField(required=False, allow_blank=True, default="")
+    committee_framework = serializers.ChoiceField(
+        choices=["", "UNIVERSITY_2026", "COLLEGE_2026", "ALL"], required=False, allow_blank=True, default=""
+    )
 
     def validate(self, attrs):
         if "college_id" in attrs:
