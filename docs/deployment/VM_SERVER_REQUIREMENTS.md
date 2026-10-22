@@ -94,7 +94,7 @@ The first assessment found code gaps G1–G8 (§9). **G1–G6 are now fixed.** G
 
 ## 3. Recommended server specifications [ESTIMATE]
 
-> **Superseded on 2026-10-21.** HSHEC has given the expected load (at most 150 applications, 250–300 concurrent users). The sizing in §3–§4 below was made without that data. The revised sizing is **one production VM (4 vCPU / 8 GB / 60 GB + 100 GB evidence), staging 2 vCPU / 4 GB / 60 GB, and 250 GB backup**. See [`VM_SIZING_CALCULATIONS.md`](VM_SIZING_CALCULATIONS.md) for the calculations.
+> **Superseded on 2026-10-21.** HSHEC has given the expected load (at most 150 applications, 250–300 concurrent users). The sizing in §3–§4 below was made without that data. The revised sizing is **one production VM (4 vCPU / 8 GB / 60 GB + 100 GB evidence), staging 2 vCPU / 4 GB / 60 GB, and 250 GB backup**. See [`VM_SIZING_CALCULATIONS.md`](VM_SIZING_CALCULATIONS.md) for the calculations. **Updated 2026-10-22:** daily evidence backups, recovery targets, a production load test and the outbound Cloudinary rule were added. See `SERVER_REQUIREMENTS_SUMMARY.md` §4, §6, §8 and §9.
 
 **Assumptions** (none of these figures come from the codebase):
 
@@ -246,7 +246,7 @@ Store these in a root-owned `EnvironmentFile` (mode 0600) for the systemd unit, 
 - Vertical scaling (more vCPU/RAM, more Gunicorn workers) is the first step and needs no code change.
 - **Horizontal scaling (two or more application VMs) is not possible without a code change or shared storage.** Evidence is on local disk, so additional app VMs need either a shared POSIX volume (NFS) mounted at the evidence path, or an object-storage backend implementing `BaseEvidenceStorage`. They would also need a shared Redis on its own host.
 - PostgreSQL can be scaled up independently on its own VM.
-- **Load test** on staging before the submission window opens: login, the assessment save/submit flow, 25 MB uploads and evidence downloads, at a concurrency HSHEC agrees represents the deadline peak (Q1).
+- **Load test** before the submission window opens (150-user trial on staging, then the full test on the production VM; see `VM_SIZING_CALCULATIONS.md` §10): login, the assessment save/submit flow, 25 MB uploads and evidence downloads, at a concurrency HSHEC agrees represents the deadline peak (Q1).
 
 ---
 

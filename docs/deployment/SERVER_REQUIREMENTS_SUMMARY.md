@@ -4,7 +4,7 @@
 |---|---|
 | **Application** | NEP Haryana Excellence Awards 2026 web portal |
 | **Purpose** | Request for staging and production hosting (first deployment) |
-| **Date** | 21-10-2026 (revised sizing; first issued 19-10-2026) |
+| **Date** | 22-10-2026 (revised sizing, backup and recovery; first issued 19-10-2026) |
 | **Detailed reference** | `VM_SIZING_CALCULATIONS.md` (sizing calculations) and `VM_SERVER_REQUIREMENTS.pdf` (full technical assessment) |
 
 ## 1. Application overview
@@ -14,11 +14,12 @@
 - **Back end:** Python 3.12 / Django REST API, run by Gunicorn behind Nginx.
 - **Database:** PostgreSQL 16.
 - **Evidence files:** PDF up to 5 MB; image, DOCX and XLSX up to 25 MB; stored on a dedicated disk volume.
+- **Nomination documents:** uploaded by the server to **Cloudinary**, a third-party cloud storage service. This needs outbound internet access and approval for third-party storage (§4, §8).
 - **Background jobs:** none.
 
 ## 2. Virtual machines
 
-Sizes are calculated for 300 concurrent users and 150 applications (see `VM_SIZING_CALCULATIONS.md`), and are to be confirmed by a load test on staging before the submission window opens.
+Sizes are calculated for 300 concurrent users and 150 applications (see `VM_SIZING_CALCULATIONS.md`). They are to be confirmed by a 300-user load test **on the production VM** before go-live. Staging is half the size, so it is used for a 150-user trial run only (§9).
 
 | # | Role | Env | OS | vCPU | RAM | Storage |
 |---|---|---|---|---|---|---|
@@ -51,6 +52,7 @@ Node.js is **not** needed on the servers; the front end is built beforehand.
 | Inbound | Admin VPN / bastion → all VMs | 22/TCP | SSH, key-based only; not open to the internet |
 | Local only | VM 1 | 5432, 6379, 8000 | PostgreSQL, Redis, Gunicorn; never exposed |
 | Outbound | VM 1 → mail relay | 587/TCP (or 465) | Verification, invitation and password-reset emails |
+| Outbound | VM 1, VM 2 → Cloudinary API (`api.cloudinary.com`) | 443/TCP | Nomination document uploads. Without this rule those uploads fail. Proxy acceptable. |
 | Outbound | All VMs → package mirrors | 443/TCP | Security updates (proxy/mirror acceptable) |
 | Outbound | All VMs → NTP | 123/UDP | Time synchronisation |
 
@@ -66,8 +68,13 @@ Node.js is **not** needed on the servers; the front end is built beforehand.
 
 ## 6. Backup, monitoring and security
 
-- Daily PostgreSQL backups with point-in-time recovery, plus regular backups of the evidence volume, taken together and stored off the production VM.
-- Retention and RPO/RTO to be agreed.
+The production server is a single VM with no automatic failover. Recovery therefore depends on the following, which must be in place before the submission window opens:
+
+- **Database:** daily PostgreSQL backups with continuous WAL archiving (point-in-time recovery). Data loss of at most **1 hour**.
+- **Evidence volume:** **daily** incremental backups with a deduplicating tool (restic, borg or storage snapshots), taken together with the database backup. Data loss of at most **24 hours**. Weekly copies are not enough: a failure near the deadline would lose up to a week of uploads.
+- All backups stored off the production VM, kept for **35 days**.
+- A **snapshot of the production VM** just before the submission window opens and before every deployment.
+- A **restore drill** on staging before go-live. Target recovery time: **4 hours** to rebuild the service on a new VM from backup.
 - Monitoring of CPU, RAM and disk (alert at **70%** on the evidence volume), uptime checks and certificate-expiry alerts.
 - OS hardening and regular security patching; antivirus scanning of the evidence volume if policy requires it.
 - Passwords and keys are exchanged through a secure channel, never by email.
@@ -82,12 +89,15 @@ Node.js is **not** needed on the servers; the front end is built beforehand.
 1. Hosting facility, and whether Ubuntu 24.04 LTS is permitted (or RHEL/Rocky 9).
 2. Availability of managed backups, load balancer or WAF.
 3. SMTP relay and sender address; who manages the sender domain's DNS.
-4. Backup retention and off-site copy requirement.
+4. Backup retention and off-site copy requirement; agreement to the 1-hour / 24-hour data-loss limits and 4-hour recovery target in §6; VM snapshot capability.
 5. Approved access and deployment method.
 6. Whether a security audit (e.g. a CERT-In empanelled auditor) is required before go-live.
 7. Log retention, and whether logs go to a central SIEM.
+8. Approval of outbound HTTPS to Cloudinary (§4), and whether nomination documents may be stored with a third-party provider whose servers may be outside India. If not, the portal must be changed to keep them on the evidence volume, which needs development time before go-live.
+9. Whether the production VM can be resized (to 6–8 vCPU / 12–16 GB) within a few hours during the submission window.
 
 ## 9. Requested sequence
 
-1. **Staging VM (VM 2) first**, for installation, email and load testing.
+1. **Staging VM (VM 2) first**, for installation, email, a restore drill and a 150-user trial load test.
 2. Production VM (VM 1) and backup storage after staging is validated.
+3. A **300-user load test on the production VM** before go-live, while it holds no real data. Test data is removed afterwards.

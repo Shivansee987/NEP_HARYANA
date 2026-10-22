@@ -2,11 +2,11 @@
 
 | | |
 |---|---|
-| **Prepared** | 2026-10-21 |
+| **Prepared** | 2026-10-21 (backup, recovery and load-test plan revised 2026-10-22) |
 | **Replaces** | The sizing in `VM_SERVER_REQUIREMENTS.md` §3–§4 and `SERVER_REQUIREMENTS_SUMMARY.md` §2 (2026-10-18/19). Those figures were made without any user or volume data. |
 | **New inputs** | At most **250–300 concurrent users**. About **40 applications last year**, so this year is planned for **at most 150 applications**. Upload limits (decided 2026-10-22): **PDFs 5 MB**, other evidence formats (images, DOCX, XLSX) **25 MB**. |
 
-Labels used below: **[VERIFIED]** means read from the code or the demo database. **[ASSUMPTION]** means an input that the calculation depends on, which HSHEC should confirm. **[ESTIMATE]** means a typical figure for this software stack, to be confirmed by the load test (§9).
+Labels used below: **[VERIFIED]** means read from the code or the demo database. **[ASSUMPTION]** means an input that the calculation depends on, which HSHEC should confirm. **[ESTIMATE]** means a typical figure for this software stack, to be confirmed by the load test (§10).
 
 ---
 
@@ -146,14 +146,24 @@ Because almost every slot accepts 25 MB image or Office files, the limits do not
 
 ### 7.3 Backup storage
 
+Evidence is backed up **daily**, not weekly. Weekly copies would lose up to a week of uploads if the disk failed near the deadline. Daily full copies would need 35 × 34 GB ≈ 1.2 TB, so the evidence uses a deduplicating tool (restic, borg or storage snapshots). That stores each file once, plus about 20% for metadata and deleted files kept within retention.
+
 ```
-Database: daily compressed dump ≤ 0.5 GB × 35 days                     ≈ 18 GB
-Evidence: weekly full copies without deduplication, 34 GB × 5 weeks    ≈ 170 GB
+Database: daily compressed dump ≤ 0.5 GB × 35 days, plus WAL archive   ≈ 20 GB
+Evidence: daily deduplicated backups, 34 GB × 1.2                      ≈ 41 GB
                                                                        --------
-Required (simple backup tool, no deduplication)                        ≈ 188 GB
+Planning case                                                          ≈ 61 GB
+Evidence volume full (100 GB × 1.2 + 20 GB)                            ≈ 140 GB
 ```
 
-With a deduplicating tool (restic, borg or storage snapshots), the evidence needs only about 1.2 × 34 GB ≈ 41 GB. **250 GB** covers the simple method with a 30% margin. It also covers deduplicated backups if the evidence volume fills to 100 GB (120 GB + 18 GB). If files turn out much larger than planned, use a deduplicating tool.
+**250 GB** covers a full evidence volume with about 45% to spare.
+
+| Recovery target | Value | How |
+|---|---|---|
+| Database data loss (RPO) | ≤ 1 hour | Continuous WAL archiving to backup storage |
+| Evidence data loss (RPO) | ≤ 24 hours | Daily deduplicated backup |
+| Recovery time (RTO) | ≤ 4 hours | Rebuild on a new VM from backup; practised in a restore drill on staging before go-live |
+| Before the window opens and before each deployment | VM snapshot | Fast roll-back for a bad deployment |
 
 ---
 
@@ -174,7 +184,7 @@ With a deduplicating tool (restic, borg or storage snapshots), the evidence need
 ## 9. Why one production VM is enough
 
 - **The database is small.** About 1–2 GB at the end of the cycle, so it sits entirely in memory on the same VM. A second VM adds a network hop, a second server to patch and a second firewall rule set, but no extra capacity is needed.
-- **Availability is unchanged.** The earlier two-VM design also had a single application server and a single database server. Either one failing stopped the service. Recovery in both designs relies on the backups in §7.3.
+- **Availability is unchanged.** The earlier two-VM design also had a single application server and a single database server. Either one failing stopped the service. Recovery in both designs relies on the backups and recovery targets in §7.3 (at most 24 hours of evidence lost, service back within 4 hours).
 - **Scaling is simple if needed.** The VM can be resized to 6–8 vCPU / 12–16 GB without code changes. PostgreSQL can move to its own VM or a managed service later by changing `DATABASE_URL`.
 - **Two separate disks are still kept.** Evidence lives on its own volume, so it can grow and be backed up separately from the OS disk.
 
@@ -184,14 +194,20 @@ The VM must be allowed to resize quickly (a reboot within an hour) if the load t
 
 ## 10. Confirming these figures
 
-The **[ESTIMATE]** figures (I7, I8) are typical values, not measurements from this application. Before the submission window opens, run a load test on staging:
+The **[ESTIMATE]** figures (I7, I8) are typical values, not measurements from this application. Staging has half the CPU and memory of production, so a 300-user test there would fail whatever production can do. Run the tests in two steps:
+
+1. **Staging, 150 users:** a trial run to find errors and tune the test script.
+2. **Production, 300 users:** the real test, run before go-live while the VM holds no real data. Test accounts and files are removed afterwards.
+
+Targets for the production test:
 
 | Item | Target |
 |---|---|
 | Virtual users | 300, each acting every 10 s: login, open the assessment, save, upload a 3–5 MB PDF and a 25 MB image, download evidence |
 | Response time | 95% of requests under 1 s; uploads under 5 s |
 | Error rate | Under 1% |
-| CPU / memory | Under 70%. Staging is half the size of production, so judge staging at 150 users and expect production to handle 300. |
+| CPU / memory | Under 70% on the production VM |
+| Cloudinary uploads | Uploads to Cloudinary must succeed through the data-centre firewall or proxy. Upload time counts toward the 5 s target. |
 
 **One figure from HSHEC would replace the main assumption:** the total size of last year's evidence for the 40 applications. Dividing it by 40 gives the actual size per application, which replaces the estimate of 50 × 3 MB × 1.5 = 225 MB.
 
@@ -202,4 +218,5 @@ The **[ESTIMATE]** figures (I7, I8) are typical values, not measurements from th
 The software stack, network ports, domain/SSL/email requirements, security baseline and open points (Q3–Q13) in `VM_SERVER_REQUIREMENTS.md` still apply, with two changes:
 
 - On the single VM, PostgreSQL listens on localhost only, so the internal port 5432 rule between VMs is no longer needed.
+- Outbound HTTPS from VM 1 and VM 2 to `api.cloudinary.com` is required. The nomination evidence upload sends files from the server to Cloudinary [VERIFIED] (`Backend/apps/nominations/views.py`). Approval for third-party storage is open question Q5.
 - The request size allowed by Nginx and any firewall or WAF stays at **30 MB** (`client_max_body_size 30M`: a 25 MB file plus form overhead).
